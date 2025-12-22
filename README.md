@@ -54,6 +54,7 @@ EsuStellar uses the Stellar network to:
 
 ## 📂 Repository Structure
 
+```
 esustellar/
 ├── apps/
 │ └── web/ # Frontend application
@@ -65,7 +66,7 @@ esustellar/
 ├── .github/
 │ └── ISSUE_TEMPLATE/
 └── README.md
-
+```
 
 ---
 
