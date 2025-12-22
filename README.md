@@ -31,7 +31,7 @@ EsuStellar uses the Stellar network to:
 
 ---
 
-## 🧩 Core Features (MVP)
+## 🧩 Core Features
 
 - Create a savings group
 - Join a group
@@ -42,12 +42,12 @@ EsuStellar uses the Stellar network to:
 
 ---
 
-## 🏗 Tech Stack (Planned)
+## 🏗 Tech Stack
 
 - **Blockchain:** Stellar (Testnet)
 - **Smart Contracts:** Soroban
 - **Frontend:** React / Next.js
-- **Wallet:** Stellar Wallets (Freighter)
+- **Wallet:** Stellar Wallets (Freighter/lobster/lumen)
 - **Monorepo:** npm / Turborepo
 
 ---
@@ -71,11 +71,6 @@ esustellar/
 ---
 
 ## 🛠 Development Status
-
-🚧 Early development  
-We are currently setting up the project structure and welcoming contributors.
-
----
 
 ## 🤝 Contributing
 
