@@ -1,0 +1,33 @@
+# Node / npm
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Next.js
+.next/
+out/
+.vercel/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Soroban / Rust
+target/
+.soroban/
+.wasm/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+.github/
+
+
+# Logs
+logs/
+*.log
