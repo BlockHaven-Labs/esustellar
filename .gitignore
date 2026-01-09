@@ -29,5 +29,6 @@ Thumbs.db
 
 
 # Logs
+frd.md
 logs/
 *.log
