@@ -37,12 +37,6 @@ else
     exit 1
 fi
 
-echo ""
-echo "📝 Step 2: Optimizing WASM..."
-echo "--------------------------------"
-stellar contract optimize \
-    --wasm target/wasm32-unknown-unknown/release/esustellar_savings.wasm
-
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Optimization successful${NC}"
 else
@@ -68,8 +62,8 @@ fi
 
 # Deploy contract
 CONTRACT_ID=$(stellar contract deploy \
-    --wasm target/wasm32-unknown-unknown/release/esustellar_savings.wasm \
-    --source deployer \
+    --wasm contracts/savings/target/wasm32v1-none/release/esustellar_savings.wasm \
+    --source-account deployer \
     --network $NETWORK)
 
 if [ $? -eq 0 ]; then
