@@ -1,5 +1,7 @@
 # EsuStellar 🌍✨
 
+![alt text](image.png)
+
 Esustellar is an open-source platform that brings informal savings groups
 (Esusu / Ajo / Rotating Savings) to the Stellar blockchain.
 
