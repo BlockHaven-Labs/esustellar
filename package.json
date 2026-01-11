@@ -182,7 +182,6 @@
     "language-tags": "^1.0.9",
     "levn": "^0.4.1",
     "lightningcss": "^1.30.2",
-    "lightningcss-win32-x64-msvc": "^1.30.2",
     "locate-path": "^6.0.0",
     "lodash.merge": "^4.6.2",
     "loose-envify": "^1.4.0",
@@ -292,6 +291,9 @@
     "yocto-queue": "^0.1.0",
     "zod": "^4.2.1",
     "zod-validation-error": "^4.0.2"
+  },
+  "optionalDependencies": {
+    "lightningcss-win32-x64-msvc": "^1.30.2"
   },
   "devDependencies": {}
 }
