@@ -1,97 +1,67 @@
 #!/bin/bash
-
-# EsuStellar Contract Deployment Script
-# This script builds and deploys the savings contract to Stellar Testnet
-
 set -e
 
 echo "🚀 EsuStellar Contract Deployment"
 echo "=================================="
 
-# Check if stellar CLI is installed
-if ! command -v stellar &> /dev/null; then
-    echo "❌ Stellar CLI not found. Please install it first:"
-    echo "   cargo install --locked stellar-cli --features opt"
-    exit 1
-fi
-
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Configuration
 NETWORK="testnet"
+ROOT_DIR="$(pwd)"
 CONTRACT_DIR="contracts/savings"
+WASM_PATH="$ROOT_DIR/target/wasm32v1-none/release/esustellar_savings.wasm"
+ENV_FILE="$ROOT_DIR/apps/web/.env.local"
+
+# Check CLI
+command -v stellar >/dev/null || {
+  echo "❌ Stellar CLI not found"
+  exit 1
+}
 
 echo ""
 echo "📝 Step 1: Building contract..."
-echo "--------------------------------"
-cd $CONTRACT_DIR
+
+cd "$CONTRACT_DIR"
 stellar contract build
 
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Build successful${NC}"
-else
-    echo "❌ Build failed"
-    exit 1
-fi
+cd "$ROOT_DIR"
 
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Optimization successful${NC}"
-else
-    echo "❌ Optimization failed"
-    exit 1
-fi
+echo -e "${GREEN}✅ Build successful${NC}"
 
 echo ""
-echo "📝 Step 3: Deploying to ${NETWORK}..."
-echo "--------------------------------"
-
-# Generate identity if it doesn't exist
-if ! stellar keys ls | grep -q "deployer"; then
-    echo "Creating deployer identity..."
-    stellar keys generate deployer --network $NETWORK
+echo "📝 Step 2: Preparing deployer identity..."
+if ! stellar keys ls | awk '{print $1}' | grep -xq deployer; then
+  stellar keys generate deployer --network "$NETWORK"
 fi
 
-# Fund the account on testnet
 if [ "$NETWORK" = "testnet" ]; then
-    echo "Funding deployer account..."
-    stellar keys fund deployer --network $NETWORK
+  echo "Funding deployer account (if needed)..."
+  stellar keys fund deployer --network "$NETWORK" || true
 fi
 
-# Deploy contract
+echo ""
+echo "📝 Step 3: Deploying contract..."
 CONTRACT_ID=$(stellar contract deploy \
-    --wasm contracts/savings/target/wasm32v1-none/release/esustellar_savings.wasm \
-    --source-account deployer \
-    --network $NETWORK)
+  --wasm "$WASM_PATH" \
+  --source-account deployer \
+  --network "$NETWORK")
 
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Deployment successful${NC}"
-    echo ""
-    echo "📋 Contract Details:"
-    echo "===================="
-    echo -e "Contract ID: ${BLUE}${CONTRACT_ID}${NC}"
-    echo "Network: $NETWORK"
-    echo ""
-    echo "💾 Saving contract ID to .env..."
-    echo "CONTRACT_ID=$CONTRACT_ID" > ../../apps/web/.env.local
-    echo -e "${GREEN}✅ Saved to apps/web/.env.local${NC}"
-else
-    echo "❌ Deployment failed"
-    exit 1
-fi
+echo -e "${GREEN}✅ Deployment successful${NC}"
+echo -e "Contract ID: ${BLUE}${CONTRACT_ID}${NC}"
 
 echo ""
-echo "🎉 Deployment complete!"
-echo ""
-echo "Next steps:"
-echo "1. Update your frontend with the contract ID"
-echo "2. Test contract functions using the Stellar CLI"
-echo "3. Monitor transactions on:"
-echo "   https://stellar.expert/explorer/$NETWORK/contract/$CONTRACT_ID"
+echo "💾 Updating frontend env..."
+mkdir -p "$(dirname "$ENV_FILE")"
+grep -v '^CONTRACT_ID=' "$ENV_FILE" 2>/dev/null > "$ENV_FILE.tmp" || true
+echo "CONTRACT_ID=$CONTRACT_ID" >> "$ENV_FILE.tmp"
+mv "$ENV_FILE.tmp" "$ENV_FILE"
+echo -e "${GREEN}✅ Updated $ENV_FILE${NC}"
 
-# Save deployment info
+cd "$ROOT_DIR"
+
 cat > deployment-info.json <<EOF
 {
   "contract_id": "$CONTRACT_ID",
@@ -102,4 +72,6 @@ cat > deployment-info.json <<EOF
 EOF
 
 echo ""
-echo "📄 Deployment info saved to deployment-info.json"
+echo "🎉 Deployment complete!"
+echo "🔍 Explorer:"
+echo "https://stellar.expert/explorer/$NETWORK/contract/$CONTRACT_ID"
