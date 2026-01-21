@@ -525,31 +525,4 @@ impl SavingsContract {
 }
 
 #[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
-
-    #[test]
-    fn test_create_and_join_group() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, SavingsContract);
-        let client = SavingsContractClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        let group_id = String::from_str(&env, "test-group");
-        let name = String::from_str(&env, "Test Savings Group");
-
-        let result = client.create_group(
-            &admin,
-            &group_id,
-            &name,
-            &100_000_000, // 10 XLM
-            &5,
-            &Frequency::Monthly,
-            &(env.ledger().timestamp() + 86400),
-            &true,
-        );
-
-        assert!(result.is_ok());
-    }
-}
+mod tests;
