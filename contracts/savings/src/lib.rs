@@ -1,4 +1,3 @@
-// contracts/savings/src/lib.rs
 #![no_std]
 
 use soroban_sdk::{

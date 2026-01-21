@@ -1,4 +1,3 @@
-// contracts/savings/src/tests.rs
 #![cfg(test)]
 
 use super::*;
