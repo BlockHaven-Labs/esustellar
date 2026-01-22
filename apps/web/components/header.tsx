@@ -4,8 +4,9 @@ import Link from "next/link"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu, Wallet } from "lucide-react"
+import { Menu } from "lucide-react"
 import { Logo } from "@/components/logo"
+import { WalletButton } from "@/components/wallet-button"
 
 const navLinks = [
   { href: "/groups", label: "Browse Groups" },
@@ -39,12 +40,7 @@ export function Header() {
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center gap-3">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/dashboard">
-              <Wallet className="mr-2 h-4 w-4" />
-              Connect Wallet
-            </Link>
-          </Button>
+          <WalletButton variant="outline" size="sm" />
         </div>
 
         {/* Mobile Menu */}
@@ -67,12 +63,10 @@ export function Header() {
                   {link.label}
                 </Link>
               ))}
-              <Button className="mt-4 bg-primary text-primary-foreground hover:bg-primary-dark" asChild>
-                <Link href="/dashboard">
-                  <Wallet className="mr-2 h-4 w-4" />
-                  Connect Wallet
-                </Link>
-              </Button>
+              <WalletButton
+                className="mt-4 bg-primary text-primary-foreground hover:bg-primary-dark"
+                onClick={() => setIsOpen(false)}
+              />
             </nav>
           </SheetContent>
         </Sheet>
