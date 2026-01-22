@@ -1,8 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short,
-    Address, Env, String, Vec
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
 
 #[contracterror]
@@ -158,17 +157,17 @@ impl SavingsContract {
         };
 
         env.storage().instance().set(&DataKey::Group, &group);
-        
+
         let members: Vec<Address> = Vec::new(&env);
         env.storage().instance().set(&DataKey::Members, &members);
         env.storage().instance().set(&DataKey::MemberCount, &0u32);
 
-        // Admin auto-joins
-        Self::join_group(env.clone(), admin)?;
+        // Admin auto-joins (internal call - no auth required)
+        Self::add_admin_to_group(&env, admin.clone())?;
 
         env.events().publish(
             (symbol_short!("created"),),
-            (group_id, contribution_amount, total_members)
+            (group_id, contribution_amount, total_members),
         );
 
         Ok(group)
@@ -199,7 +198,11 @@ impl SavingsContract {
         }
 
         // Check if already a member
-        if env.storage().instance().has(&DataKey::MemberData(member.clone())) {
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::MemberData(member.clone()))
+        {
             return Err(Error::AlreadyMember);
         }
 
@@ -226,7 +229,9 @@ impl SavingsContract {
         env.storage().instance().set(&DataKey::Members, &members);
 
         let new_count = member_count + 1;
-        env.storage().instance().set(&DataKey::MemberCount, &new_count);
+        env.storage()
+            .instance()
+            .set(&DataKey::MemberCount, &new_count);
 
         // If group is full, change status to Active
         if new_count == group.total_members {
@@ -241,10 +246,8 @@ impl SavingsContract {
                 .set(&DataKey::RoundDeadline(1), &deadline);
         }
 
-        env.events().publish(
-            (symbol_short!("joined"),),
-            (member, new_count)
-        );
+        env.events()
+            .publish((symbol_short!("joined"),), (member, new_count));
 
         Ok(())
     }
@@ -319,7 +322,7 @@ impl SavingsContract {
 
         env.events().publish(
             (symbol_short!("contrib"),),
-            (member, group.contribution_amount, current_round)
+            (member, group.contribution_amount, current_round),
         );
 
         // Check if all members have paid
@@ -380,7 +383,7 @@ impl SavingsContract {
 
         env.events().publish(
             (symbol_short!("payout"),),
-            (recipient, payout_amount, current_round)
+            (recipient, payout_amount, current_round),
         );
 
         // End round
@@ -428,20 +431,59 @@ impl SavingsContract {
 
         env.storage().instance().set(&DataKey::Group, &group);
 
-        env.events().publish(
-            (symbol_short!("round_end"),),
-            group.current_round - 1
-        );
+        env.events()
+            .publish((symbol_short!("round_end"),), group.current_round - 1);
 
         Ok(())
     }
 
     // Helper functions
+    fn add_admin_to_group(env: &Env, member: Address) -> Result<(), Error> {
+        // Internal helper - no auth required since called from create_group
+        let member_count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MemberCount)
+            .unwrap_or(0);
+
+        let new_member = Member {
+            address: member.clone(),
+            join_timestamp: env.ledger().timestamp(),
+            join_order: member_count,
+            status: MemberStatus::Active,
+            total_contributed: 0,
+            has_received_payout: false,
+            payout_round: 0,
+        };
+
+        env.storage()
+            .instance()
+            .set(&DataKey::MemberData(member.clone()), &new_member);
+
+        let mut members: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Members)
+            .unwrap_or(Vec::new(&env));
+        members.push_back(member.clone());
+        env.storage().instance().set(&DataKey::Members, &members);
+
+        let new_count = member_count + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::MemberCount, &new_count);
+
+        env.events()
+            .publish((symbol_short!("joined"),), (member, new_count));
+
+        Ok(())
+    }
+
     fn calculate_deadline(_env: &Env, group: &SavingsGroup, round: u32) -> u64 {
         let round_duration = match group.frequency {
-            Frequency::Weekly => 604800,     // 7 days in seconds
-            Frequency::BiWeekly => 1209600,  // 14 days
-            Frequency::Monthly => 2592000,   // 30 days
+            Frequency::Weekly => 604800,    // 7 days in seconds
+            Frequency::BiWeekly => 1209600, // 14 days
+            Frequency::Monthly => 2592000,  // 30 days
         };
 
         group.start_timestamp + (round as u64 * round_duration)
@@ -524,31 +566,4 @@ impl SavingsContract {
 }
 
 #[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
-
-    #[test]
-    fn test_create_and_join_group() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, SavingsContract);
-        let client = SavingsContractClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        let group_id = String::from_str(&env, "test-group");
-        let name = String::from_str(&env, "Test Savings Group");
-
-        let result = client.create_group(
-            &admin,
-            &group_id,
-            &name,
-            &100_000_000, // 10 XLM
-            &5,
-            &Frequency::Monthly,
-            &(env.ledger().timestamp() + 86400),
-            &true,
-        );
-
-        assert!(result.is_ok());
-    }
-}
+mod tests;
