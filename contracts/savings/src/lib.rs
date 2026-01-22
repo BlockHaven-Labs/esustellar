@@ -111,7 +111,6 @@ pub enum DataKey {
     MemberCount,
     AllGroups,           // Vec<String> of all group_ids
     UserGroups(Address), // Vec<String> of groups user belongs to
-
 }
 
 #[contract]
@@ -160,25 +159,26 @@ impl SavingsContract {
         };
 
         env.storage().instance().set(&DataKey::Group, &group);
-            let mut all_groups: Vec<String> = env
-        .storage()
-        .instance()
-        .get(&DataKey::AllGroups)
-        .unwrap_or(Vec::new(&env));
-    all_groups.push_back(group_id.clone());
-    env.storage().instance().set(&DataKey::AllGroups, &all_groups);
+        let mut all_groups: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        all_groups.push_back(group_id.clone());
+        env.storage()
+            .instance()
+            .set(&DataKey::AllGroups, &all_groups);
 
         // Initialize admin's user groups list
-    let mut admin_groups: Vec<String> = env
-        .storage()
-        .instance()
-        .get(&DataKey::UserGroups(admin.clone()))
-        .unwrap_or(Vec::new(&env));
-    admin_groups.push_back(group_id.clone());
-    env.storage()
-        .instance()
-        .set(&DataKey::UserGroups(admin.clone()), &admin_groups);
-
+        let mut admin_groups: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::UserGroups(admin.clone()))
+            .unwrap_or(Vec::new(&env));
+        admin_groups.push_back(group_id.clone());
+        env.storage()
+            .instance()
+            .set(&DataKey::UserGroups(admin.clone()), &admin_groups);
 
         let members: Vec<Address> = Vec::new(&env);
         env.storage().instance().set(&DataKey::Members, &members);
@@ -199,7 +199,7 @@ impl SavingsContract {
     pub fn join_group(env: Env, member: Address) -> Result<(), Error> {
         member.require_auth();
 
-        let mut group: SavingsGroup = env
+        let group: SavingsGroup = env
             .storage()
             .instance()
             .get(&DataKey::Group)
@@ -242,22 +242,18 @@ impl SavingsContract {
             .instance()
             .set(&DataKey::MemberData(member.clone()), &new_member);
 
-            // Update user's groups list
-    let group: SavingsGroup = env
-        .storage()
-        .instance()
-        .get(&DataKey::Group)
-        .unwrap();
-    
-    let mut user_groups: Vec<String> = env
-        .storage()
-        .instance()
-        .get(&DataKey::UserGroups(member.clone()))
-        .unwrap_or(Vec::new(&env));
-    user_groups.push_back(group.group_id.clone());
-    env.storage()
-        .instance()
-        .set(&DataKey::UserGroups(member.clone()), &user_groups);
+        // Update user's groups list
+        let group: SavingsGroup = env.storage().instance().get(&DataKey::Group).unwrap();
+
+        let mut user_groups: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::UserGroups(member.clone()))
+            .unwrap_or(Vec::new(&env));
+        user_groups.push_back(group.group_id.clone());
+        env.storage()
+            .instance()
+            .set(&DataKey::UserGroups(member.clone()), &user_groups);
 
         let mut members: Vec<Address> = env
             .storage()
@@ -274,6 +270,7 @@ impl SavingsContract {
 
         // If group is full, change status to Active
         if new_count == group.total_members {
+            let mut group: SavingsGroup = env.storage().instance().get(&DataKey::Group).unwrap();
             group.status = GroupStatus::Active;
             group.current_round = 1;
             env.storage().instance().set(&DataKey::Group, &group);
@@ -602,9 +599,8 @@ impl SavingsContract {
             .get(&DataKey::Payouts(round))
             .unwrap_or(Vec::new(&env))
     }
-}
 
-/// Get the deadline for a specific round
+    /// Get the deadline for a specific round
     pub fn get_round_deadline(env: Env, round: u32) -> Result<u64, Error> {
         // Validate group exists
         let group: SavingsGroup = env
@@ -619,11 +615,7 @@ impl SavingsContract {
         }
 
         // Try to get deadline from storage
-        if let Some(deadline) = env
-            .storage()
-            .instance()
-            .get(&DataKey::RoundDeadline(round))
-        {
+        if let Some(deadline) = env.storage().instance().get(&DataKey::RoundDeadline(round)) {
             return Ok(deadline);
         }
 
@@ -646,6 +638,7 @@ impl SavingsContract {
             .get(&DataKey::AllGroups)
             .unwrap_or(Vec::new(&env))
     }
+}
 
 #[cfg(test)]
 mod tests;
@@ -654,7 +647,7 @@ mod tests;
 fn test_get_round_deadline() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, SavingsContract);
     let client = SavingsContractClient::new(&env, &contract_id);
 
@@ -678,7 +671,7 @@ fn test_get_round_deadline() {
 
     // Get round 1 deadline
     let deadline = client.get_round_deadline(&1).unwrap();
-    
+
     // Should be start_time + 1 week
     assert_eq!(deadline, start_time + 604800);
 
@@ -695,7 +688,7 @@ fn test_get_round_deadline() {
 fn test_get_user_groups() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, SavingsContract);
     let client = SavingsContractClient::new(&env, &contract_id);
 
@@ -729,7 +722,7 @@ fn test_get_user_groups() {
 fn test_get_all_groups() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, SavingsContract);
     let client = SavingsContractClient::new(&env, &contract_id);
 
@@ -739,7 +732,7 @@ fn test_get_all_groups() {
 
     let admin1 = Address::generate(&env);
     let admin2 = Address::generate(&env);
-    
+
     let group_id1 = String::from_str(&env, "group-1");
     let group_id2 = String::from_str(&env, "group-2");
     let name = String::from_str(&env, "Test Group");
@@ -783,13 +776,13 @@ fn test_get_all_groups() {
 fn test_user_joins_multiple_groups() {
     let env = Env::default();
     env.mock_all_auths();
-    
+
     let contract_id = env.register_contract(None, SavingsContract);
     let client = SavingsContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
-    
+
     let group_id1 = String::from_str(&env, "group-1");
     let group_id2 = String::from_str(&env, "group-2");
     let name = String::from_str(&env, "Test Group");
@@ -825,5 +818,3 @@ fn test_user_joins_multiple_groups() {
     let user_groups = client.get_user_groups(&user);
     assert_eq!(user_groups.len(), 2);
 }
- 
-
