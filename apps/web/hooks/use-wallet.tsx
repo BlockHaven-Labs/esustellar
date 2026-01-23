@@ -68,6 +68,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [hasFreighter, setHasFreighter] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [walletNetworkPassphrase, setWalletNetworkPassphrase] = React.useState<string | null>(null)
+  const freighterCheckAttempts = React.useRef(0)
 
   const isOnAllowedNetwork = React.useMemo(() => {
     if (!walletNetworkPassphrase) {
@@ -82,7 +83,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const refresh = React.useCallback(async () => {
-    const installed = isFreighterInstalled()
+    const installed = await isFreighterInstalled()
     setHasFreighter(installed)
 
     if (!installed) {
@@ -115,7 +116,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    const installed = isFreighterInstalled()
+    const installed = await isFreighterInstalled()
     setHasFreighter(installed)
 
     if (!installed) {
@@ -169,6 +170,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     void refresh()
   }, [refresh])
+
+  React.useEffect(() => {
+    if (hasFreighter) {
+      freighterCheckAttempts.current = 0
+      return
+    }
+    if (freighterCheckAttempts.current >= 3) {
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      freighterCheckAttempts.current += 1
+      void refresh()
+    }, 1000)
+    return () => window.clearTimeout(timeoutId)
+  }, [hasFreighter, refresh])
 
   const value = React.useMemo<WalletContextValue>(
     () => ({
