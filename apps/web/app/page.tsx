@@ -5,6 +5,7 @@ import { HowItWorksSection } from "@/components/how-it-works-section"
 import { StatsSection } from "@/components/stats-section"
 import { CTASection } from "@/components/cta-section"
 import { Footer } from "@/components/footer"
+import TestContractPage from "./test-contract/page"
 
 export default function HomePage() {
   return (
