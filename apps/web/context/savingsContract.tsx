@@ -127,41 +127,41 @@ const sendTransaction = React.useCallback(async (method: string, ...args: xdr.Sc
   throw new Error(`Transaction failed: ${getResponse.status}`);
 }, [wallet, contractId, server]);
 
-  const getGroup = async (): Promise<Group> => {
+  const getGroup = React.useCallback(async (): Promise<Group> => {
     const res = await simulateCall('get_group')
     const n = scValToNative(res)
     return { ...n, contributionAmount: BigInt(n.contribution_amount), startTimestamp: BigInt(n.start_timestamp) }
-  }
+  }, [simulateCall])
 
-  const getMember = async (address: string): Promise<Member> => {
+  const getMember = React.useCallback(async (address: string): Promise<Member> => {
     const res = await simulateCall('get_member', nativeToScVal(address, { type: 'address' }))
     const n = scValToNative(res)
     return { ...n, joinTimestamp: BigInt(n.join_timestamp), totalContributed: BigInt(n.total_contributed) }
-  }
+  }, [simulateCall])
 
-  const getMembers = async () => {
+  const getMembers = React.useCallback(async () => {
     const res = await simulateCall('get_members')
     const addrs = scValToNative(res) as string[]
     return Promise.all(addrs.map(a => getMember(a)))
-  }
+  }, [simulateCall, getMember])
 
-  const getRoundContributions = async (round: number) => {
+  const getRoundContributions = React.useCallback(async (round: number) => {
     const res = await simulateCall('get_round_contributions', nativeToScVal(round, { type: 'u32' }))
     return (scValToNative(res) as any[]).map(c => ({ ...c, amount: BigInt(c.amount), timestamp: BigInt(c.timestamp) }))
-  }
+  }, [simulateCall])
 
-  const getRoundPayouts = async (round: number) => {
+  const getRoundPayouts = React.useCallback(async (round: number) => {
     const res = await simulateCall('get_round_payouts', nativeToScVal(round, { type: 'u32' }))
     return (scValToNative(res) as any[]).map(p => ({ ...p, amount: BigInt(p.amount), timestamp: BigInt(p.timestamp) }))
-  }
+  }, [simulateCall])
 
-  const getRoundDeadline = async (round: number) => 
-    BigInt(scValToNative(await simulateCall('get_round_deadline', nativeToScVal(round, { type: 'u32' }))))
+  const getRoundDeadline = React.useCallback(async (round: number) => 
+    BigInt(scValToNative(await simulateCall('get_round_deadline', nativeToScVal(round, { type: 'u32' })))), [simulateCall])
 
-  const getUserGroups = async (address: string) => 
-    scValToNative(await simulateCall('get_user_groups', nativeToScVal(address, { type: 'address' }))) as string[]
+  const getUserGroups = React.useCallback(async (address: string) => 
+    scValToNative(await simulateCall('get_user_groups', nativeToScVal(address, { type: 'address' }))) as string[], [simulateCall])
 
-  const getAllGroups = async () => {
+  const getAllGroups = React.useCallback(async () => {
     try {
       return scValToNative(await simulateCall('get_all_groups')) as string[]
     } catch (err: any) {
@@ -172,56 +172,60 @@ const sendTransaction = React.useCallback(async (method: string, ...args: xdr.Sc
       }
       throw err
     }
-  }
+  }, [simulateCall])
 
-const createGroup = async (p: CreateGroupParams) => {
-  if (!wallet.publicKey) throw new Error('Wallet not connected')
-  
-  // Double-check timestamp is in the future
-  const currentTime = Math.floor(Date.now() / 1000)
-  if (Number(p.startTimestamp) <= currentTime) {
-    throw new Error(`Start timestamp must be in the future. Current: ${currentTime}, Provided: ${p.startTimestamp}`)
-  }
-  
-  // Encode Frequency enum correctly for Soroban
-  // Unit variants are represented as: ScVec containing [ScSymbol(variant_name)]
-  // Use nativeToScVal to convert array with symbol type
-  const frequencyVal = nativeToScVal(p.frequency, { type: 'symbol' })
-  
-  console.log('Creating group with params:', {
-    admin: wallet.publicKey,
-    groupId: p.groupId,
-    name: p.name,
-    contributionAmount: p.contributionAmount.toString(),
-    totalMembers: p.totalMembers,
-    frequency: p.frequency,
-    startTimestamp: p.startTimestamp.toString(),
-    isPublic: p.isPublic,
-    currentTime
-  })
-  
-  return await sendTransaction('create_group', 
-    nativeToScVal(wallet.publicKey, { type: 'address' }),
-    nativeToScVal(p.groupId, { type: 'string' }),
-    nativeToScVal(p.name, { type: 'string' }),
-    nativeToScVal(p.contributionAmount, { type: 'i128' }),
-    nativeToScVal(p.totalMembers, { type: 'u32' }),
-    frequencyVal,
-    nativeToScVal(p.startTimestamp, { type: 'u64' }),
-    nativeToScVal(p.isPublic, { type: 'bool' })
-  )
-}
+  const createGroup = React.useCallback(async (p: CreateGroupParams) => {
+    if (!wallet.publicKey) throw new Error('Wallet not connected')
+    
+    // Double-check timestamp is in the future
+    const currentTime = Math.floor(Date.now() / 1000)
+    if (Number(p.startTimestamp) <= currentTime) {
+      throw new Error(`Start timestamp must be in the future. Current: ${currentTime}, Provided: ${p.startTimestamp}`)
+    }
+    
+    // Encode Frequency enum correctly for Soroban
+    // Unit variants are represented as: ScVec containing [ScSymbol(variant_name)]
+    // Use nativeToScVal to convert array with symbol type
+    const frequencyVal = nativeToScVal(p.frequency, { type: 'symbol' })
+    
+    console.log('Creating group with params:', {
+      admin: wallet.publicKey,
+      groupId: p.groupId,
+      name: p.name,
+      contributionAmount: p.contributionAmount.toString(),
+      totalMembers: p.totalMembers,
+      frequency: p.frequency,
+      startTimestamp: p.startTimestamp.toString(),
+      isPublic: p.isPublic,
+      currentTime
+    })
+    
+    return await sendTransaction('create_group', 
+      nativeToScVal(wallet.publicKey, { type: 'address' }),
+      nativeToScVal(p.groupId, { type: 'string' }),
+      nativeToScVal(p.name, { type: 'string' }),
+      nativeToScVal(p.contributionAmount, { type: 'i128' }),
+      nativeToScVal(p.totalMembers, { type: 'u32' }),
+      frequencyVal,
+      nativeToScVal(p.startTimestamp, { type: 'u64' }),
+      nativeToScVal(p.isPublic, { type: 'bool' })
+    )
+  }, [wallet.publicKey, sendTransaction])
 
-  const joinGroup = async () => sendTransaction('join_group', nativeToScVal(wallet.publicKey, { type: 'address' }))
+  const joinGroup = React.useCallback(async () => sendTransaction('join_group', nativeToScVal(wallet.publicKey, { type: 'address' })), [wallet.publicKey, sendTransaction])
 
-  const contribute = async (amount: bigint) => 
-    sendTransaction('contribute', nativeToScVal(wallet.publicKey, { type: 'address' }), nativeToScVal(amount, { type: 'i128' }))
+  const contribute = React.useCallback(async (amount: bigint) => 
+    sendTransaction('contribute', nativeToScVal(wallet.publicKey, { type: 'address' }), nativeToScVal(amount, { type: 'i128' })), [wallet.publicKey, sendTransaction])
 
   const value = React.useMemo(() => ({
     getGroup, getMember, getMembers, getRoundContributions, getRoundPayouts,
     getRoundDeadline, getUserGroups, getAllGroups, createGroup, joinGroup, contribute,
     contractId, isReady, error
-  }), [contractId, isReady, error, wallet.publicKey, simulateCall, sendTransaction])
+  }), [
+    getGroup, getMember, getMembers, getRoundContributions, getRoundPayouts,
+    getRoundDeadline, getUserGroups, getAllGroups, createGroup, joinGroup, contribute,
+    contractId, isReady, error
+  ])
 
   return <SavingsContractContext.Provider value={value}>{children}</SavingsContractContext.Provider>
 }
