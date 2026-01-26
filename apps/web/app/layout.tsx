@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { WalletProvider } from "@/hooks/use-wallet"
+import { SavingsContractProvider } from "@/context/savingsContract"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -47,7 +48,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
-        <WalletProvider>{children}</WalletProvider>
+        <WalletProvider>
+          <SavingsContractProvider>
+            {children}
+          </SavingsContractProvider>
+        </WalletProvider>
         <Analytics />
       </body>
     </html>
