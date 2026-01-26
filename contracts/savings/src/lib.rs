@@ -563,6 +563,13 @@ impl SavingsContract {
             .get(&DataKey::Payouts(round))
             .unwrap_or(Vec::new(&env))
     }
+
+    pub fn get_round_deadline(env: Env, round: u32) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::RoundDeadline(round))
+            .unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
