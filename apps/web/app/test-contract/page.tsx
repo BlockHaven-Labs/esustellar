@@ -124,13 +124,20 @@ export default function TestContractPage() {
     setLoading(true)
     setError(null)
     try {
+      const now = Math.floor(Date.now() / 1000)
+    const startTime = now + 86400 * 7 // Tomorrow
+    
+    console.log('Current time:', now)
+    console.log('Start time:', startTime)
+    console.log('Difference:', startTime - now, 'seconds')
+
       const params = {
         groupId: `test-group-${Date.now()}`,
         name: 'Test Savings Group',
         contributionAmount: BigInt(100_000_000), // 10 XLM in stroops
         totalMembers: 5,
         frequency: 'Monthly' as const,
-        startTimestamp: BigInt(Math.floor(Date.now() / 1000) + 86400), // Tomorrow
+        startTimestamp: BigInt(startTime), // Tomorrow
         isPublic: true,
       }
       

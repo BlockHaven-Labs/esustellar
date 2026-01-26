@@ -47,9 +47,9 @@ export interface SavingsContractContextValue {
   getRoundDeadline: (round: number) => Promise<bigint>
   getUserGroups: (address: string) => Promise<string[]>
   getAllGroups: () => Promise<string[]>
-  createGroup: (params: CreateGroupParams) => Promise<void>
-  joinGroup: () => Promise<void>
-  contribute: (amount: bigint) => Promise<void>
+  createGroup: (params: CreateGroupParams) => Promise<rpc.Api.GetSuccessfulTransactionResponse>
+  joinGroup: () => Promise<rpc.Api.GetSuccessfulTransactionResponse>
+  contribute: (amount: bigint) => Promise<rpc.Api.GetSuccessfulTransactionResponse>
   contractId: string
   isReady: boolean
   error: string | null
@@ -88,28 +88,44 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
     return result.result.retval
   }, [wallet.publicKey, contractId, server])
 
-  const sendTransaction = React.useCallback(async (method: string, ...args: xdr.ScVal[]) => {
-    if (!wallet.publicKey) throw new Error('Wallet not connected');
-    
-    const contract = new Contract(contractId);
-    const account = await server.getAccount(wallet.publicKey);
+const sendTransaction = React.useCallback(async (method: string, ...args: xdr.ScVal[]) => {
+  if (!wallet.publicKey) throw new Error('Wallet not connected');
   
-    let tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: SOROBAN_NETWORK_PASSPHRASE,
-    })
-      .addOperation(contract.call(method, ...args))
-      .setTimeout(30)
-      .build();
+  const contract = new Contract(contractId);
+  const account = await server.getAccount(wallet.publicKey);
+
+  let tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: SOROBAN_NETWORK_PASSPHRASE,
+  })
+    .addOperation(contract.call(method, ...args))
+    .setTimeout(30)
+    .build();
+
+  tx = await server.prepareTransaction(tx);
+  const signedXdr = await wallet.signTransaction(tx.toXDR());
   
-    tx = await server.prepareTransaction(tx);
-    const signedXdr = await wallet.signTransaction(tx.toXDR());
-    
-    const transactionToSubmit = TransactionBuilder.fromXDR(signedXdr, SOROBAN_NETWORK_PASSPHRASE);
-    const response = await server.sendTransaction(transactionToSubmit);
+  const transactionToSubmit = TransactionBuilder.fromXDR(signedXdr, SOROBAN_NETWORK_PASSPHRASE);
+  const response = await server.sendTransaction(transactionToSubmit);
+
+  if (response.status !== 'PENDING') {
+    throw new Error(`Transaction failed: ${response.status}`);
+  }
+
+  // Wait for confirmation
+  let getResponse = await server.getTransaction(response.hash);
   
-    if (response.status !== 'PENDING') throw new Error('Transaction submission failed');
-    }, [wallet, contractId, server]);
+  while (getResponse.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    getResponse = await server.getTransaction(response.hash);
+  }
+
+  if (getResponse.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+    return getResponse;
+  }
+
+  throw new Error(`Transaction failed: ${getResponse.status}`);
+}, [wallet, contractId, server]);
 
   const getGroup = async (): Promise<Group> => {
     const res = await simulateCall('get_group')
@@ -159,18 +175,23 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
   }
 
   const createGroup = async (p: CreateGroupParams) => {
-    const freqMap = { 'Weekly': 0, 'BiWeekly': 1, 'Monthly': 2 }
-    await sendTransaction('create_group', 
-      nativeToScVal(wallet.publicKey, { type: 'address' }),
-      nativeToScVal(p.groupId, { type: 'string' }),
-      nativeToScVal(p.name, { type: 'string' }),
-      nativeToScVal(p.contributionAmount, { type: 'i128' }),
-      nativeToScVal(p.totalMembers, { type: 'u32' }),
-      nativeToScVal(freqMap[p.frequency], { type: 'u32' }),
-      nativeToScVal(p.startTimestamp, { type: 'u64' }),
-      nativeToScVal(p.isPublic, { type: 'bool' })
-    )
-  }
+  if (!wallet.publicKey) throw new Error('Wallet not connected')
+  
+  // Create frequency enum as a map instead of number
+  // Encode frequency as Soroban enum - use symbol for variant name
+  const freqSymbol = xdr.ScVal.scvSymbol(p.frequency)
+  
+  return await sendTransaction('create_group', 
+    nativeToScVal(wallet.publicKey, { type: 'address' }),
+    nativeToScVal(p.groupId, { type: 'string' }),
+    nativeToScVal(p.name, { type: 'string' }),
+    nativeToScVal(p.contributionAmount, { type: 'i128' }),
+    nativeToScVal(p.totalMembers, { type: 'u32' }),
+    freqSymbol,
+    nativeToScVal(p.startTimestamp, { type: 'u64' }),
+    nativeToScVal(p.isPublic, { type: 'bool' })
+  )
+}
 
   const joinGroup = async () => sendTransaction('join_group', nativeToScVal(wallet.publicKey, { type: 'address' }))
 
