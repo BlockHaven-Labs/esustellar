@@ -125,7 +125,7 @@ export default function TestContractPage() {
     setError(null)
     try {
       const now = Math.floor(Date.now() / 1000)
-    const startTime = now + 86400 * 7 // Tomorrow
+    const startTime = now + 86400 * 30 // Tomorrow
     
     console.log('Current time:', now)
     console.log('Start time:', startTime)

@@ -242,19 +242,6 @@ impl SavingsContract {
             .instance()
             .set(&DataKey::MemberData(member.clone()), &new_member);
 
-        // Update user's groups list
-        let group: SavingsGroup = env.storage().instance().get(&DataKey::Group).unwrap();
-
-        let mut user_groups: Vec<String> = env
-            .storage()
-            .instance()
-            .get(&DataKey::UserGroups(member.clone()))
-            .unwrap_or(Vec::new(&env));
-        user_groups.push_back(group.group_id.clone());
-        env.storage()
-            .instance()
-            .set(&DataKey::UserGroups(member.clone()), &user_groups);
-
         let mut members: Vec<Address> = env
             .storage()
             .instance()

@@ -174,12 +174,31 @@ const sendTransaction = React.useCallback(async (method: string, ...args: xdr.Sc
     }
   }
 
-  const createGroup = async (p: CreateGroupParams) => {
+const createGroup = async (p: CreateGroupParams) => {
   if (!wallet.publicKey) throw new Error('Wallet not connected')
   
-  // Create frequency enum as a map instead of number
-  // Encode frequency as Soroban enum - use symbol for variant name
-  const freqSymbol = xdr.ScVal.scvSymbol(p.frequency)
+  // Double-check timestamp is in the future
+  const currentTime = Math.floor(Date.now() / 1000)
+  if (Number(p.startTimestamp) <= currentTime) {
+    throw new Error(`Start timestamp must be in the future. Current: ${currentTime}, Provided: ${p.startTimestamp}`)
+  }
+  
+  // Encode Frequency enum correctly for Soroban
+  // Unit variants are represented as: ScVec containing [ScSymbol(variant_name)]
+  // Use nativeToScVal to convert array with symbol type
+  const frequencyVal = nativeToScVal(p.frequency, { type: 'symbol' })
+  
+  console.log('Creating group with params:', {
+    admin: wallet.publicKey,
+    groupId: p.groupId,
+    name: p.name,
+    contributionAmount: p.contributionAmount.toString(),
+    totalMembers: p.totalMembers,
+    frequency: p.frequency,
+    startTimestamp: p.startTimestamp.toString(),
+    isPublic: p.isPublic,
+    currentTime
+  })
   
   return await sendTransaction('create_group', 
     nativeToScVal(wallet.publicKey, { type: 'address' }),
@@ -187,7 +206,7 @@ const sendTransaction = React.useCallback(async (method: string, ...args: xdr.Sc
     nativeToScVal(p.name, { type: 'string' }),
     nativeToScVal(p.contributionAmount, { type: 'i128' }),
     nativeToScVal(p.totalMembers, { type: 'u32' }),
-    freqSymbol,
+    frequencyVal,
     nativeToScVal(p.startTimestamp, { type: 'u64' }),
     nativeToScVal(p.isPublic, { type: 'bool' })
   )
