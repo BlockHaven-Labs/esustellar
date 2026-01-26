@@ -13,7 +13,6 @@ export default function HomePage() {
       <Header />
       <main className="flex-1">
         <HeroSection />
-        <TestContractPage />
         <StatsSection />
         <FeaturesSection />
         <HowItWorksSection />
