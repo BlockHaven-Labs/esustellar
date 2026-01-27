@@ -1,6 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { Wallet, AlertCircle } from "lucide-react"
+
+import { useWallet } from "@/hooks/use-wallet"
+
 import {
   Card,
   CardContent,
@@ -21,146 +25,132 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
-
-import { createGroupOnChain } from "@/lib/create-group"
-import { mapContractError } from "@/lib/map-contract-error"
 
 export function CreateGroupForm() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const { isConnected, connect } = useWallet()
+  const [isPrivate, setIsPrivate] = useState(false)
 
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    contribution: 10,
-    members: 3,
-    frequency: "monthly",
-    startDate: "",
-    isPrivate: false,
-  })
+  /* ----------------------------
+   * WALLET NOT CONNECTED STATE
+   * ---------------------------- */
+  if (!isConnected) {
+    return (
+      <Card className="border-border bg-card">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+            <Wallet className="h-8 w-8 text-primary" />
+          </div>
+          <CardTitle>Connect Your Wallet</CardTitle>
+          <CardDescription>
+            You must connect a Stellar wallet to create a savings group
+          </CardDescription>
+        </CardHeader>
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
+        <CardContent className="flex flex-col items-center gap-4">
+          <Button size="lg" onClick={connect}>
+            <Wallet className="mr-2 h-5 w-5" />
+            Connect Wallet
+          </Button>
 
-    // Basic validation
-    if (!form.name || form.name.length < 3) {
-      return setError("Group name must be at least 3 characters")
-    }
-    if (form.contribution < 10) {
-      return setError("Minimum contribution is 10 XLM")
-    }
-    if (form.members < 3 || form.members > 20) {
-      return setError("Member count must be between 3 and 20")
-    }
-    if (!form.startDate || new Date(form.startDate) <= new Date()) {
-      return setError("Start date must be in the future")
-    }
-
-    try {
-      setLoading(true)
-      await createGroupOnChain(form as any)
-      setSuccess(true)
-    } catch (err: any) {
-      setError(mapContractError(err))
-    } finally {
-      setLoading(false)
-    }
+          <p className="text-sm text-muted-foreground text-center">
+            Don&apos;t have a wallet?{" "}
+            <a
+              href="https://www.freighter.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              Download Freighter
+            </a>
+          </p>
+        </CardContent>
+      </Card>
+    )
   }
 
+  /* ----------------------------
+   * CONNECTED STATE
+   * ---------------------------- */
   return (
     <Card className="border-border bg-card">
       <CardHeader>
         <CardTitle>Group Details</CardTitle>
         <CardDescription>
-          Configure your savings group parameters
+          Connected wallet:{" "}
+          {/* <span className="font-mono text-sm">
+            {address?.slice(0, 6)}...{address?.slice(-4)}
+          </span> */}
         </CardDescription>
       </CardHeader>
 
       <CardContent>
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {success && (
-            <Alert className="border-green-500/30 bg-green-500/5">
-              <AlertDescription>
-                🎉 Group successfully created on-chain!
-              </AlertDescription>
-            </Alert>
-          )}
-
+        <form className="space-y-6">
           {/* Group Name */}
           <div className="space-y-2">
-            <Label>Group Name</Label>
+            <Label htmlFor="name">Group Name</Label>
             <Input
+              id="name"
+              placeholder="e.g., Lagos Professionals"
               maxLength={50}
-              value={form.name}
-              onChange={(e) =>
-                setForm({ ...form, name: e.target.value })
-              }
+              required
             />
+            <p className="text-xs text-muted-foreground">
+              Max 50 characters
+            </p>
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label>Description (Optional)</Label>
+            <Label htmlFor="description">
+              Description (Optional)
+            </Label>
             <Textarea
+              id="description"
+              placeholder="Describe your savings group..."
               rows={3}
-              value={form.description}
-              onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
-              }
             />
           </div>
 
           {/* Contribution */}
           <div className="space-y-2">
-            <Label>Contribution Amount (XLM)</Label>
+            <Label htmlFor="amount">
+              Contribution Amount (XLM)
+            </Label>
             <Input
+              id="amount"
               type="number"
               min={10}
-              value={form.contribution}
-              onChange={(e) =>
-                setForm({ ...form, contribution: Number(e.target.value) })
-              }
+              placeholder="50"
+              required
             />
+            <p className="text-xs text-muted-foreground">
+              Minimum 10 XLM
+            </p>
           </div>
 
           {/* Members */}
           <div className="space-y-2">
-            <Label>Number of Members</Label>
+            <Label htmlFor="members">Number of Members</Label>
             <Input
+              id="members"
               type="number"
               min={3}
               max={20}
-              value={form.members}
-              onChange={(e) =>
-                setForm({ ...form, members: Number(e.target.value) })
-              }
+              placeholder="10"
+              required
             />
           </div>
 
           {/* Frequency */}
           <div className="space-y-2">
             <Label>Contribution Frequency</Label>
-            <Select
-              value={form.frequency}
-              onValueChange={(v) =>
-                setForm({ ...form, frequency: v })
-              }
-            >
+            <Select defaultValue="monthly">
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="biweekly">Bi-weekly</SelectItem>
+                <SelectItem value="biweekly">Bi-Weekly</SelectItem>
                 <SelectItem value="monthly">Monthly</SelectItem>
               </SelectContent>
             </Select>
@@ -168,14 +158,11 @@ export function CreateGroupForm() {
 
           {/* Start Date */}
           <div className="space-y-2">
-            <Label>Start Date</Label>
-            <Input
-              type="date"
-              value={form.startDate}
-              onChange={(e) =>
-                setForm({ ...form, startDate: e.target.value })
-              }
-            />
+            <Label htmlFor="startDate">Start Date</Label>
+            <Input id="startDate" type="date" required />
+            <p className="text-xs text-muted-foreground">
+              Must be a future date
+            </p>
           </div>
 
           {/* Privacy */}
@@ -186,29 +173,19 @@ export function CreateGroupForm() {
                 Only invited members can join
               </p>
             </div>
-            <Switch
-              checked={form.isPrivate}
-              onCheckedChange={(v) =>
-                setForm({ ...form, isPrivate: v })
-              }
-            />
+            <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
           </div>
 
           {/* Fee Notice */}
-          <Alert className="border-stellar/30 bg-stellar/5">
-            <AlertCircle className="h-4 w-4 text-stellar" />
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Stellar network fee (&lt; 0.01 XLM) applies.
+              A small Stellar network fee may apply when the group is activated.
             </AlertDescription>
           </Alert>
 
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full"
-            disabled={loading}
-          >
-            {loading ? "Creating group…" : "Create Group"}
+          <Button type="submit" size="lg" className="w-full">
+            Create Group
           </Button>
         </form>
       </CardContent>

@@ -249,6 +249,7 @@
     "side-channel-weakmap": "^1.0.2",
     "source-map-js": "^1.2.1",
     "stable-hash": "^0.0.5",
+    "stellar-sdk": "^13.3.0",
     "stop-iteration-iterator": "^1.1.0",
     "string.prototype.includes": "^2.0.1",
     "string.prototype.matchall": "^4.0.12",
@@ -294,6 +295,5 @@
   },
   "optionalDependencies": {
     "lightningcss-win32-x64-msvc": "^1.30.2"
-  },
-  "devDependencies": {}
+  }
 }
