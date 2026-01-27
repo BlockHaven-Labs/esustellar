@@ -17,7 +17,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk"
 import { getAddress, getNetworkDetails, isConnected } from "@stellar/freighter-api"
-import { getDaysRemaining, timestampToDate, troopsToXLM } from "@/lib/dashboardStats"
+import { getDaysRemaining, timestampToDate, troopsToXLM, logDebug } from "@/lib/dashboardStats"
 
 type DashboardStatsState = {
   totalContributed: number
@@ -44,7 +44,7 @@ const DEFAULT_STATS: DashboardStatsState = {
 const DEFAULT_RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org"
 const DEFAULT_NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE ?? Networks.TESTNET
 const REGISTRY_CONTRACT_ID =
-  process.env.NEXT_PUBLIC_REGISTRY_CONTRACT_ID ?? process.env.NEXT_PUBLIC_REGISTRY_CONTRACT ?? ""
+  process.env.NEXT_PUBLIC_REGISTRY_CONTRACT_ID ?? process.env.NEXT_PUBLIC_CONTRACT_ID ?? ""
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -86,8 +86,8 @@ const resolveNetworkConfig = async (): Promise<{ rpcUrl: string; networkPassphra
         networkPassphrase: details.networkPassphrase,
       }
     }
-  } catch {
-    // fall through to defaults
+  } catch (err) {
+    logDebug("Failed to get network details from Freighter", err)
   }
 
   return {
@@ -100,6 +100,7 @@ export function DashboardStats() {
   const [status, setStatus] = useState<FetchStatus>("loading")
   const [stats, setStats] = useState<DashboardStatsState>(DEFAULT_STATS)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -121,7 +122,8 @@ export function DashboardStats() {
         }
 
         setWalletAddress(addressResult.address)
-      } catch {
+      } catch (err) {
+        logDebug("Failed to check wallet connection", err)
         if (active) setStatus("no-wallet")
       }
     }
@@ -140,13 +142,19 @@ export function DashboardStats() {
 
     const fetchStats = async () => {
       setStatus("loading")
+      setErrorMessage(null)
 
       try {
         if (!REGISTRY_CONTRACT_ID) {
+          logDebug("Missing registry contract ID - check NEXT_PUBLIC_REGISTRY_CONTRACT_ID or NEXT_PUBLIC_CONTRACT_ID env var")
           throw new Error("Missing registry contract ID")
         }
 
+        logDebug("Using registry contract", REGISTRY_CONTRACT_ID)
+
         const { rpcUrl, networkPassphrase } = await resolveNetworkConfig()
+        logDebug("Network config", { rpcUrl, networkPassphrase })
+
         const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") })
         const baseAccount = await server.getAccount(walletAddress)
         const addressVal = Address.fromString(walletAddress).toScVal()
@@ -164,80 +172,113 @@ export function DashboardStats() {
 
           const simulation = await server.simulateTransaction(tx)
           if (SorobanRpc.Api.isSimulationError(simulation)) {
+            logDebug(`Contract call failed: ${contractId}.${method}`, simulation.error)
             throw new Error(simulation.error)
           }
 
           return simulation.result?.retval ? scValToNative(simulation.result.retval) : null
         }
 
+        logDebug("Calling get_user_groups on registry", { walletAddress })
         const groupsRaw = await readContractValue(REGISTRY_CONTRACT_ID, "get_user_groups", [addressVal])
+        logDebug("get_user_groups result", groupsRaw)
+
         const groupIds = Array.isArray(groupsRaw)
           ? groupsRaw.filter((groupId): groupId is string => typeof groupId === "string")
           : []
 
         if (groupIds.length === 0) {
+          logDebug("No groups found for user")
           if (!active) return
           setStats({ ...DEFAULT_STATS })
           setStatus("no-groups")
           return
         }
 
+        logDebug(`Found ${groupIds.length} groups`, groupIds)
+
         const groupResults = await Promise.all(
           groupIds.map(async (groupId) => {
-            const [memberRaw, groupRaw] = await Promise.all([
-              readContractValue(groupId, "get_member", [addressVal]),
-              readContractValue(groupId, "get_group"),
-            ])
+            try {
+              logDebug(`Fetching data for group ${groupId}`)
 
-            const memberRecord = isRecord(memberRaw) ? memberRaw : {}
-            const groupRecord = isRecord(groupRaw) ? groupRaw : {}
-
-            const memberStatus = normalizeEnum(memberRecord.status)
-            const groupStatus = normalizeEnum(groupRecord.status)
-
-            const member = {
-              totalContributed: toNumber(memberRecord.total_contributed),
-              hasReceivedPayout: memberRecord.has_received_payout === true,
-              payoutRound: toNumber(memberRecord.payout_round),
-              status: memberStatus,
-            }
-
-            const group = {
-              contributionAmount: toNumber(groupRecord.contribution_amount),
-              currentRound: toNumber(groupRecord.current_round),
-              status: groupStatus,
-            }
-
-            let receivedAmount = 0
-            let payoutsReceived = 0
-
-            if (member.hasReceivedPayout && member.payoutRound > 0) {
-              const payoutsRaw = await readContractValue(groupId, "get_round_payouts", [
-                nativeToScVal(member.payoutRound, { type: "u32" }),
+              const [memberRaw, groupRaw] = await Promise.all([
+                readContractValue(groupId, "get_member", [addressVal]),
+                readContractValue(groupId, "get_group"),
               ])
-              const payouts = Array.isArray(payoutsRaw) ? payoutsRaw : []
 
-              for (const payout of payouts) {
-                if (!isRecord(payout)) continue
-                const recipient = normalizeAddress(payout.recipient)
-                if (recipient && recipient.toUpperCase() === walletAddress.toUpperCase()) {
-                  receivedAmount += toNumber(payout.amount)
-                  payoutsReceived += 1
+              const memberRecord = isRecord(memberRaw) ? memberRaw : {}
+              const groupRecord = isRecord(groupRaw) ? groupRaw : {}
+
+              const memberStatus = normalizeEnum(memberRecord.status)
+              const groupStatus = normalizeEnum(groupRecord.status)
+
+              const member = {
+                totalContributed: toNumber(memberRecord.total_contributed),
+                hasReceivedPayout: memberRecord.has_received_payout === true,
+                payoutRound: toNumber(memberRecord.payout_round),
+                status: memberStatus,
+              }
+
+              const group = {
+                contributionAmount: toNumber(groupRecord.contribution_amount),
+                currentRound: toNumber(groupRecord.current_round),
+                status: groupStatus,
+              }
+
+              logDebug(`Group ${groupId} member data`, member)
+              logDebug(`Group ${groupId} group data`, group)
+
+              let receivedAmount = 0
+              let payoutsReceived = 0
+
+              if (member.hasReceivedPayout && member.payoutRound > 0) {
+                try {
+                  const payoutsRaw = await readContractValue(groupId, "get_round_payouts", [
+                    nativeToScVal(member.payoutRound, { type: "u32" }),
+                  ])
+                  const payouts = Array.isArray(payoutsRaw) ? payoutsRaw : []
+
+                  for (const payout of payouts) {
+                    if (!isRecord(payout)) continue
+                    const recipient = normalizeAddress(payout.recipient)
+                    if (recipient && recipient.toUpperCase() === walletAddress.toUpperCase()) {
+                      receivedAmount += toNumber(payout.amount)
+                      payoutsReceived += 1
+                    }
+                  }
+                  logDebug(`Group ${groupId} payouts`, { receivedAmount, payoutsReceived })
+                } catch (err) {
+                  logDebug(`Failed to fetch payouts for group ${groupId}`, err)
                 }
               }
-            }
 
-            let deadlineTs: number | null = null
-            if (group.status === "Active" && member.status !== "PaidCurrentRound") {
-              const deadlineRaw = await readContractValue(groupId, "get_round_deadline", [
-                nativeToScVal(group.currentRound, { type: "u32" }),
-              ])
-              if (deadlineRaw !== null && deadlineRaw !== undefined) {
-                deadlineTs = toNumber(deadlineRaw)
+              let deadlineTs: number | null = null
+              if (group.status === "Active" && member.status !== "PaidCurrentRound") {
+                try {
+                  const deadlineRaw = await readContractValue(groupId, "get_round_deadline", [
+                    nativeToScVal(group.currentRound, { type: "u32" }),
+                  ])
+                  if (deadlineRaw !== null && deadlineRaw !== undefined) {
+                    deadlineTs = toNumber(deadlineRaw)
+                    logDebug(`Group ${groupId} deadline`, deadlineTs)
+                  }
+                } catch (err) {
+                  logDebug(`Failed to fetch deadline for group ${groupId}`, err)
+                }
+              }
+
+              return { member, group, receivedAmount, payoutsReceived, deadlineTs }
+            } catch (err) {
+              logDebug(`Error processing group ${groupId}`, err)
+              return {
+                member: { totalContributed: 0, hasReceivedPayout: false, payoutRound: 0, status: null },
+                group: { contributionAmount: 0, currentRound: 0, status: "Completed" },
+                receivedAmount: 0,
+                payoutsReceived: 0,
+                deadlineTs: null,
               }
             }
-
-            return { member, group, receivedAmount, payoutsReceived, deadlineTs }
           })
         )
 
@@ -267,7 +308,7 @@ export function DashboardStats() {
 
         if (!active) return
 
-        setStats({
+        const finalStats = {
           totalContributed: troopsToXLM(totalContributedStroops),
           totalReceived: troopsToXLM(totalReceivedStroops),
           activeGroups,
@@ -275,11 +316,18 @@ export function DashboardStats() {
           payoutsReceived: payoutsReceivedCount,
           nextPaymentDeadline: nextDeadline,
           nextPaymentAmount: troopsToXLM(nextAmountStroops),
-        })
+        }
 
+        logDebug("Final stats", finalStats)
+
+        setStats(finalStats)
         setStatus("ready")
-      } catch {
+      } catch (err) {
+        logDebug("fetchStats failed", err)
         if (!active) return
+        setErrorMessage(err instanceof Error ? err.message : "Unknown error")
+        // Keep stats as-is or reset to defaults
+        setStats({ ...DEFAULT_STATS })
         setStatus("error")
       }
     }
@@ -370,55 +418,115 @@ export function DashboardStats() {
 
   if (status === "no-wallet") {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border bg-card sm:col-span-2 lg:col-span-4">
+      <div className="space-y-4">
+        <Card className="border-border bg-card">
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Connect wallet to view stats</p>
           </CardContent>
         </Card>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {statsItems.map((stat, index) => (
+            <Card key={index} className="border-border bg-card opacity-50">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
+                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.change}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (status === "no-groups") {
+    return (
+      <div className="space-y-4">
+        <Card className="border-border bg-card">
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Join or create a group to see stats</p>
+          </CardContent>
+        </Card>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {statsItems.map((stat, index) => (
+            <Card key={index} className="border-border bg-card">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
+                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.change}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     )
   }
 
   if (status === "error") {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border bg-card sm:col-span-2 lg:col-span-4">
+      <div className="space-y-4">
+        <Card className="border-border bg-card">
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Unable to fetch data. Please try again</p>
+            {errorMessage && process.env.NODE_ENV === "development" && (
+              <p className="mt-2 text-xs text-muted-foreground">Error: {errorMessage}</p>
+            )}
           </CardContent>
         </Card>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {statsItems.map((stat, index) => (
+            <Card key={index} className="border-border bg-card">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
+                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.change}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      {status === "no-groups" && (
-        <Card className="border-border bg-card">
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Join or create a group to see stats</p>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {statsItems.map((stat, index) => (
+        <Card key={index} className="border-border bg-card">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
+                <stat.icon className={`h-6 w-6 ${stat.color}`} />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-xs text-muted-foreground">{stat.change}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
-      )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {statsItems.map((stat, index) => (
-          <Card key={index} className="border-border bg-card">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
-                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground">{stat.change}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      ))}
     </div>
   )
 }

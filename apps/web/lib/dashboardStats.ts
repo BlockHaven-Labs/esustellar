@@ -10,3 +10,9 @@ export function getDaysRemaining(deadlineTs: number): number {
   const nowTs = Math.floor(Date.now() / 1000)
   return Math.ceil((deadlineTs - nowTs) / 86400)
 }
+
+export function logDebug(message: string, data?: unknown) {
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[DashboardStats] ${message}`, data ?? "")
+  }
+}
