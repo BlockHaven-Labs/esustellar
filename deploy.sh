@@ -7,12 +7,15 @@ echo "=================================="
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 NETWORK="testnet"
 ROOT_DIR="$(pwd)"
-CONTRACT_DIR="contracts/savings"
-WASM_PATH="$ROOT_DIR/target/wasm32v1-none/release/esustellar_savings.wasm"
+REGISTRY_DIR="contracts/registry"
+SAVINGS_DIR="contracts/savings"
+REGISTRY_WASM="$ROOT_DIR/target/wasm32v1-none/release/group_registry.wasm"
+SAVINGS_WASM="$ROOT_DIR/target/wasm32v1-none/release/esustellar_savings.wasm"
 ENV_FILE="$ROOT_DIR/apps/web/.env.local"
 
 # Check CLI
@@ -22,17 +25,24 @@ command -v stellar >/dev/null || {
 }
 
 echo ""
-echo "📝 Step 1: Building contract..."
+echo -e "${YELLOW}📝 Step 1: Building contracts...${NC}"
 
-cd "$CONTRACT_DIR"
+# Build registry contract
+echo "Building registry contract..."
+cd "$REGISTRY_DIR"
 stellar contract build
-
 cd "$ROOT_DIR"
+echo -e "${GREEN}✅ Registry contract built${NC}"
 
-echo -e "${GREEN}✅ Build successful${NC}"
+# Build savings contract
+echo "Building savings contract..."
+cd "$SAVINGS_DIR"
+stellar contract build
+cd "$ROOT_DIR"
+echo -e "${GREEN}✅ Savings contract built${NC}"
 
 echo ""
-echo "📝 Step 2: Preparing deployer identity..."
+echo -e "${YELLOW}📝 Step 2: Preparing deployer identity...${NC}"
 if ! stellar keys ls | awk '{print $1}' | grep -xq deployer; then
   stellar keys generate deployer --network "$NETWORK"
 fi
@@ -43,28 +53,52 @@ if [ "$NETWORK" = "testnet" ]; then
 fi
 
 echo ""
-echo "📝 Step 3: Deploying contract..."
-CONTRACT_ID=$(stellar contract deploy \
-  --wasm "$WASM_PATH" \
+echo -e "${YELLOW}📝 Step 3: Deploying Registry Contract...${NC}"
+REGISTRY_CONTRACT_ID=$(stellar contract deploy \
+  --wasm "$REGISTRY_WASM" \
   --source-account deployer \
   --network "$NETWORK")
 
-echo -e "${GREEN}✅ Deployment successful${NC}"
-echo -e "Contract ID: ${BLUE}${CONTRACT_ID}${NC}"
+echo -e "${GREEN}✅ Registry deployment successful${NC}"
+echo -e "Registry Contract ID: ${BLUE}${REGISTRY_CONTRACT_ID}${NC}"
 
 echo ""
-echo "💾 Updating frontend env..."
+echo -e "${YELLOW}📝 Step 4: Deploying Savings Contract...${NC}"
+SAVINGS_CONTRACT_ID=$(stellar contract deploy \
+  --wasm "$SAVINGS_WASM" \
+  --source-account deployer \
+  --network "$NETWORK")
+
+echo -e "${GREEN}✅ Savings deployment successful${NC}"
+echo -e "Savings Contract ID: ${BLUE}${SAVINGS_CONTRACT_ID}${NC}"
+
+echo ""
+echo -e "${YELLOW}💾 Updating frontend env...${NC}"
 mkdir -p "$(dirname "$ENV_FILE")"
-grep -v '^CONTRACT_ID=' "$ENV_FILE" 2>/dev/null > "$ENV_FILE.tmp" || true
-echo "CONTRACT_ID=$CONTRACT_ID" >> "$ENV_FILE.tmp"
+
+# Create or update .env.local file
+{
+  # Preserve existing env vars that aren't contract IDs
+  if [ -f "$ENV_FILE" ]; then
+    grep -v '^REGISTRY_CONTRACT_ID=' "$ENV_FILE" 2>/dev/null | grep -v '^SAVINGS_CONTRACT_ID=' || true
+  fi
+  
+  # Add contract IDs
+  echo "REGISTRY_CONTRACT_ID=$REGISTRY_CONTRACT_ID"
+  echo "SAVINGS_CONTRACT_ID=$SAVINGS_CONTRACT_ID"
+  
+  # Legacy support - keep CONTRACT_ID pointing to savings
+  echo "CONTRACT_ID=$SAVINGS_CONTRACT_ID"
+} > "$ENV_FILE.tmp"
+
 mv "$ENV_FILE.tmp" "$ENV_FILE"
 echo -e "${GREEN}✅ Updated $ENV_FILE${NC}"
 
-cd "$ROOT_DIR"
-
+# Create deployment info file
 cat > deployment-info.json <<EOF
 {
-  "contract_id": "$CONTRACT_ID",
+  "registry_contract_id": "$REGISTRY_CONTRACT_ID",
+  "savings_contract_id": "$SAVINGS_CONTRACT_ID",
   "network": "$NETWORK",
   "deployed_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "deployer": "deployer"
@@ -72,6 +106,17 @@ cat > deployment-info.json <<EOF
 EOF
 
 echo ""
-echo "🎉 Deployment complete!"
-echo "🔍 Explorer:"
-echo "https://stellar.expert/explorer/$NETWORK/contract/$CONTRACT_ID"
+echo -e "${GREEN}🎉 Deployment complete!${NC}"
+echo ""
+echo "📋 Contract IDs:"
+echo -e "  Registry: ${BLUE}${REGISTRY_CONTRACT_ID}${NC}"
+echo -e "  Savings:  ${BLUE}${SAVINGS_CONTRACT_ID}${NC}"
+echo ""
+echo "🔍 Explorers:"
+echo "  Registry: https://stellar.expert/explorer/$NETWORK/contract/$REGISTRY_CONTRACT_ID"
+echo "  Savings:  https://stellar.expert/explorer/$NETWORK/contract/$SAVINGS_CONTRACT_ID"
+echo ""
+echo "💡 Next Steps:"
+echo "  1. When creating savings groups, register them in the registry"
+echo "  2. When users join groups, update registry membership"
+echo "  3. Use registry for group discovery in the frontend"
