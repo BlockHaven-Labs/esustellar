@@ -88,7 +88,26 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "AllGroups"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-1"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Group"
+                            },
+                            {
+                              "string": "test-group-1"
                             }
                           ]
                         },
@@ -198,6 +217,9 @@
                           "vec": [
                             {
                               "symbol": "MemberCount"
+                            },
+                            {
+                              "string": "test-group-1"
                             }
                           ]
                         },
@@ -210,6 +232,9 @@
                           "vec": [
                             {
                               "symbol": "MemberData"
+                            },
+                            {
+                              "string": "test-group-1"
                             },
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -286,6 +311,9 @@
                           "vec": [
                             {
                               "symbol": "Members"
+                            },
+                            {
+                              "string": "test-group-1"
                             }
                           ]
                         },
@@ -293,6 +321,25 @@
                           "vec": [
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "UserGroups"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-1"
                             }
                           ]
                         }

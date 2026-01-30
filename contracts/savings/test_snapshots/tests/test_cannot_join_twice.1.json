@@ -61,6 +61,9 @@
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "string": "test-group-5"
                 }
               ]
             }
@@ -108,7 +111,26 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "AllGroups"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-5"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Group"
+                            },
+                            {
+                              "string": "test-group-5"
                             }
                           ]
                         },
@@ -218,6 +240,9 @@
                           "vec": [
                             {
                               "symbol": "MemberCount"
+                            },
+                            {
+                              "string": "test-group-5"
                             }
                           ]
                         },
@@ -230,6 +255,9 @@
                           "vec": [
                             {
                               "symbol": "MemberData"
+                            },
+                            {
+                              "string": "test-group-5"
                             },
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -308,6 +336,9 @@
                               "symbol": "MemberData"
                             },
                             {
+                              "string": "test-group-5"
+                            },
+                            {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                             }
                           ]
@@ -382,6 +413,9 @@
                           "vec": [
                             {
                               "symbol": "Members"
+                            },
+                            {
+                              "string": "test-group-5"
                             }
                           ]
                         },
@@ -392,6 +426,44 @@
                             },
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "UserGroups"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-5"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "UserGroups"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-5"
                             }
                           ]
                         }

@@ -1,6 +1,6 @@
 {
   "generators": {
-    "address": 5,
+    "address": 3,
     "nonce": 0,
     "mux_id": 0
   },
@@ -19,16 +19,60 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "test-group-4"
+                  "string": "group-1"
                 },
                 {
-                  "string": "Test Savings"
+                  "string": "Test Group"
                 },
                 {
                   "i128": "100000000"
                 },
                 {
-                  "u32": 3
+                  "u32": 5
+                },
+                {
+                  "vec": [
+                    {
+                      "symbol": "Monthly"
+                    }
+                  ]
+                },
+                {
+                  "u64": "86400"
+                },
+                {
+                  "bool": true
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "create_group",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "group-2"
+                },
+                {
+                  "string": "Test Group"
+                },
+                {
+                  "i128": "100000000"
+                },
+                {
+                  "u32": 5
                 },
                 {
                   "vec": [
@@ -63,7 +107,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "test-group-4"
+                  "string": "group-1"
                 }
               ]
             }
@@ -74,7 +118,7 @@
     ],
     [
       [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
         {
           "function": {
             "contract_fn": {
@@ -82,10 +126,10 @@
               "function_name": "join_group",
               "args": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "test-group-4"
+                  "string": "group-2"
                 }
               ]
             }
@@ -140,7 +184,10 @@
                         "val": {
                           "vec": [
                             {
-                              "string": "test-group-4"
+                              "string": "group-1"
+                            },
+                            {
+                              "string": "group-2"
                             }
                           ]
                         }
@@ -152,7 +199,7 @@
                               "symbol": "Group"
                             },
                             {
-                              "string": "test-group-4"
+                              "string": "group-1"
                             }
                           ]
                         },
@@ -179,7 +226,7 @@
                                 "symbol": "current_round"
                               },
                               "val": {
-                                "u32": 1
+                                "u32": 0
                               }
                             },
                             {
@@ -199,7 +246,7 @@
                                 "symbol": "group_id"
                               },
                               "val": {
-                                "string": "test-group-4"
+                                "string": "group-1"
                               }
                             },
                             {
@@ -215,7 +262,7 @@
                                 "symbol": "name"
                               },
                               "val": {
-                                "string": "Test Savings"
+                                "string": "Test Group"
                               }
                             },
                             {
@@ -241,7 +288,7 @@
                               "val": {
                                 "vec": [
                                   {
-                                    "symbol": "Active"
+                                    "symbol": "Open"
                                   }
                                 ]
                               }
@@ -251,7 +298,119 @@
                                 "symbol": "total_members"
                               },
                               "val": {
-                                "u32": 3
+                                "u32": 5
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Group"
+                            },
+                            {
+                              "string": "group-2"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "admin"
+                              },
+                              "val": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "contribution_amount"
+                              },
+                              "val": {
+                                "i128": "100000000"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "current_round"
+                              },
+                              "val": {
+                                "u32": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "frequency"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "symbol": "Monthly"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "group_id"
+                              },
+                              "val": {
+                                "string": "group-2"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "is_public"
+                              },
+                              "val": {
+                                "bool": true
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "name"
+                              },
+                              "val": {
+                                "string": "Test Group"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "platform_fee_percent"
+                              },
+                              "val": {
+                                "u32": 200
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "start_timestamp"
+                              },
+                              "val": {
+                                "u64": "86400"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "status"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "symbol": "Open"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_members"
+                              },
+                              "val": {
+                                "u32": 5
                               }
                             }
                           ]
@@ -264,12 +423,27 @@
                               "symbol": "MemberCount"
                             },
                             {
-                              "string": "test-group-4"
+                              "string": "group-1"
                             }
                           ]
                         },
                         "val": {
-                          "u32": 3
+                          "u32": 2
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MemberCount"
+                            },
+                            {
+                              "string": "group-2"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 2
                         }
                       },
                       {
@@ -279,7 +453,7 @@
                               "symbol": "MemberData"
                             },
                             {
-                              "string": "test-group-4"
+                              "string": "group-1"
                             },
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -358,7 +532,7 @@
                               "symbol": "MemberData"
                             },
                             {
-                              "string": "test-group-4"
+                              "string": "group-1"
                             },
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -437,10 +611,10 @@
                               "symbol": "MemberData"
                             },
                             {
-                              "string": "test-group-4"
+                              "string": "group-2"
                             },
                             {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                             }
                           ]
                         },
@@ -451,7 +625,7 @@
                                 "symbol": "address"
                               },
                               "val": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                               }
                             },
                             {
@@ -467,7 +641,86 @@
                                 "symbol": "join_order"
                               },
                               "val": {
-                                "u32": 2
+                                "u32": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "join_timestamp"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "payout_round"
+                              },
+                              "val": {
+                                "u32": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "status"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "symbol": "Active"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_contributed"
+                              },
+                              "val": {
+                                "i128": "0"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MemberData"
+                            },
+                            {
+                              "string": "group-2"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "address"
+                              },
+                              "val": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "has_received_payout"
+                              },
+                              "val": {
+                                "bool": false
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "join_order"
+                              },
+                              "val": {
+                                "u32": 1
                               }
                             },
                             {
@@ -516,7 +769,7 @@
                               "symbol": "Members"
                             },
                             {
-                              "string": "test-group-4"
+                              "string": "group-1"
                             }
                           ]
                         },
@@ -527,9 +780,6 @@
                             },
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                            },
-                            {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                             }
                           ]
                         }
@@ -538,18 +788,22 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "RoundDeadline"
+                              "symbol": "Members"
                             },
                             {
-                              "string": "test-group-4"
-                            },
-                            {
-                              "u32": 1
+                              "string": "group-2"
                             }
                           ]
                         },
                         "val": {
-                          "u64": "2678400"
+                          "vec": [
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          ]
                         }
                       },
                       {
@@ -566,7 +820,10 @@
                         "val": {
                           "vec": [
                             {
-                              "string": "test-group-4"
+                              "string": "group-1"
+                            },
+                            {
+                              "string": "group-2"
                             }
                           ]
                         }
@@ -585,26 +842,10 @@
                         "val": {
                           "vec": [
                             {
-                              "string": "test-group-4"
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "UserGroups"
+                              "string": "group-1"
                             },
                             {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "vec": [
-                            {
-                              "string": "test-group-4"
+                              "string": "group-2"
                             }
                           ]
                         }
@@ -655,7 +896,7 @@
       [
         {
           "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": {
               "ledger_key_nonce": {
                 "nonce": "5541220902715666415"
@@ -670,7 +911,7 @@
             "data": {
               "contract_data": {
                 "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": "5541220902715666415"
@@ -688,7 +929,7 @@
       [
         {
           "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
             "key": {
               "ledger_key_nonce": {
                 "nonce": "1033654523790656264"
@@ -703,10 +944,43 @@
             "data": {
               "contract_data": {
                 "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": "1033654523790656264"
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": "4837995959683129791"
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": "4837995959683129791"
                   }
                 },
                 "durability": "temporary",

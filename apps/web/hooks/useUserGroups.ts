@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '@/hooks/use-wallet'
-import { useRegistryContract } from '@/context/registryContract'
 import { useSavingsContract } from '@/context/savingsContract'
-import { GroupInfo } from '@/context/registryContract'
 import { Group, Member, MemberStatus } from '@/context/savingsContract'
 
 export interface GroupDisplayData {
@@ -15,12 +13,10 @@ export interface GroupDisplayData {
   status: 'paid' | 'pending' | 'received' | 'defaulted' | 'overdue' | 'completed'
   progress: number
   groupId: string
-  contractAddress: string
 }
 
 export function useUserGroups() {
   const { publicKey, isConnected } = useWallet()
-  const registry = useRegistryContract()
   const savings = useSavingsContract()
   const [groups, setGroups] = useState<GroupDisplayData[]>([])
   const [loading, setLoading] = useState(false)
@@ -57,8 +53,9 @@ export function useUserGroups() {
   }
 
   const fetchUserGroups = useCallback(async () => {
-    if (!isConnected || !publicKey || !registry.isReady || !savings.isReady) {
+    if (!isConnected || !publicKey) {
       setGroups([])
+      setError('Wallet not connected')
       return
     }
 
@@ -66,43 +63,50 @@ export function useUserGroups() {
     setError(null)
 
     try {
-      const contractAddresses: string[] = await registry.getUserGroups(publicKey)
+      console.log('Fetching user groups for:', publicKey)
+      
+      const groupIds: string[] = await savings.getUserGroups(publicKey)
+      console.log('Found group IDs:', groupIds)
 
-      if (!contractAddresses || contractAddresses.length === 0) {
+      if (!groupIds || groupIds.length === 0) {
         setGroups([])
         setLoading(false)
         return
       }
 
-      const groupPromises = contractAddresses.map(async (contractAddress) => {
+      const groupPromises = groupIds.map(async (groupId) => {
         try {
-          const groupInfo: GroupInfo = await registry.getGroupInfo(contractAddress)
-
-          const savingsGroup = await savings.getGroupById(groupInfo.group_id)
-
-          const member = await savings.getMemberByGroup(publicKey, groupInfo.group_id)
-
+          console.log(`Fetching group ${groupId}`)
+          
+          const group: Group = await savings.getGroup(groupId)
+          console.log(`Group details for ${groupId}:`, group)
+          
+          const member: Member = await savings.getMember(groupId, publicKey)
+          console.log(`Member details for ${publicKey} in group ${groupId}:`, member)
+          
           return {
-            id: groupInfo.group_id,
-            name: groupInfo.name,
-            contribution: convertStroopsToXLM(savingsGroup.contributionAmount),
-            totalMembers: savingsGroup.totalMembers,
-            currentRound: savingsGroup.currentRound,
-            myPosition: member.joinOrder + 1, 
-            status: mapMemberStatus(member.status, savingsGroup.status),
-            progress: calculateProgress(savingsGroup.currentRound, savingsGroup.totalMembers),
-            groupId: groupInfo.group_id,
-            contractAddress: contractAddress
+            id: groupId,
+            name: group.name,
+            contribution: convertStroopsToXLM(group.contributionAmount),
+            totalMembers: group.totalMembers,
+            currentRound: group.currentRound,
+            myPosition: member.joinOrder + 1,
+            status: mapMemberStatus(member.status, group.status),
+            progress: calculateProgress(group.currentRound, group.totalMembers),
+            groupId: groupId
           } as GroupDisplayData
         } catch (err) {
-          console.error(`Error fetching group ${contractAddress}:`, err)
+          console.error(`Error fetching group ${groupId}:`, err)
           return null
         }
       })
 
-      const results = await Promise.all(groupPromises)
-      const validGroups = results.filter((group): group is GroupDisplayData => group !== null)
+      const groupResults = await Promise.all(groupPromises)
+      const validGroups = groupResults.filter((group): group is GroupDisplayData => group !== null)
 
+      console.log('Valid groups:', validGroups)
+
+      // Step 3: Sort groups according to requirements
       const sortedGroups = validGroups.sort((a, b) => {
         const statusPriority = {
           'overdue': 1,
@@ -116,13 +120,23 @@ export function useUserGroups() {
       })
 
       setGroups(sortedGroups)
-    } catch (err) {
-      console.error('Error fetching user groups:', err)
-      setError('Failed to load groups. Please try again.')
+    } catch (err: any) {
+      console.error('Error in fetchUserGroups:', err)
+      
+      let errorMessage = 'Failed to load groups. Please try again.'
+      
+      if (err.message?.includes('contract') || err.message?.includes('not found')) {
+        errorMessage = 'Smart contract not deployed. Please deploy the savings contract.'
+      } else if (err.message?.includes('network') || err.message?.includes('connection')) {
+        errorMessage = 'Network error. Please check your connection.'
+      }
+      
+      setError(errorMessage)
+      setGroups([])
     } finally {
       setLoading(false)
     }
-  }, [isConnected, publicKey, registry, savings])
+  }, [isConnected, publicKey, savings])
 
   useEffect(() => {
     fetchUserGroups()
