@@ -4,6 +4,7 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { WalletProvider } from "@/hooks/use-wallet"
 import { SavingsContractProvider } from "@/context/savingsContract"
+import { RegistryContractProvider } from "@/context/registryContract"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -49,9 +50,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-sans antialiased`}>
         <WalletProvider>
-          <SavingsContractProvider>
-            {children}
-          </SavingsContractProvider>
+          <RegistryContractProvider>
+            <SavingsContractProvider>
+              {children}
+            </SavingsContractProvider>
+          </RegistryContractProvider>
         </WalletProvider>
         <Analytics />
       </body>
