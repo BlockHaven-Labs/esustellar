@@ -136,7 +136,21 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
       return getResponse;
     }
 
-    throw new Error(`Transaction failed: ${getResponse.status}`);
+    console.error('Transaction failed with response:', getResponse);
+    
+    // Try to extract detailed error from the response
+    let errorMessage = `Transaction failed: ${getResponse.status}`;
+    
+    if ('resultXdr' in getResponse) {
+      try {
+        console.error('Transaction result:', getResponse.resultXdr);
+        errorMessage += `\nResult: ${JSON.stringify(getResponse.resultXdr, null, 2)}`;
+      } catch (e) {
+        console.error('Could not parse result XDR:', e);
+      }
+    }
+
+    throw new Error(errorMessage);
   }, [wallet, contractId, server])
 
   // ===== EXISTING SINGLE-GROUP METHODS (for backward compatibility) =====
@@ -391,8 +405,9 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
       throw new Error(`Start timestamp must be in the future. Current: ${currentTime}, Provided: ${p.startTimestamp}`)
     }
     
-    // Encode Frequency enum correctly for Soroban
-    const frequencyVal = nativeToScVal(p.frequency, { type: 'symbol' })
+    const frequencyScVal = xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol(p.frequency) // The variant name
+    ])
     
     console.log('Creating group with params:', {
       admin: wallet.publicKey,
@@ -412,7 +427,7 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
       nativeToScVal(p.name, { type: 'string' }),
       nativeToScVal(p.contributionAmount, { type: 'i128' }),
       nativeToScVal(p.totalMembers, { type: 'u32' }),
-      frequencyVal,
+      frequencyScVal,
       nativeToScVal(p.startTimestamp, { type: 'u64' }),
       nativeToScVal(p.isPublic, { type: 'bool' })
     )

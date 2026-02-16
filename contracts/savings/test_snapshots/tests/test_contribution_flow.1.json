@@ -61,6 +61,9 @@
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "string": "test-group-6"
                 }
               ]
             }
@@ -80,6 +83,9 @@
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                },
+                {
+                  "string": "test-group-6"
                 }
               ]
             }
@@ -100,6 +106,9 @@
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "test-group-6"
                 }
               ]
             }
@@ -120,6 +129,9 @@
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "string": "test-group-6"
                 }
               ]
             }
@@ -139,6 +151,9 @@
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                },
+                {
+                  "string": "test-group-6"
                 }
               ]
             }
@@ -186,7 +201,26 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "AllGroups"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-6"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "Contributions"
+                            },
+                            {
+                              "string": "test-group-6"
                             },
                             {
                               "u32": 1
@@ -311,6 +345,9 @@
                           "vec": [
                             {
                               "symbol": "Group"
+                            },
+                            {
+                              "string": "test-group-6"
                             }
                           ]
                         },
@@ -420,6 +457,9 @@
                           "vec": [
                             {
                               "symbol": "MemberCount"
+                            },
+                            {
+                              "string": "test-group-6"
                             }
                           ]
                         },
@@ -432,6 +472,9 @@
                           "vec": [
                             {
                               "symbol": "MemberData"
+                            },
+                            {
+                              "string": "test-group-6"
                             },
                             {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -510,6 +553,9 @@
                               "symbol": "MemberData"
                             },
                             {
+                              "string": "test-group-6"
+                            },
+                            {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                             }
                           ]
@@ -586,6 +632,9 @@
                               "symbol": "MemberData"
                             },
                             {
+                              "string": "test-group-6"
+                            },
+                            {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                             }
                           ]
@@ -660,6 +709,9 @@
                           "vec": [
                             {
                               "symbol": "Members"
+                            },
+                            {
+                              "string": "test-group-6"
                             }
                           ]
                         },
@@ -682,6 +734,9 @@
                           "vec": [
                             {
                               "symbol": "Payouts"
+                            },
+                            {
+                              "string": "test-group-6"
                             },
                             {
                               "u32": 1
@@ -736,6 +791,9 @@
                               "symbol": "RoundDeadline"
                             },
                             {
+                              "string": "test-group-6"
+                            },
+                            {
                               "u32": 1
                             }
                           ]
@@ -751,12 +809,72 @@
                               "symbol": "RoundDeadline"
                             },
                             {
+                              "string": "test-group-6"
+                            },
+                            {
                               "u32": 2
                             }
                           ]
                         },
                         "val": {
                           "u64": "1209700"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "UserGroups"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-6"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "UserGroups"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-6"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "UserGroups"
+                            },
+                            {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "test-group-6"
+                            }
+                          ]
                         }
                       }
                     ]

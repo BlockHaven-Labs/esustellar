@@ -19,7 +19,7 @@ SAVINGS_WASM="$ROOT_DIR/target/wasm32v1-none/release/esustellar_savings.wasm"
 ENV_FILE="$ROOT_DIR/apps/web/.env.local"
 
 # Check CLI
-command -v stellar >/dev/null || {
+command -v stellar >/dev/null 2>&1 || {
   echo "❌ Stellar CLI not found"
   exit 1
 }
@@ -80,15 +80,17 @@ mkdir -p "$(dirname "$ENV_FILE")"
 {
   # Preserve existing env vars that aren't contract IDs
   if [ -f "$ENV_FILE" ]; then
-    grep -v '^REGISTRY_CONTRACT_ID=' "$ENV_FILE" 2>/dev/null | grep -v '^SAVINGS_CONTRACT_ID=' || true
+    grep -v '^NEXT_PUBLIC_REGISTRY_CONTRACT_ID=' "$ENV_FILE" 2>/dev/null | \
+    grep -v '^NEXT_PUBLIC_SAVINGS_CONTRACT_ID=' | \
+    grep -v '^NEXT_PUBLIC_CONTRACT_ID=' || true
   fi
   
-  # Add contract IDs
-  echo "REGISTRY_CONTRACT_ID=$REGISTRY_CONTRACT_ID"
-  echo "SAVINGS_CONTRACT_ID=$SAVINGS_CONTRACT_ID"
+  # Add contract IDs with NEXT_PUBLIC_ prefix
+  echo "NEXT_PUBLIC_REGISTRY_CONTRACT_ID=$REGISTRY_CONTRACT_ID"
+  echo "NEXT_PUBLIC_SAVINGS_CONTRACT_ID=$SAVINGS_CONTRACT_ID"
   
   # Legacy support - keep CONTRACT_ID pointing to savings
-  echo "CONTRACT_ID=$SAVINGS_CONTRACT_ID"
+  echo "NEXT_PUBLIC_CONTRACT_ID=$SAVINGS_CONTRACT_ID"
 } > "$ENV_FILE.tmp"
 
 mv "$ENV_FILE.tmp" "$ENV_FILE"

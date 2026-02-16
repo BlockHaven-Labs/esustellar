@@ -1,6 +1,7 @@
 {
-  "contract_id": "CCGJWFW2JDPNQCHFZD3FQFIFUCOC2Y2JVME52M7PVI55IYFTPU45ICGG",
+  "registry_contract_id": "CDNUAZMB5BQGQ4Y6PUXCNT4CXKOULMQUF533WMB42UYSHUGORYXJ3XHZ",
+  "savings_contract_id": "CALV36EP5XFGKSW4QGRWA4ABFSB7GRPAINHOU4QIU4E4DETUHJ45AJ4O",
   "network": "testnet",
-  "deployed_at": "2026-01-26T11:26:39Z",
+  "deployed_at": "2026-02-16T10:28:47Z",
   "deployer": "deployer"
 }
