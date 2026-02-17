@@ -26,26 +26,32 @@ export function useUserGroups() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const mapMemberStatus = (memberStatus: MemberStatus, groupStatus: string): 'paid' | 'pending' | 'received' | 'defaulted' | 'overdue' | 'completed' => {
-    if (groupStatus === 'Completed') {
+  const mapMemberStatus = (
+    memberStatus: MemberStatus,
+    groupStatus: string,
+    currentRound: number,
+    myPosition: number
+  ): 'paid' | 'pending' | 'received' | 'defaulted' | 'overdue' | 'completed' => {
+
+    if (groupStatus.toLowerCase() === 'completed') {
       return 'completed'
     }
-    
-    switch (memberStatus) {
-      case 'PaidCurrentRound':
-        return 'paid'
-      case 'Active':
+
+    if (memberStatus === 'Defaulted') return 'defaulted'
+    if (memberStatus === 'Overdue') return 'overdue'
+    if (memberStatus === 'ReceivedPayout') return 'received'
+    if (memberStatus === 'PaidCurrentRound') return 'paid'
+
+    if (memberStatus === 'Active') {
+      if (currentRound === myPosition) {
         return 'pending'
-      case 'ReceivedPayout':
-        return 'received'
-      case 'Defaulted':
-        return 'defaulted'
-      case 'Overdue':
-        return 'overdue'
-      default:
-        return 'pending'
+      }
+      return 'paid'
     }
+
+    return 'pending'
   }
+
 
   const calculateProgress = (currentRound: number, totalMembers: number): number => {
     if (totalMembers === 0) return 0
@@ -82,6 +88,13 @@ export function useUserGroups() {
 
           const member = await savings.getMemberByGroup(publicKey, groupInfo.group_id)
 
+          console.log("DEBUG GROUP STATUS", {
+            memberStatus: member.status,
+            groupStatus: savingsGroup.status,
+            currentRound: savingsGroup.currentRound,
+            myPosition: member.joinOrder + 1
+          })
+
           return {
             id: groupInfo.group_id,
             name: groupInfo.name,
@@ -89,7 +102,7 @@ export function useUserGroups() {
             totalMembers: savingsGroup.totalMembers,
             currentRound: savingsGroup.currentRound,
             myPosition: member.joinOrder + 1, 
-            status: mapMemberStatus(member.status, savingsGroup.status),
+            status: mapMemberStatus(member.status,savingsGroup.status,savingsGroup.currentRound,member.joinOrder + 1),
             progress: calculateProgress(savingsGroup.currentRound, savingsGroup.totalMembers),
             groupId: groupInfo.group_id,
             contractAddress: contractAddress
