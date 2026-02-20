@@ -1,7 +1,9 @@
-import { Horizon } from '@stellar/stellar-sdk';
+import { Horizon, rpc, xdr, scValToNative } from '@stellar/stellar-sdk';
+import { SOROBAN_RPC_URL } from '@/config/walletConfig';
 
 const HORIZON_URL = 'https://horizon-testnet.stellar.org';
-const server = new Horizon.Server(HORIZON_URL);
+const horizonServer = new Horizon.Server(HORIZON_URL);
+const sorobanServer = new rpc.Server(SOROBAN_RPC_URL, { allowHttp: true });
 
 export type ActivityType = 'contribution' | 'payout' | 'joined' | 'created' | 'round_end';
 
@@ -11,24 +13,32 @@ export interface Activity {
   amount: string | null;
   time: string;
   txHash: string | null;
-  groupId?: string;
+  groupId: string;
+  groupName: string;
+  roundNumber?: number;
 }
 
-export async function fetchRecentActivity(userAddress: string): Promise<Activity[]> {
+export async function fetchRecentActivity(userAddress: string, getGroupName?: (groupId: string) => Promise<string>): Promise<Activity[]> {
   if (!userAddress) return [];
 
   try {
-    const response = await server
+    const response = await horizonServer
       .operations()
       .forAccount(userAddress)
-      .limit(20)
+      .limit(10)
       .order('desc')
       .call();
 
     const activities: Activity[] = [];
 
-    for (const record of response.records) {
-      const activity = await parseOperation(record, userAddress);
+    // Process operations in parallel for better performance
+    const activityPromises = response.records.map(record =>
+      parseOperation(record, userAddress, getGroupName)
+    );
+
+    const parsedActivities = await Promise.all(activityPromises);
+
+    for (const activity of parsedActivities) {
       if (activity) {
         activities.push(activity);
       }
@@ -41,134 +51,362 @@ export async function fetchRecentActivity(userAddress: string): Promise<Activity
   }
 }
 
-async function parseOperation(record: Horizon.ServerApi.OperationRecord, userAddress: string): Promise<Activity | null> {
+async function parseOperation(
+  record: Horizon.ServerApi.OperationRecord,
+  userAddress: string,
+  getGroupName?: (groupId: string) => Promise<string>
+): Promise<Activity | null> {
   const txHash = record.transaction_hash;
   const createdAt = record.created_at;
   const time = formatTime(createdAt);
 
-  // We are primarily looking for contract invocations (invoke_host_function)
+  // Only process invoke_host_function operations (Soroban contract calls)
   if (record.type === 'invoke_host_function') {
-      // In a real scenario with full Horizon data, we might inspect parameters.
-      // However, standard Horizon response for invoke_host_function often lacks decoded args without extra queries.
-      // For this implementation, we will try to infer based on function names if available,
-      // or fall back to generic "Interaction".
-      // Note: Horizon 'invoke_host_function' details are limited.
-      // A robust implementation often requires indexing (e.g. Mercury) or querying transaction details/events.
-      // Given the prompt asks to use Horizon operations, we will do our best effort mapping.
-      
-      // Since we can't easily get the function name directly from the operation record in all Horizon versions
-      // without decoding XDR, we might check if we can see the function name in the record details
-      // or if we have to treat it as a generic contract interaction.
-      
-      // Let's assume for this task we are looking for patterns or just labeling generic interactions
-      // If the prompt implies we CAN parse contract invocations, we might need to look at the 'function' field if exposed
-      // or decode the XDR. Decoding XDR in the frontend is heavy.
-      // Let's check if the record has `function` (some Horizon instances enrich this).
-      // Otherwise, we might rely on the `type` being `invoke_host_function`.
-      
-      // To satisfy the requirements "contrib", "payout", "joined", "created", "round_end"
-      // strictly from Horizon operations is tricky without decoding arguments.
-      // However, we can look at "payment" operations if the contract sends money (payouts).
-      // Or "payment" from user to contract (contributions).
+    try {
+      // Fetch the full transaction details including events from Soroban RPC
+      const tx = await sorobanServer.getTransaction(txHash);
 
-      // Let's refine the strategy:
-      // 1. Payment (User -> Contract) = Contribution? (Or User -> Group Account)
-      // 2. Payment (Contract -> User) = Payout?
-      // 3. Invoke Host Function = Joined / Created / Round End? (Hard to distinguish without decoding)
+      if (tx.status === rpc.Api.GetTransactionStatus.SUCCESS && tx.resultMetaXdr) {
+        // Parse the transaction result and extract contract events
+        // resultMetaXdr is already an XDR object, not a string
+        const resultMeta = typeof tx.resultMetaXdr === 'string' 
+          ? xdr.TransactionMeta.fromXDR(tx.resultMetaXdr, 'base64')
+          : tx.resultMetaXdr;
 
-      // WAIT. The prompt says "Parse contract invocations".
-      // Let's try to map generic types first, or if we see 'payment' types.
-      
-      // For the purpose of this task and the limitations of standard Horizon JSON response:
-      // We will map:
-      // - payment (to user) -> Payout
-      // - payment (from user) -> Contribution
-      // - invoke_host_function -> "Contract Interaction" (and try to refine if possible)
+        // Extract contract events
+        const events = parseContractEvents(resultMeta);
 
-      // Actually, standard "invoke_host_function" operations in Horizon response include "function" field
-      // standard invocation. Let's try to access it safely.
-      // The type definition might not show it, so we cast to unknown first.
-      const op = record as unknown as { function?: string };
-      
-      if (op.function) {
-          const funcName = op.function; // e.g., "join_group", "create_group", "make_payment"
-          
-          if (funcName === 'create_group') {
-              return {
-                  type: 'created',
-                  description: 'Created a new Savings Group',
-                  amount: null,
-                  time,
-                  txHash
-              };
+        if (events.length > 0) {
+          // First, try to find group_id from any event
+          let groupId = '';
+          for (const event of events) {
+            if (event.topic === 'created' && event.data.length > 0) {
+              groupId = String(scValToNative(event.data[0]));
+              break;
+            }
           }
-          if (funcName === 'join_group') {
-               return {
-                  type: 'joined',
-                  description: 'Joined a Savings Group',
-                  amount: null,
-                  time,
-                  txHash
-              };
+
+          // Map the first relevant event to activity
+          for (const event of events) {
+            const activity = await mapEventToActivity(
+              event,
+              txHash,
+              userAddress,
+              groupId,
+              getGroupName
+            );
+            if (activity) {
+              return activity;
+            }
           }
-          if (funcName === 'deposit' || funcName === 'contribute') {
-               return {
-                  type: 'contribution',
-                  description: 'Contributed to Savings Group',
-                  amount: '- XLM', // We might not get amount easily without parsing events/transfers
-                  time,
-                  txHash
-              };
-          }
-          if (funcName === 'distribute' || funcName === 'payout') {
-               return {
-                  type: 'round_end',
-                  description: 'Round completed in Savings Group',
-                  amount: null,
-                  time,
-                  txHash
-              };
-          }
+        }
       }
-      
-      // If we can't parse function name, return generic
-       return {
-          type: 'created', // Fallback/Placeholder if we can't distinguish, or maybe 'joined'
-          description: 'Contract Interaction',
-          amount: null,
-          time,
-          txHash
-      };
+    } catch (error) {
+      console.error(`Error fetching transaction ${txHash}:`, error);
+    }
+
+    // Fallback: return generic contract interaction if event parsing fails
+    return {
+      type: 'created',
+      description: 'Contract Interaction',
+      amount: null,
+      time,
+      txHash,
+      groupId: '',
+      groupName: 'Unknown',
+    };
   }
-  
+
   // Handle Payments (Native XLM transfers)
   if (record.type === 'payment') {
-      const op = record as Horizon.ServerApi.PaymentOperationRecord;
-      const isRecipient = op.to === userAddress;
-      
-      if (isRecipient) {
-          return {
-              type: 'payout',
-              description: `Received payout from ${shortenAddress(op.from)}`,
-              amount: `${parseFloat(op.amount).toLocaleString()} XLM`,
-              time,
-              txHash
-          };
-      } else {
-          return {
-              type: 'contribution',
-              description: `Sent payment to ${shortenAddress(op.to)}`,
-              amount: `${parseFloat(op.amount).toLocaleString()} XLM`,
-              time,
-              txHash
-          };
-      }
+    const op = record as Horizon.ServerApi.PaymentOperationRecord;
+    const isRecipient = op.to === userAddress;
+
+    if (isRecipient) {
+      return {
+        type: 'payout',
+        description: `Received payout of ${formatAmount(op.amount)} XLM`,
+        amount: `+${formatAmount(op.amount)} XLM`,
+        time,
+        txHash,
+        groupId: op.from,
+        groupName: shortenAddress(op.from),
+      };
+    } else {
+      return {
+        type: 'contribution',
+        description: `Sent payment of ${formatAmount(op.amount)} XLM`,
+        amount: `-${formatAmount(op.amount)} XLM`,
+        time,
+        txHash,
+        groupId: op.to,
+        groupName: shortenAddress(op.to),
+      };
+    }
   }
 
-  // Handle Account Merge (often used in closing accounts or specific flows)
-  // Handle Create Account (if user created a group account?)
-
   return null;
+}
+
+/**
+ * Parse contract events from transaction metadata
+ */
+function parseContractEvents(
+  resultMeta: xdr.TransactionMeta | any
+): Array<{ topic: string; data: xdr.ScVal[] }> {
+  const events: Array<{ topic: string; data: xdr.ScVal[] }> = [];
+
+  try {
+    // Access v3 metadata structure
+    const v3 = (resultMeta as any).v3?.();
+    if (!v3) return events;
+
+    const sorobanMeta = v3.sorobanMeta?.();
+    if (!sorobanMeta) return events;
+
+    const contractEvents = sorobanMeta.events?.();
+    if (!contractEvents || contractEvents.length === 0) return events;
+
+    for (const event of contractEvents) {
+      try {
+        const body = event.body?.();
+        if (!body) continue;
+
+        const contractEvent = body.contractEvent?.();
+        if (!contractEvent) continue;
+
+        const topics = contractEvent.topics?.() || [];
+        const data = contractEvent.data?.() || [];
+
+        // Extract topic name from first topic
+        let topicName = '';
+        if (topics.length > 0 && topics[0].sym) {
+          topicName = topics[0].sym().toString();
+        }
+
+        events.push({
+          topic: topicName,
+          data: data || [],
+        });
+      } catch (e) {
+        console.error('Error parsing individual event:', e);
+        continue;
+      }
+    }
+  } catch (error) {
+    console.error('Error parsing contract events:', error);
+  }
+
+  return events;
+}
+
+/**
+ * Map a contract event to an Activity
+ */
+async function mapEventToActivity(
+  event: { topic: string; data: xdr.ScVal[] },
+  txHash: string,
+  userAddress: string,
+  groupId: string,
+  getGroupName?: (groupId: string) => Promise<string>
+): Promise<Activity | null> {
+  const time = formatTime(new Date().toISOString());
+
+  try {
+    switch (event.topic) {
+      case 'created':
+        return parseCreatedEvent(event, txHash, time, getGroupName);
+
+      case 'joined':
+        return parseJoinedEvent(event, txHash, time, groupId, getGroupName);
+
+      case 'contrib':
+        return parseContribEvent(event, txHash, time, groupId, getGroupName);
+
+      case 'payout':
+        return parsePayoutEvent(event, txHash, time, groupId, getGroupName);
+
+      case 'round_end':
+        return parseRoundEndEvent(event, txHash, time, groupId, getGroupName);
+
+      default:
+        return null;
+    }
+  } catch (error) {
+    console.error(`Error mapping event ${event.topic}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Parse 'created' event: (group_id, contribution_amount, total_members)
+ */
+async function parseCreatedEvent(
+  event: { topic: string; data: xdr.ScVal[] },
+  txHash: string,
+  time: string,
+  getGroupName?: (groupId: string) => Promise<string>
+): Promise<Activity | null> {
+  try {
+    const data = event.data;
+    if (data.length < 3) return null;
+
+    const groupIdVal = scValToNative(data[0]);
+    const groupId = String(groupIdVal);
+
+    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+
+    return {
+      type: 'created',
+      description: `Created ${groupName}`,
+      amount: null,
+      time,
+      txHash,
+      groupId,
+      groupName,
+    };
+  } catch (error) {
+    console.error('Error parsing created event:', error);
+    return null;
+  }
+}
+
+/**
+ * Parse 'joined' event: (member, new_count)
+ * Note: This event doesn't include group_id directly, so we use member as placeholder
+ * In production, you might want to query the contract to find which group this member joined
+ */
+async function parseJoinedEvent(
+  event: { topic: string; data: xdr.ScVal[] },
+  txHash: string,
+  time: string,
+  groupId: string,
+  getGroupName?: (groupId: string) => Promise<string>
+): Promise<Activity | null> {
+  try {
+    if (!groupId) return null;
+
+    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+
+    return {
+      type: 'joined',
+      description: `Joined ${groupName}`,
+      amount: null,
+      time,
+      txHash,
+      groupId,
+      groupName,
+    };
+  } catch (error) {
+    console.error('Error parsing joined event:', error);
+    return null;
+  }
+}
+
+/**
+ * Parse 'contrib' event: (member, contribution_amount, current_round)
+ */
+async function parseContribEvent(
+  event: { topic: string; data: xdr.ScVal[] },
+  txHash: string,
+  time: string,
+  groupId: string,
+  getGroupName?: (groupId: string) => Promise<string>
+): Promise<Activity | null> {
+  try {
+    const data = event.data;
+    if (data.length < 2 || !groupId) return null;
+
+    const amountVal = scValToNative(data[1]);
+    const amount = Number(amountVal) / 10_000_000; // Convert stroops to XLM
+    const roundNumber = data.length > 2 ? Number(scValToNative(data[2])) : undefined;
+
+    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+
+    return {
+      type: 'contribution',
+      description: `Contributed ${amount.toFixed(2)} XLM to ${groupName}`,
+      amount: `-${amount.toFixed(2)} XLM`,
+      time,
+      txHash,
+      groupId,
+      groupName,
+      roundNumber,
+    };
+  } catch (error) {
+    console.error('Error parsing contrib event:', error);
+    return null;
+  }
+}
+
+/**
+ * Parse 'payout' event: (recipient, payout_amount, current_round)
+ */
+async function parsePayoutEvent(
+  event: { topic: string; data: xdr.ScVal[] },
+  txHash: string,
+  time: string,
+  groupId: string,
+  getGroupName?: (groupId: string) => Promise<string>
+): Promise<Activity | null> {
+  try {
+    const data = event.data;
+    if (data.length < 2 || !groupId) return null;
+
+    const amountVal = scValToNative(data[1]);
+    const amount = Number(amountVal) / 10_000_000; // Convert stroops to XLM
+    const roundNumber = data.length > 2 ? Number(scValToNative(data[2])) : undefined;
+
+    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+
+    return {
+      type: 'payout',
+      description: `Received payout of ${amount.toFixed(2)} XLM from ${groupName}`,
+      amount: `+${amount.toFixed(2)} XLM`,
+      time,
+      txHash,
+      groupId,
+      groupName,
+      roundNumber,
+    };
+  } catch (error) {
+    console.error('Error parsing payout event:', error);
+    return null;
+  }
+}
+
+/**
+ * Parse 'round_end' event: (current_round - 1)
+ */
+async function parseRoundEndEvent(
+  event: { topic: string; data: xdr.ScVal[] },
+  txHash: string,
+  time: string,
+  groupId: string,
+  getGroupName?: (groupId: string) => Promise<string>
+): Promise<Activity | null> {
+  try {
+    const data = event.data;
+    if (data.length < 1 || !groupId) return null;
+
+    const roundNumber = Number(scValToNative(data[0]));
+
+    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+
+    return {
+      type: 'round_end',
+      description: `Round ${roundNumber} completed in ${groupName}`,
+      amount: null,
+      time,
+      txHash,
+      groupId,
+      groupName,
+      roundNumber,
+    };
+  } catch (error) {
+    console.error('Error parsing round_end event:', error);
+    return null;
+  }
 }
 
 function formatTime(isoString: string): string {
@@ -176,6 +414,9 @@ function formatTime(isoString: string): string {
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
+  if (diffInSeconds < 60) {
+    return 'just now';
+  }
   if (diffInSeconds < 3600) {
     const minutes = Math.floor(diffInSeconds / 60);
     return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
@@ -188,11 +429,45 @@ function formatTime(isoString: string): string {
     const days = Math.floor(diffInSeconds / 86400);
     return `${days} day${days !== 1 ? 's' : ''} ago`;
   }
-  
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatAmount(amount: string | number): string {
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function shortenAddress(address: string): string {
   if (!address) return '';
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
+}
+
+/**
+ * Export group name cache accessor for use in components
+ * This is meant to be used with a group name cache from the Soroban contract context
+ */
+export function createGroupNameFetcher(
+  getGroupNameFromContract: (groupId: string) => Promise<string>
+) {
+  const cache = new Map<string, string>();
+
+  return async (groupId: string): Promise<string> => {
+    if (cache.has(groupId)) {
+      return cache.get(groupId)!;
+    }
+
+    try {
+      const name = await getGroupNameFromContract(groupId);
+      cache.set(groupId, name);
+      return name;
+    } catch (error) {
+      console.error(`Failed to fetch group name for ${groupId}:`, error);
+      return groupId;
+    }
+  };
 }
