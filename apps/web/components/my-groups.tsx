@@ -128,8 +128,8 @@ export function MyGroups() {
                   <StatusBadge status={group.status} />
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {group.contribution.toFixed(2)} XLM • Round {group.currentRound}/{group.totalMembers} • Position #
-                  {group.myPosition}
+                  {(typeof group.contribution === 'number' && !isNaN(group.contribution) ? group.contribution.toFixed(2) : '0.00')} XLM • Round {typeof group.currentRound === 'number' && !isNaN(group.currentRound) ? group.currentRound : '-'}/{typeof group.totalMembers === 'number' && !isNaN(group.totalMembers) ? group.totalMembers : '-'} • Position #
+                  {group.myPosition >= 1 ? group.myPosition : '-'}
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   <Progress value={group.progress} className="h-1.5 flex-1" />
