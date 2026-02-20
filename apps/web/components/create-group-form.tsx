@@ -31,7 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-export function CreateGroupForm() {
+export default function CreateGroupForm() {
   const { isConnected, connect, publicKey } = useWallet();
   const contract = useSavingsContract();
   const registryContract = useRegistryContract();
@@ -91,17 +91,7 @@ export function CreateGroupForm() {
     try {
       const contributionStroops = BigInt(Math.floor(amount * 10_000_000));
 
-      const generateGroupId = () => {
-        const timestamp = Date.now();
-        const randomPart = crypto
-          .randomUUID()
-          .replace(/-/g, "")
-          .substring(0, 8);
-
-        return `grp${timestamp}${randomPart}`;
-      };
-
-      const groupId = generateGroupId();
+      const groupId = `grp${Date.now()}${Math.random().toString(36).substring(2, 8)}`;
 
       console.log("Creating group with params:", {
         groupId,
