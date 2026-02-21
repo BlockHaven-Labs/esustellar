@@ -48,8 +48,20 @@ export function useUserGroups() {
   }
 
   const calculateProgress = (currentRound: number, totalMembers: number): number => {
-    if (totalMembers === 0) return 0
-    return Math.round((currentRound / totalMembers) * 100)
+    const round = typeof currentRound === 'number' && !isNaN(currentRound) ? currentRound : 0
+    const total = typeof totalMembers === 'number' && !isNaN(totalMembers) ? totalMembers : 0
+    if (total === 0) return 0
+    return Math.round((round / total) * 100)
+  }
+
+  const safePosition = (val: number): number | null => {
+    if (typeof val === 'number' && !isNaN(val) && val >= 0) return val
+    return null
+  }
+
+  const safeProgress = (val: number): number => {
+    if (typeof val === 'number' && !isNaN(val) && val >= 0 && val <= 100) return val
+    return 0
   }
 
   const convertStroopsToXLM = (stroops: bigint): number => {
@@ -82,15 +94,18 @@ export function useUserGroups() {
 
           const member = await savings.getMemberByGroup(publicKey, groupInfo.group_id)
 
+          const rawPosition = member.joinOrder + 1
+          const rawProgress = calculateProgress(savingsGroup.currentRound, savingsGroup.totalMembers)
+
           return {
             id: groupInfo.group_id,
             name: groupInfo.name,
             contribution: convertStroopsToXLM(savingsGroup.contributionAmount),
             totalMembers: savingsGroup.totalMembers,
             currentRound: savingsGroup.currentRound,
-            myPosition: member.joinOrder + 1, 
+            myPosition: safePosition(rawPosition) ?? 0,
             status: mapMemberStatus(member.status, savingsGroup.status),
-            progress: calculateProgress(savingsGroup.currentRound, savingsGroup.totalMembers),
+            progress: safeProgress(rawProgress),
             groupId: groupInfo.group_id,
             contractAddress: contractAddress
           } as GroupDisplayData
