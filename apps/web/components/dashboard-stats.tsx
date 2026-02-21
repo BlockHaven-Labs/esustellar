@@ -10,7 +10,7 @@ import {
   BASE_FEE,
   Contract,
   Networks,
-  SorobanRpc,
+  rpc,
   TransactionBuilder,
   nativeToScVal,
   scValToNative,
@@ -155,7 +155,7 @@ export function DashboardStats() {
         const { rpcUrl, networkPassphrase } = await resolveNetworkConfig()
         logDebug("Network config", { rpcUrl, networkPassphrase })
 
-        const server = new SorobanRpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") })
+        const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") })
         const baseAccount = await server.getAccount(walletAddress)
         const addressVal = Address.fromString(walletAddress).toScVal()
 
@@ -171,7 +171,7 @@ export function DashboardStats() {
             .build()
 
           const simulation = await server.simulateTransaction(tx)
-          if (SorobanRpc.Api.isSimulationError(simulation)) {
+          if (rpc.Api.isSimulationError(simulation)) {
             logDebug(`Contract call failed: ${contractId}.${method}`, simulation.error)
             throw new Error(simulation.error)
           }

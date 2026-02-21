@@ -5,9 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowDownLeft, ArrowUpRight, Users, CheckCircle, Plus, Loader2 } from "lucide-react"
 import { useWallet } from "@/hooks/use-wallet"
 import { fetchRecentActivity, Activity } from "@/lib/activityFeed"
+import { useSavingsContract } from "@/context/savingsContract"
+import Link from "next/link"
 
 export function RecentActivity() {
   const { publicKey } = useWallet()
+  const { getGroupName } = useSavingsContract()
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -15,16 +18,21 @@ export function RecentActivity() {
     async function loadActivities() {
       if (publicKey) {
         setLoading(true)
-        const data = await fetchRecentActivity(publicKey)
-        setActivities(data)
-        setLoading(false)
+        try {
+          const data = await fetchRecentActivity(publicKey, getGroupName)
+          setActivities(data)
+        } catch (error) {
+          console.error('Error loading activities:', error)
+        } finally {
+          setLoading(false)
+        }
       } else {
         setActivities([])
       }
     }
 
     loadActivities()
-  }, [publicKey])
+  }, [publicKey, getGroupName])
 
   return (
     <Card className="border-border bg-card">
@@ -46,11 +54,24 @@ export function RecentActivity() {
               <div key={index} className="flex items-start gap-3">
                 <ActivityIcon type={activity.type} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground">{activity.description}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-sm text-foreground">
+                    {activity.description}
+                    {activity.roundNumber !== undefined && (
+                      <span className="text-muted-foreground ml-1">(Round {activity.roundNumber})</span>
+                    )}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-xs text-muted-foreground">{activity.time}</span>
+                    {activity.groupId && (
+                      <Link
+                        href={`/groups/${activity.groupId}`}
+                        className="text-xs text-stellar hover:underline"
+                      >
+                        View Group
+                      </Link>
+                    )}
                     {activity.txHash && (
-                      <a 
+                      <a
                         href={`https://stellar.expert/explorer/testnet/tx/${activity.txHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -63,9 +84,14 @@ export function RecentActivity() {
                 </div>
                 {activity.amount && (
                   <span
-                    className={`text-sm font-medium ${activity.type === "payout" ? "text-primary" : "text-foreground"}`}
+                    className={`text-sm font-medium whitespace-nowrap ${
+                      activity.type === 'payout'
+                        ? 'text-green-500'
+                        : activity.type === 'contribution'
+                        ? 'text-red-500'
+                        : 'text-foreground'
+                    }`}
                   >
-                    {activity.type === "payout" ? "+" : ""}
                     {activity.amount}
                   </span>
                 )}
@@ -82,20 +108,15 @@ function ActivityIcon({ type }: { type: string }) {
   const icons = {
     contribution: {
       icon: ArrowUpRight,
-      bg: "bg-warning/10",
-      color: "text-warning",
+      bg: "bg-red-500/10",
+      color: "text-red-500",
     },
     payout: {
       icon: ArrowDownLeft,
-      bg: "bg-primary/10",
-      color: "text-primary",
+      bg: "bg-green-500/10",
+      color: "text-green-500",
     },
     joined: {
-      icon: Users,
-      bg: "bg-stellar/10",
-      color: "text-stellar",
-    },
-    created: {
       icon: Plus,
       bg: "bg-blue-500/10",
       color: "text-blue-500",
