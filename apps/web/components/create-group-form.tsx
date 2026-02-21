@@ -31,7 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-export default function CreateGroupForm() {
+export function CreateGroupForm() {
   const { isConnected, connect, publicKey } = useWallet();
   const contract = useSavingsContract();
   const registryContract = useRegistryContract();
