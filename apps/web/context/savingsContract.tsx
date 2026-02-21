@@ -165,7 +165,9 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
       return { 
         ...n, 
         contributionAmount: BigInt(n.contribution_amount || n.contributionAmount || 0), 
-        startTimestamp: BigInt(n.start_timestamp || n.startTimestamp || 0) 
+        startTimestamp: BigInt(n.start_timestamp || n.startTimestamp || 0),
+        currentRound: n.current_round ?? n.currentRound ?? 0,
+        totalMembers: n.total_members ?? n.totalMembers ?? 0
       }
     } catch (err: any) {
       // Try with empty args if the contract expects no parameters
@@ -184,7 +186,8 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
       return { 
         ...n, 
         joinTimestamp: BigInt(n.join_timestamp || n.joinTimestamp || 0), 
-        totalContributed: BigInt(n.total_contributed || n.totalContributed || 0) 
+        totalContributed: BigInt(n.total_contributed || n.totalContributed || 0),
+        joinOrder: n.join_order ?? n.joinOrder ?? 0
       }
     } catch (err: any) {
       if (err.message?.includes('missing argument')) {
@@ -261,7 +264,9 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
       return { 
         ...n, 
         contributionAmount: BigInt(n.contribution_amount || n.contributionAmount || 0), 
-        startTimestamp: BigInt(n.start_timestamp || n.startTimestamp || 0) 
+        startTimestamp: BigInt(n.start_timestamp || n.startTimestamp || 0),
+        currentRound: n.current_round ?? n.currentRound ?? 0,
+        totalMembers: n.total_members ?? n.totalMembers ?? 0
       }
     } catch (err: any) {
       // If that fails, try without parameters (fallback to single-group mode)
@@ -284,7 +289,8 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
       return { 
         ...n, 
         joinTimestamp: BigInt(n.join_timestamp || n.joinTimestamp || 0), 
-        totalContributed: BigInt(n.total_contributed || n.totalContributed || 0) 
+        totalContributed: BigInt(n.total_contributed || n.totalContributed || 0),
+        joinOrder: n.join_order ?? n.joinOrder ?? 0
       }
     } catch (err: any) {
       // Fallback to single-parameter version
