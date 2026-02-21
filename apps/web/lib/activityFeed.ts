@@ -77,12 +77,23 @@ async function parseOperation(
         const events = parseContractEvents(resultMeta);
 
         if (events.length > 0) {
-          // First, try to find group_id from any event
+          // First, try to find group_id from any event or from transaction details
           let groupId = '';
+          
+          // Try to extract groupId from events
           for (const event of events) {
             if (event.topic === 'created' && event.data.length > 0) {
               groupId = String(scValToNative(event.data[0]));
               break;
+            }
+          }
+          
+          // If not found in events, try to extract from transaction envelope
+          if (!groupId && tx.envelope) {
+            try {
+              groupId = extractContractIdFromEnvelope(tx.envelope);
+            } catch (e) {
+              // Continue without groupId from envelope
             }
           }
 
@@ -103,18 +114,12 @@ async function parseOperation(
       }
     } catch (error) {
       console.error(`Error fetching transaction ${txHash}:`, error);
+      // If we can't fetch or parse the transaction, skip it instead of showing generic message
+      return null;
     }
 
-    // Fallback: return generic contract interaction if event parsing fails
-    return {
-      type: 'created',
-      description: 'Contract Interaction',
-      amount: null,
-      time,
-      txHash,
-      groupId: '',
-      groupName: 'Unknown',
-    };
+    // If no events were found but transaction was successful, still skip instead of showing generic message
+    return null;
   }
 
   // Handle Payments (Native XLM transfers)
@@ -146,6 +151,60 @@ async function parseOperation(
   }
 
   return null;
+}
+
+/**
+ * Extract contract ID from transaction envelope
+ */
+function extractContractIdFromEnvelope(envelope: string | xdr.TransactionEnvelope): string {
+  try {
+    const txEnv = typeof envelope === 'string'
+      ? xdr.TransactionEnvelope.fromXDR(envelope, 'base64')
+      : envelope;
+
+    // Get the transaction
+    const txV1 = txEnv.v1?.();
+    if (!txV1) return '';
+
+    const tx = txV1.tx?.();
+    if (!tx) return '';
+
+    const ops = tx.operations?.();
+    if (!ops || ops.length === 0) return '';
+
+    // Find the invoke_host_function operation
+    for (const op of ops) {
+      const body = op.body?.();
+      if (!body) continue;
+
+      const invokeOp = body.invokeHostFunctionOp?.();
+      if (!invokeOp) continue;
+
+      // Get the host function
+      const hostFunc = invokeOp.hostFunction?.();
+      if (!hostFunc) continue;
+
+      // Extract contract address from the host function arguments
+      const args = hostFunc.args?.();
+      if (!args || args.length === 0) continue;
+
+      // The first arg is usually the contract or contract reference
+      const contractVal = args[0];
+      if (!contractVal) continue;
+
+      try {
+        const contractId = scValToNative(contractVal);
+        return String(contractId);
+      } catch (e) {
+        continue;
+      }
+    }
+
+    return '';
+  } catch (error) {
+    console.error('Error extracting contract ID from envelope:', error);
+    return '';
+  }
 }
 
 /**
@@ -249,10 +308,12 @@ async function parseCreatedEvent(
 ): Promise<Activity | null> {
   try {
     const data = event.data;
-    if (data.length < 3) return null;
+    if (!data || data.length < 3) return null;
 
     const groupIdVal = scValToNative(data[0]);
+    if (!groupIdVal) return null;
     const groupId = String(groupIdVal);
+    if (!groupId) return null;
 
     const groupName = getGroupName ? await getGroupName(groupId) : groupId;
 
@@ -284,9 +345,9 @@ async function parseJoinedEvent(
   getGroupName?: (groupId: string) => Promise<string>
 ): Promise<Activity | null> {
   try {
-    if (!groupId) return null;
-
-    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+    // Use 'Unknown' as fallback if groupId is missing
+    const finalGroupId = groupId || 'unknown';
+    const groupName = getGroupName && groupId ? await getGroupName(groupId) : finalGroupId;
 
     return {
       type: 'joined',
@@ -294,7 +355,7 @@ async function parseJoinedEvent(
       amount: null,
       time,
       txHash,
-      groupId,
+      groupId: finalGroupId,
       groupName,
     };
   } catch (error) {
@@ -315,13 +376,16 @@ async function parseContribEvent(
 ): Promise<Activity | null> {
   try {
     const data = event.data;
-    if (data.length < 2 || !groupId) return null;
+    if (!data || data.length < 2) return null;
 
     const amountVal = scValToNative(data[1]);
+    if (amountVal === null || amountVal === undefined) return null;
     const amount = Number(amountVal) / 10_000_000; // Convert stroops to XLM
-    const roundNumber = data.length > 2 ? Number(scValToNative(data[2])) : undefined;
+    if (isNaN(amount)) return null;
+    const roundNumber = data.length > 2 ? (() => { const val = Number(scValToNative(data[2])); return isNaN(val) ? undefined : val; })() : undefined;
 
-    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+    const finalGroupId = groupId || 'unknown';
+    const groupName = getGroupName && groupId ? await getGroupName(groupId) : finalGroupId;
 
     return {
       type: 'contribution',
@@ -329,7 +393,7 @@ async function parseContribEvent(
       amount: `-${amount.toFixed(2)} XLM`,
       time,
       txHash,
-      groupId,
+      groupId: finalGroupId,
       groupName,
       roundNumber,
     };
@@ -351,13 +415,16 @@ async function parsePayoutEvent(
 ): Promise<Activity | null> {
   try {
     const data = event.data;
-    if (data.length < 2 || !groupId) return null;
+    if (!data || data.length < 2) return null;
 
     const amountVal = scValToNative(data[1]);
+    if (amountVal === null || amountVal === undefined) return null;
     const amount = Number(amountVal) / 10_000_000; // Convert stroops to XLM
-    const roundNumber = data.length > 2 ? Number(scValToNative(data[2])) : undefined;
+    if (isNaN(amount)) return null;
+    const roundNumber = data.length > 2 ? (() => { const val = Number(scValToNative(data[2])); return isNaN(val) ? undefined : val; })() : undefined;
 
-    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+    const finalGroupId = groupId || 'unknown';
+    const groupName = getGroupName && groupId ? await getGroupName(groupId) : finalGroupId;
 
     return {
       type: 'payout',
@@ -365,7 +432,7 @@ async function parsePayoutEvent(
       amount: `+${amount.toFixed(2)} XLM`,
       time,
       txHash,
-      groupId,
+      groupId: finalGroupId,
       groupName,
       roundNumber,
     };
@@ -387,11 +454,15 @@ async function parseRoundEndEvent(
 ): Promise<Activity | null> {
   try {
     const data = event.data;
-    if (data.length < 1 || !groupId) return null;
+    if (!data || data.length < 1) return null;
 
-    const roundNumber = Number(scValToNative(data[0]));
+    const roundVal = scValToNative(data[0]);
+    if (roundVal === null || roundVal === undefined) return null;
+    const roundNumber = Number(roundVal);
+    if (isNaN(roundNumber)) return null;
 
-    const groupName = getGroupName ? await getGroupName(groupId) : groupId;
+    const finalGroupId = groupId || 'unknown';
+    const groupName = getGroupName && groupId ? await getGroupName(groupId) : finalGroupId;
 
     return {
       type: 'round_end',
@@ -399,7 +470,7 @@ async function parseRoundEndEvent(
       amount: null,
       time,
       txHash,
-      groupId,
+      groupId: finalGroupId,
       groupName,
       roundNumber,
     };
