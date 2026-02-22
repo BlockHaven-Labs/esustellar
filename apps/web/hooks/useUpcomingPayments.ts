@@ -45,8 +45,9 @@ export function useUpcomingPayments() {
             const groupInfo = await registry.getGroupInfo(contractAddress);
             const group = await savings.getGroupById(groupInfo.group_id);
 
-            // Only active groups have upcoming payments
-            if (group.status !== "Active") return null;
+            // Only active or open groups have upcoming payments
+            if (group.status !== "Active" && group.status !== "Open")
+              return null;
 
             const member = await savings.getMemberByGroup(
               publicKey,
