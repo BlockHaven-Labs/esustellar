@@ -31,29 +31,6 @@ const DEFAULT_STATS: DashboardStatsState = {
   nextPaymentAmount: 0,
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
-const toNumber = (value: unknown): number => {
-  if (typeof value === "number") return value
-  if (typeof value === "bigint") return Number(value)
-  if (typeof value === "string" && value.length > 0) return Number(value)
-  return 0
-}
-
-const normalizeEnum = (value: unknown): string | null => {
-  if (typeof value === "string") return value
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") return value[0]
-  if (isRecord(value)) {
-    if (typeof value.tag === "string") return value.tag
-    const keys = Object.keys(value)
-    if (keys.length === 1) return keys[0]
-  }
-  return null
-}
-
-const normalizeAddress = (value: unknown): string | null => (typeof value === "string" ? value : null)
-
 const formatXLM = (amount: number): string =>
   `${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`
 
@@ -73,13 +50,23 @@ export function DashboardStats() {
 
   useEffect(() => {
     if (!isConnected || !publicKey) {
-      setStatus("no-wallet")
+      queueMicrotask(() => setStatus("no-wallet"))
       return
     }
   }, [isConnected, publicKey])
 
   useEffect(() => {
     if (!publicKey || !registry.isReady || !savings.isReady) return
+
+    if (registry.error || savings.error) {
+      const message = registry.error || savings.error
+      queueMicrotask(() => {
+        setErrorMessage(message)
+        setStats({ ...DEFAULT_STATS })
+        setStatus("error")
+      })
+      return
+    }
 
     let active = true
 
@@ -88,65 +75,11 @@ export function DashboardStats() {
       setErrorMessage(null)
 
       try {
-        console.log("Dashboard using contracts:", {
-          registry: registry.contractId,
-          savings: savings.contractId,
-        })
-
-        // Step 1: Discover groups (Dual-source strategy)
-        let registryGroupIds: string[] = []
-        try {
-          const registryAddresses = await registry.getUserGroups(publicKey)
-          // Map contract addresses to group IDs
-          const infoResults = await Promise.all(
-            registryAddresses.map(async (addr) => {
-              try {
-                const info = await registry.getGroupInfo(addr)
-                return info.group_id
-              } catch (e) {
-                logDebug(`Failed to get info for group at ${addr}`, e)
-                return null
-              }
-            })
-          )
-          registryGroupIds = infoResults.filter((id): id is string => id !== null)
-        } catch (err) {
-          logDebug("Registry discovery failed", err)
-        }
-
-        let savingsGroupIds: string[] = []
-        // Fallback or secondary discovery
-        if (registryGroupIds.length === 0) {
-          logDebug("No groups in registry, trying savings contract fallback")
-          try {
-            const allGroups = await savings.getAllGroups()
-            const membershipCheck = await Promise.all(
-              allGroups.map(async (id) => {
-                try {
-                  const m = await savings.getMemberByGroup(publicKey, id)
-                  return m ? id : null
-                } catch {
-                  return null
-                }
-              })
-            )
-            savingsGroupIds = membershipCheck.filter((id): id is string => id !== null)
-          } catch (err) {
-            logDebug("Savings discovery failed", err)
-          }
-        }
-
-        const totalGroupIds = [...new Set([...registryGroupIds, ...savingsGroupIds])]
-
-        console.log("Groups found:", {
-          fromRegistry: registryGroupIds.length,
-          fromSavings: savingsGroupIds.length,
-          total: totalGroupIds.length,
-        })
+        const groupIds = await registry.getUserGroups(publicKey)
 
         if (!active) return
 
-        if (totalGroupIds.length === 0) {
+        if (groupIds.length === 0) {
           setStats({ ...DEFAULT_STATS })
           setStatus("no-groups")
           return
@@ -154,56 +87,41 @@ export function DashboardStats() {
 
         // Step 2: Fetch detailed stats for each group
         const groupResults = await Promise.all(
-          totalGroupIds.map(async (groupId) => {
-            try {
-              const [member, group] = await Promise.all([
-                savings.getMemberByGroup(publicKey, groupId),
-                savings.getGroupById(groupId),
-              ])
+          groupIds.map(async (groupId) => {
+            const [member, group] = await Promise.all([
+              savings.getMemberByGroup(publicKey, groupId),
+              savings.getGroupById(groupId),
+            ])
 
-              let receivedAmount = 0
-              let payoutsReceived = 0
+            let receivedAmount = 0
+            let payoutsReceived = 0
 
-              if (member.hasReceivedPayout && member.payoutRound > 0) {
-                try {
-                  const payouts = await savings.getRoundPayoutsByGroup(groupId, member.payoutRound)
-                  for (const payout of payouts) {
-                    if (payout.recipient.toUpperCase() === publicKey.toUpperCase()) {
-                      receivedAmount += Number(payout.amount)
-                      payoutsReceived += 1
-                    }
-                  }
-                } catch (err) {
-                  logDebug(`Failed to fetch payouts for group ${groupId}`, err)
+            if (member.hasReceivedPayout && member.payoutRound > 0) {
+              const payouts = await savings.getRoundPayoutsByGroup(groupId, member.payoutRound)
+              for (const payout of payouts) {
+                if (payout.recipient.toUpperCase() === publicKey.toUpperCase()) {
+                  receivedAmount += Number(payout.amount)
+                  payoutsReceived += 1
                 }
               }
+            }
 
-              let deadlineTs: number | null = null
-              if (group.status === "Active" && member.status !== "PaidCurrentRound") {
-                try {
-                  const deadline = await savings.getRoundDeadlineByGroup(groupId, group.currentRound)
-                  deadlineTs = Number(deadline)
-                } catch (err) {
-                  logDebug(`Failed to fetch deadline for group ${groupId}`, err)
-                }
-              }
+            let deadlineTs: number | null = null
+            if (group.status === "Active" && member.status !== "PaidCurrentRound") {
+              const deadline = await savings.getRoundDeadlineByGroup(groupId, group.currentRound)
+              deadlineTs = Number(deadline)
+            }
 
-              return {
-                totalContributed: Number(member.totalContributed),
-                status: group.status,
-                receivedAmount,
-                payoutsReceived,
-                deadlineTs,
-                contributionAmount: Number(group.contributionAmount)
-              }
-            } catch (err) {
-              logDebug(`Error processing group ${groupId}`, err)
-              return null
+            return {
+              totalContributed: Number(member.totalContributed),
+              status: group.status,
+              receivedAmount,
+              payoutsReceived,
+              deadlineTs,
+              contributionAmount: Number(group.contributionAmount),
             }
           })
         )
-
-        const validResults = groupResults.filter((r): r is NonNullable<typeof r> => r !== null)
 
         let totalContributedStroops = 0
         let totalReceivedStroops = 0
@@ -212,7 +130,7 @@ export function DashboardStats() {
         let nextDeadline: number | null = null
         let nextAmountStroops = 0
 
-        for (const result of validResults) {
+        for (const result of groupResults) {
           totalContributedStroops += result.totalContributed
           totalReceivedStroops += result.receivedAmount
           payoutsReceivedCount += result.payoutsReceived
@@ -233,15 +151,10 @@ export function DashboardStats() {
           totalContributed: troopsToXLM(totalContributedStroops),
           totalReceived: troopsToXLM(totalReceivedStroops),
           activeGroups: activeGroupsCount,
-          groupCount: totalGroupIds.length,
+          groupCount: groupIds.length,
           payoutsReceived: payoutsReceivedCount,
           nextPaymentDeadline: nextDeadline,
           nextPaymentAmount: troopsToXLM(nextAmountStroops),
-        }
-
-        // Validate data mismatch (Issue Requirement #4)
-        if (totalGroupIds.length > 0 && finalStats.groupCount === 0) {
-          console.error("Data mismatch: groups found but stats show zero")
         }
 
         logDebug("Final stats", finalStats)
