@@ -73,7 +73,7 @@ const SavingsContractContext = React.createContext<SavingsContractContextValue |
 
 export function SavingsContractProvider({ children }: { children: React.ReactNode }) {
   const wallet = useWallet()
-  const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID || ''
+  const contractId = process.env.NEXT_PUBLIC_SAVINGS_CONTRACT_ID || process.env.NEXT_PUBLIC_CONTRACT_ID || ''
   const [error, setError] = React.useState<string | null>(null)
 
   const isReady = !!contractId && !!SOROBAN_RPC_URL

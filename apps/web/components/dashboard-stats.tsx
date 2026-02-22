@@ -4,19 +4,9 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Wallet, TrendingUp, Users, Calendar } from "lucide-react"
-import {
-  Account,
-  Address,
-  BASE_FEE,
-  Contract,
-  Networks,
-  rpc,
-  TransactionBuilder,
-  nativeToScVal,
-  scValToNative,
-  xdr,
-} from "@stellar/stellar-sdk"
-import { getAddress, getNetworkDetails, isConnected } from "@stellar/freighter-api"
+import { useWallet } from "@/hooks/use-wallet"
+import { useRegistryContract } from "@/context/registryContract"
+import { useSavingsContract } from "@/context/savingsContract"
 import { getDaysRemaining, timestampToDate, troopsToXLM, logDebug } from "@/lib/dashboardStats"
 
 type DashboardStatsState = {
@@ -40,11 +30,6 @@ const DEFAULT_STATS: DashboardStatsState = {
   nextPaymentDeadline: null,
   nextPaymentAmount: 0,
 }
-
-const DEFAULT_RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org"
-const DEFAULT_NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE ?? Networks.TESTNET
-const REGISTRY_CONTRACT_ID =
-  process.env.NEXT_PUBLIC_REGISTRY_CONTRACT_ID ?? process.env.NEXT_PUBLIC_CONTRACT_ID ?? ""
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -77,66 +62,24 @@ const formatDate = (deadlineTs: number): string =>
     timestampToDate(deadlineTs)
   )
 
-const resolveNetworkConfig = async (): Promise<{ rpcUrl: string; networkPassphrase: string }> => {
-  try {
-    const details = await getNetworkDetails()
-    if (!details?.error && details?.networkPassphrase) {
-      return {
-        rpcUrl: details.sorobanRpcUrl ?? DEFAULT_RPC_URL,
-        networkPassphrase: details.networkPassphrase,
-      }
-    }
-  } catch (err) {
-    logDebug("Failed to get network details from Freighter", err)
-  }
-
-  return {
-    rpcUrl: DEFAULT_RPC_URL,
-    networkPassphrase: DEFAULT_NETWORK_PASSPHRASE,
-  }
-}
-
 export function DashboardStats() {
+  const { publicKey, isConnected } = useWallet()
+  const registry = useRegistryContract()
+  const savings = useSavingsContract()
+
   const [status, setStatus] = useState<FetchStatus>("loading")
   const [stats, setStats] = useState<DashboardStatsState>(DEFAULT_STATS)
-  const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    let active = true
-
-    const checkWallet = async () => {
-      try {
-        const connection = await isConnected()
-        if (!active) return
-        if (!connection?.isConnected || connection?.error) {
-          setStatus("no-wallet")
-          return
-        }
-
-        const addressResult = await getAddress()
-        if (!active) return
-        if (!addressResult?.address || addressResult?.error) {
-          setStatus("no-wallet")
-          return
-        }
-
-        setWalletAddress(addressResult.address)
-      } catch (err) {
-        logDebug("Failed to check wallet connection", err)
-        if (active) setStatus("no-wallet")
-      }
+    if (!isConnected || !publicKey) {
+      setStatus("no-wallet")
+      return
     }
-
-    checkWallet()
-
-    return () => {
-      active = false
-    }
-  }, [])
+  }, [isConnected, publicKey])
 
   useEffect(() => {
-    if (!walletAddress) return
+    if (!publicKey || !registry.isReady || !savings.isReady) return
 
     let active = true
 
@@ -145,109 +88,91 @@ export function DashboardStats() {
       setErrorMessage(null)
 
       try {
-        if (!REGISTRY_CONTRACT_ID) {
-          logDebug("Missing registry contract ID - check NEXT_PUBLIC_REGISTRY_CONTRACT_ID or NEXT_PUBLIC_CONTRACT_ID env var")
-          throw new Error("Missing registry contract ID")
+        console.log("Dashboard using contracts:", {
+          registry: registry.contractId,
+          savings: savings.contractId,
+        })
+
+        // Step 1: Discover groups (Dual-source strategy)
+        let registryGroupIds: string[] = []
+        try {
+          const registryAddresses = await registry.getUserGroups(publicKey)
+          // Map contract addresses to group IDs
+          const infoResults = await Promise.all(
+            registryAddresses.map(async (addr) => {
+              try {
+                const info = await registry.getGroupInfo(addr)
+                return info.group_id
+              } catch (e) {
+                logDebug(`Failed to get info for group at ${addr}`, e)
+                return null
+              }
+            })
+          )
+          registryGroupIds = infoResults.filter((id): id is string => id !== null)
+        } catch (err) {
+          logDebug("Registry discovery failed", err)
         }
 
-        logDebug("Using registry contract", REGISTRY_CONTRACT_ID)
-
-        const { rpcUrl, networkPassphrase } = await resolveNetworkConfig()
-        logDebug("Network config", { rpcUrl, networkPassphrase })
-
-        const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") })
-        const baseAccount = await server.getAccount(walletAddress)
-        const addressVal = Address.fromString(walletAddress).toScVal()
-
-        const readContractValue = async (contractId: string, method: string, args: xdr.ScVal[] = []) => {
-          const account = new Account(baseAccount.accountId(), baseAccount.sequenceNumber())
-          const contract = new Contract(contractId)
-          const tx = new TransactionBuilder(account, {
-            fee: BASE_FEE,
-            networkPassphrase,
-          })
-            .addOperation(contract.call(method, ...args))
-            .setTimeout(30)
-            .build()
-
-          const simulation = await server.simulateTransaction(tx)
-          if (rpc.Api.isSimulationError(simulation)) {
-            logDebug(`Contract call failed: ${contractId}.${method}`, simulation.error)
-            throw new Error(simulation.error)
+        let savingsGroupIds: string[] = []
+        // Fallback or secondary discovery
+        if (registryGroupIds.length === 0) {
+          logDebug("No groups in registry, trying savings contract fallback")
+          try {
+            const allGroups = await savings.getAllGroups()
+            const membershipCheck = await Promise.all(
+              allGroups.map(async (id) => {
+                try {
+                  const m = await savings.getMemberByGroup(publicKey, id)
+                  return m ? id : null
+                } catch {
+                  return null
+                }
+              })
+            )
+            savingsGroupIds = membershipCheck.filter((id): id is string => id !== null)
+          } catch (err) {
+            logDebug("Savings discovery failed", err)
           }
-
-          return simulation.result?.retval ? scValToNative(simulation.result.retval) : null
         }
 
-        logDebug("Calling get_user_groups on registry", { walletAddress })
-        const groupsRaw = await readContractValue(REGISTRY_CONTRACT_ID, "get_user_groups", [addressVal])
-        logDebug("get_user_groups result", groupsRaw)
+        const totalGroupIds = [...new Set([...registryGroupIds, ...savingsGroupIds])]
 
-        const groupIds = Array.isArray(groupsRaw)
-          ? groupsRaw.filter((groupId): groupId is string => typeof groupId === "string")
-          : []
+        console.log("Groups found:", {
+          fromRegistry: registryGroupIds.length,
+          fromSavings: savingsGroupIds.length,
+          total: totalGroupIds.length,
+        })
 
-        if (groupIds.length === 0) {
-          logDebug("No groups found for user")
-          if (!active) return
+        if (!active) return
+
+        if (totalGroupIds.length === 0) {
           setStats({ ...DEFAULT_STATS })
           setStatus("no-groups")
           return
         }
 
-        logDebug(`Found ${groupIds.length} groups`, groupIds)
-
+        // Step 2: Fetch detailed stats for each group
         const groupResults = await Promise.all(
-          groupIds.map(async (groupId) => {
+          totalGroupIds.map(async (groupId) => {
             try {
-              logDebug(`Fetching data for group ${groupId}`)
-
-              const [memberRaw, groupRaw] = await Promise.all([
-                readContractValue(groupId, "get_member", [addressVal]),
-                readContractValue(groupId, "get_group"),
+              const [member, group] = await Promise.all([
+                savings.getMemberByGroup(publicKey, groupId),
+                savings.getGroupById(groupId),
               ])
-
-              const memberRecord = isRecord(memberRaw) ? memberRaw : {}
-              const groupRecord = isRecord(groupRaw) ? groupRaw : {}
-
-              const memberStatus = normalizeEnum(memberRecord.status)
-              const groupStatus = normalizeEnum(groupRecord.status)
-
-              const member = {
-                totalContributed: toNumber(memberRecord.total_contributed),
-                hasReceivedPayout: memberRecord.has_received_payout === true,
-                payoutRound: toNumber(memberRecord.payout_round),
-                status: memberStatus,
-              }
-
-              const group = {
-                contributionAmount: toNumber(groupRecord.contribution_amount),
-                currentRound: toNumber(groupRecord.current_round),
-                status: groupStatus,
-              }
-
-              logDebug(`Group ${groupId} member data`, member)
-              logDebug(`Group ${groupId} group data`, group)
 
               let receivedAmount = 0
               let payoutsReceived = 0
 
               if (member.hasReceivedPayout && member.payoutRound > 0) {
                 try {
-                  const payoutsRaw = await readContractValue(groupId, "get_round_payouts", [
-                    nativeToScVal(member.payoutRound, { type: "u32" }),
-                  ])
-                  const payouts = Array.isArray(payoutsRaw) ? payoutsRaw : []
-
+                  const payouts = await savings.getRoundPayoutsByGroup(groupId, member.payoutRound)
                   for (const payout of payouts) {
-                    if (!isRecord(payout)) continue
-                    const recipient = normalizeAddress(payout.recipient)
-                    if (recipient && recipient.toUpperCase() === walletAddress.toUpperCase()) {
-                      receivedAmount += toNumber(payout.amount)
+                    if (payout.recipient.toUpperCase() === publicKey.toUpperCase()) {
+                      receivedAmount += Number(payout.amount)
                       payoutsReceived += 1
                     }
                   }
-                  logDebug(`Group ${groupId} payouts`, { receivedAmount, payoutsReceived })
                 } catch (err) {
                   logDebug(`Failed to fetch payouts for group ${groupId}`, err)
                 }
@@ -256,77 +181,78 @@ export function DashboardStats() {
               let deadlineTs: number | null = null
               if (group.status === "Active" && member.status !== "PaidCurrentRound") {
                 try {
-                  const deadlineRaw = await readContractValue(groupId, "get_round_deadline", [
-                    nativeToScVal(group.currentRound, { type: "u32" }),
-                  ])
-                  if (deadlineRaw !== null && deadlineRaw !== undefined) {
-                    deadlineTs = toNumber(deadlineRaw)
-                    logDebug(`Group ${groupId} deadline`, deadlineTs)
-                  }
+                  const deadline = await savings.getRoundDeadlineByGroup(groupId, group.currentRound)
+                  deadlineTs = Number(deadline)
                 } catch (err) {
                   logDebug(`Failed to fetch deadline for group ${groupId}`, err)
                 }
               }
 
-              return { member, group, receivedAmount, payoutsReceived, deadlineTs }
+              return {
+                totalContributed: Number(member.totalContributed),
+                status: group.status,
+                receivedAmount,
+                payoutsReceived,
+                deadlineTs,
+                contributionAmount: Number(group.contributionAmount)
+              }
             } catch (err) {
               logDebug(`Error processing group ${groupId}`, err)
-              return {
-                member: { totalContributed: 0, hasReceivedPayout: false, payoutRound: 0, status: null },
-                group: { contributionAmount: 0, currentRound: 0, status: "Completed" },
-                receivedAmount: 0,
-                payoutsReceived: 0,
-                deadlineTs: null,
-              }
+              return null
             }
           })
         )
 
+        const validResults = groupResults.filter((r): r is NonNullable<typeof r> => r !== null)
+
         let totalContributedStroops = 0
         let totalReceivedStroops = 0
-        let activeGroups = 0
+        let activeGroupsCount = 0
         let payoutsReceivedCount = 0
         let nextDeadline: number | null = null
         let nextAmountStroops = 0
 
-        for (const result of groupResults) {
-          totalContributedStroops += result.member.totalContributed
+        for (const result of validResults) {
+          totalContributedStroops += result.totalContributed
           totalReceivedStroops += result.receivedAmount
           payoutsReceivedCount += result.payoutsReceived
 
-          if (result.group.status !== "Completed") {
-            activeGroups += 1
+          if (result.status !== "Completed") {
+            activeGroupsCount += 1
           }
 
           if (result.deadlineTs !== null) {
             if (nextDeadline === null || result.deadlineTs < nextDeadline) {
               nextDeadline = result.deadlineTs
-              nextAmountStroops = result.group.contributionAmount
+              nextAmountStroops = result.contributionAmount
             }
           }
         }
 
-        if (!active) return
-
         const finalStats = {
           totalContributed: troopsToXLM(totalContributedStroops),
           totalReceived: troopsToXLM(totalReceivedStroops),
-          activeGroups,
-          groupCount: groupIds.length,
+          activeGroups: activeGroupsCount,
+          groupCount: totalGroupIds.length,
           payoutsReceived: payoutsReceivedCount,
           nextPaymentDeadline: nextDeadline,
           nextPaymentAmount: troopsToXLM(nextAmountStroops),
         }
 
+        // Validate data mismatch (Issue Requirement #4)
+        if (totalGroupIds.length > 0 && finalStats.groupCount === 0) {
+          console.error("Data mismatch: groups found but stats show zero")
+        }
+
         logDebug("Final stats", finalStats)
 
+        if (!active) return
         setStats(finalStats)
         setStatus("ready")
       } catch (err) {
         logDebug("fetchStats failed", err)
         if (!active) return
         setErrorMessage(err instanceof Error ? err.message : "Unknown error")
-        // Keep stats as-is or reset to defaults
         setStats({ ...DEFAULT_STATS })
         setStatus("error")
       }
@@ -337,7 +263,7 @@ export function DashboardStats() {
     return () => {
       active = false
     }
-  }, [walletAddress])
+  }, [publicKey, registry, savings])
 
   const statsItems = useMemo(() => {
     const nextPaymentDate =
