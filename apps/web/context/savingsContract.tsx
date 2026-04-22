@@ -9,7 +9,7 @@ import {
   TransactionBuilder,
   BASE_FEE,
   rpc,
-  Account, 
+  Account,
 } from '@stellar/stellar-sdk'
 import { useWallet } from '@/hooks/use-wallet'
 import { SOROBAN_NETWORK_PASSPHRASE, SOROBAN_RPC_URL } from '@/config/walletConfig'
@@ -19,50 +19,72 @@ export type MemberStatus = 'Active' | 'PaidCurrentRound' | 'Overdue' | 'Defaulte
 export type Frequency = 'Weekly' | 'BiWeekly' | 'Monthly'
 
 export interface Group {
-  groupId: string; admin: string; name: string; contributionAmount: bigint;
-  totalMembers: number; frequency: Frequency; startTimestamp: bigint;
-  status: GroupStatus; isPublic: boolean; currentRound: number; platformFeePercent: number;
+  groupId: string
+  admin: string
+  name: string
+  contributionAmount: bigint
+  totalMembers: number
+  frequency: Frequency
+  startTimestamp: bigint
+  status: GroupStatus
+  isPublic: boolean
+  currentRound: number
+  platformFeePercent: number
 }
 
 export interface Member {
-  address: string; joinTimestamp: bigint; joinOrder: number; status: MemberStatus;
-  totalContributed: bigint; hasReceivedPayout: boolean; payoutRound: number;
+  address: string
+  joinTimestamp: bigint
+  joinOrder: number
+  status: MemberStatus
+  totalContributed: bigint
+  hasReceivedPayout: boolean
+  payoutRound: number
 }
 
-export interface Contribution { member: string; amount: bigint; round: number; timestamp: bigint; }
-export interface Payout { recipient: string; amount: bigint; round: number; timestamp: bigint; }
+export interface Contribution {
+  member: string
+  amount: bigint
+  round: number
+  timestamp: bigint
+}
+
+export interface Payout {
+  recipient: string
+  amount: bigint
+  round: number
+  timestamp: bigint
+}
 
 export interface CreateGroupParams {
-  groupId: string; name: string; contributionAmount: bigint;
-  totalMembers: number; frequency: Frequency; startTimestamp: bigint; isPublic: boolean;
+  groupId: string
+  name: string
+  contributionAmount: bigint
+  totalMembers: number
+  frequency: Frequency
+  startTimestamp: bigint
+  isPublic: boolean
 }
 
 export interface SavingsContractContextValue {
-  // Single group methods (existing signature - for backward compatibility)
-  getGroup: () => Promise<Group>
-  getMember: (address: string) => Promise<Member>
-  getMembers: () => Promise<Member[]>
-  getRoundContributions: (round: number) => Promise<Contribution[]>
-  getRoundPayouts: (round: number) => Promise<Payout[]>
-  getRoundDeadline: (round: number) => Promise<bigint>
-  
-  // Multi-group methods (new - for MyGroups integration)
+  // Multi-group methods (canonical API)
   getGroupById: (groupId: string) => Promise<Group>
   getMemberByGroup: (address: string, groupId: string) => Promise<Member>
   getMembersByGroup: (groupId: string) => Promise<Member[]>
   getRoundContributionsByGroup: (groupId: string, round: number) => Promise<Contribution[]>
   getRoundPayoutsByGroup: (groupId: string, round: number) => Promise<Payout[]>
   getRoundDeadlineByGroup: (groupId: string, round: number) => Promise<bigint>
-  
+
   // User and discovery methods
   getUserGroups: (address: string) => Promise<string[]>
   getAllGroups: () => Promise<string[]>
-  
+
   // Transaction methods
   createGroup: (params: CreateGroupParams) => Promise<rpc.Api.GetSuccessfulTransactionResponse>
-  joinGroup: (groupId?: string) => Promise<rpc.Api.GetSuccessfulTransactionResponse>
-  contribute: (amount: bigint, groupId?: string) => Promise<rpc.Api.GetSuccessfulTransactionResponse>
-  
+  joinGroup: (groupId: string) => Promise<rpc.Api.GetSuccessfulTransactionResponse>
+  // NOTE: contribute does NOT take an amount — the amount is fixed on-chain at group creation
+  contribute: (groupId: string) => Promise<rpc.Api.GetSuccessfulTransactionResponse>
+
   // Contract info
   contractId: string
   isReady: boolean
@@ -77,439 +99,315 @@ export function SavingsContractProvider({ children }: { children: React.ReactNod
   const [error, setError] = React.useState<string | null>(null)
 
   const isReady = !!contractId && !!SOROBAN_RPC_URL
-  
-  const server = React.useMemo(() => new rpc.Server(SOROBAN_RPC_URL, { allowHttp: true }), [])
 
-  const simulateCall = React.useCallback(async (method: string, ...args: xdr.ScVal[]): Promise<xdr.ScVal> => {
-    const source = wallet.publicKey || "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
-    const contract = new Contract(contractId)
-    
-    const sourceAccount = new Account(source, "0")
+  const server = React.useMemo(
+    () => new rpc.Server(SOROBAN_RPC_URL, { allowHttp: true }),
+    []
+  )
 
-    const tx = new TransactionBuilder(sourceAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: SOROBAN_NETWORK_PASSPHRASE,
-    })
-      .addOperation(contract.call(method, ...args))
-      .setTimeout(30)
-      .build()
+  const simulateCall = React.useCallback(
+    async (method: string, ...args: xdr.ScVal[]): Promise<xdr.ScVal> => {
+      const source =
+        wallet.publicKey || 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF'
+      const contract = new Contract(contractId)
+      const sourceAccount = new Account(source, '0')
 
-    const result = await server.simulateTransaction(tx)
-    if (rpc.Api.isSimulationError(result)) throw new Error(result.error)
-    if (!result.result) throw new Error('Simulation result empty')
-    return result.result.retval
-  }, [wallet.publicKey, contractId, server])
+      const tx = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: SOROBAN_NETWORK_PASSPHRASE,
+      })
+        .addOperation(contract.call(method, ...args))
+        .setTimeout(30)
+        .build()
 
-  const sendTransaction = React.useCallback(async (method: string, ...args: xdr.ScVal[]) => {
-    if (!wallet.publicKey) throw new Error('Wallet not connected');
-    
-    const contract = new Contract(contractId);
-    const account = await server.getAccount(wallet.publicKey);
+      const result = await server.simulateTransaction(tx)
+      if (rpc.Api.isSimulationError(result)) throw new Error(result.error)
+      if (!result.result) throw new Error('Simulation result empty')
+      return result.result.retval
+    },
+    [wallet.publicKey, contractId, server]
+  )
 
-    let tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: SOROBAN_NETWORK_PASSPHRASE,
-    })
-      .addOperation(contract.call(method, ...args))
-      .setTimeout(30)
-      .build();
+  const sendTransaction = React.useCallback(
+    async (method: string, ...args: xdr.ScVal[]) => {
+      if (!wallet.publicKey) throw new Error('Wallet not connected')
 
-    tx = await server.prepareTransaction(tx);
-    const signedXdr = await wallet.signTransaction(tx.toXDR());
-    
-    const transactionToSubmit = TransactionBuilder.fromXDR(signedXdr, SOROBAN_NETWORK_PASSPHRASE);
-    const response = await server.sendTransaction(transactionToSubmit);
+      const contract = new Contract(contractId)
+      const account = await server.getAccount(wallet.publicKey)
 
-    if (response.status !== 'PENDING') {
-      throw new Error(`Transaction failed: ${response.status}`);
-    }
+      let tx = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: SOROBAN_NETWORK_PASSPHRASE,
+      })
+        .addOperation(contract.call(method, ...args))
+        .setTimeout(30)
+        .build()
 
-    // Wait for confirmation
-    let getResponse = await server.getTransaction(response.hash);
-    
-    while (getResponse.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      getResponse = await server.getTransaction(response.hash);
-    }
+      tx = await server.prepareTransaction(tx)
+      const signedXdr = await wallet.signTransaction(tx.toXDR())
 
-    if (getResponse.status === rpc.Api.GetTransactionStatus.SUCCESS) {
-      return getResponse;
-    }
+      const transactionToSubmit = TransactionBuilder.fromXDR(
+        signedXdr,
+        SOROBAN_NETWORK_PASSPHRASE
+      )
+      const response = await server.sendTransaction(transactionToSubmit)
 
-    console.error('Transaction failed with response:', getResponse);
-    
-    // Try to extract detailed error from the response
-    let errorMessage = `Transaction failed: ${getResponse.status}`;
-    
-    if ('resultXdr' in getResponse) {
-      try {
-        console.error('Transaction result:', getResponse.resultXdr);
-        errorMessage += `\nResult: ${JSON.stringify(getResponse.resultXdr, null, 2)}`;
-      } catch (e) {
-        console.error('Could not parse result XDR:', e);
+      if (response.status !== 'PENDING') {
+        throw new Error(`Transaction failed: ${response.status}`)
       }
-    }
 
-    throw new Error(errorMessage);
-  }, [wallet, contractId, server])
+      let getResponse = await server.getTransaction(response.hash)
+      while (getResponse.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        getResponse = await server.getTransaction(response.hash)
+      }
 
-  // ===== EXISTING SINGLE-GROUP METHODS (for backward compatibility) =====
-  
-  const getGroup = React.useCallback(async (): Promise<Group> => {
-    try {
-      const res = await simulateCall('get_group')
-      const n = scValToNative(res)
-      return { 
-        ...n, 
-        contributionAmount: BigInt(n.contribution_amount || n.contributionAmount || 0), 
-        startTimestamp: BigInt(n.start_timestamp || n.startTimestamp || 0),
-        currentRound: n.current_round ?? n.currentRound ?? 0,
-        totalMembers: n.total_members ?? n.totalMembers ?? 0
+      if (getResponse.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+        return getResponse
       }
-    } catch (err: any) {
-      // Try with empty args if the contract expects no parameters
-      if (err.message?.includes('missing argument')) {
-        // Contract might expect a groupId parameter - this indicates we need to use multi-group version
-        throw new Error('Contract requires groupId parameter. Use getGroupById instead.')
-      }
-      throw err
-    }
-  }, [simulateCall])
 
-  const getMember = React.useCallback(async (address: string): Promise<Member> => {
-    try {
-      const res = await simulateCall('get_member', nativeToScVal(address, { type: 'address' }))
-      const n = scValToNative(res)
-      return { 
-        ...n, 
-        joinTimestamp: BigInt(n.join_timestamp || n.joinTimestamp || 0), 
-        totalContributed: BigInt(n.total_contributed || n.totalContributed || 0),
-        joinOrder: n.join_order ?? n.joinOrder ?? 0
+      let errorMessage = `Transaction failed: ${getResponse.status}`
+      if ('resultXdr' in getResponse) {
+        try {
+          errorMessage += `\nResult: ${JSON.stringify(getResponse.resultXdr, null, 2)}`
+        } catch (e) {
+          console.error('Could not parse result XDR:', e)
+        }
       }
-    } catch (err: any) {
-      if (err.message?.includes('missing argument')) {
-        throw new Error('Contract requires groupId parameter. Use getMemberByGroup instead.')
-      }
-      throw err
-    }
-  }, [simulateCall])
 
-  const getMembers = React.useCallback(async () => {
-    try {
-      const res = await simulateCall('get_members')
-      const addrs = scValToNative(res) as string[]
-      return Promise.all(addrs.map(a => getMember(a)))
-    } catch (err: any) {
-      if (err.message?.includes('missing argument')) {
-        throw new Error('Contract requires groupId parameter. Use getMembersByGroup instead.')
-      }
-      throw err
-    }
-  }, [simulateCall, getMember])
+      throw new Error(errorMessage)
+    },
+    [wallet, contractId, server]
+  )
 
-  const getRoundContributions = React.useCallback(async (round: number) => {
-    try {
-      const res = await simulateCall('get_round_contributions', nativeToScVal(round, { type: 'u32' }))
-      return (scValToNative(res) as any[]).map(c => ({ 
-        ...c, 
-        amount: BigInt(c.amount || 0), 
-        timestamp: BigInt(c.timestamp || 0) 
-      }))
-    } catch (err: any) {
-      if (err.message?.includes('missing argument')) {
-        throw new Error('Contract requires groupId parameter. Use getRoundContributionsByGroup instead.')
-      }
-      throw err
-    }
-  }, [simulateCall])
+  // ===== READ METHODS =====
 
-  const getRoundPayouts = React.useCallback(async (round: number) => {
-    try {
-      const res = await simulateCall('get_round_payouts', nativeToScVal(round, { type: 'u32' }))
-      return (scValToNative(res) as any[]).map(p => ({ 
-        ...p, 
-        amount: BigInt(p.amount || 0), 
-        timestamp: BigInt(p.timestamp || 0) 
-      }))
-    } catch (err: any) {
-      if (err.message?.includes('missing argument')) {
-        throw new Error('Contract requires groupId parameter. Use getRoundPayoutsByGroup instead.')
-      }
-      throw err
-    }
-  }, [simulateCall])
-
-  const getRoundDeadline = React.useCallback(async (round: number) => {
-    try {
-      const res = await simulateCall('get_round_deadline', nativeToScVal(round, { type: 'u32' }))
-      return BigInt(scValToNative(res))
-    } catch (err: any) {
-      if (err.message?.includes('missing argument')) {
-        throw new Error('Contract requires groupId parameter. Use getRoundDeadlineByGroup instead.')
-      }
-      throw err
-    }
-  }, [simulateCall])
-
-  // ===== NEW MULTI-GROUP METHODS (for MyGroups integration) =====
-  
-  const getGroupById = React.useCallback(async (groupId: string): Promise<Group> => {
-    try {
-      // Try with groupId parameter first
+  const getGroupById = React.useCallback(
+    async (groupId: string): Promise<Group> => {
       const res = await simulateCall('get_group', nativeToScVal(groupId, { type: 'string' }))
       const n = scValToNative(res)
-      return { 
-        ...n, 
-        contributionAmount: BigInt(n.contribution_amount || n.contributionAmount || 0), 
-        startTimestamp: BigInt(n.start_timestamp || n.startTimestamp || 0),
+      return {
+        groupId: n.group_id ?? n.groupId,
+        admin: n.admin,
+        name: n.name,
+        contributionAmount: BigInt(n.contribution_amount ?? n.contributionAmount ?? 0),
+        totalMembers: n.total_members ?? n.totalMembers ?? 0,
+        frequency: n.frequency,
+        startTimestamp: BigInt(n.start_timestamp ?? n.startTimestamp ?? 0),
+        status: n.status,
+        isPublic: n.is_public ?? n.isPublic ?? false,
         currentRound: n.current_round ?? n.currentRound ?? 0,
-        totalMembers: n.total_members ?? n.totalMembers ?? 0
+        platformFeePercent: n.platform_fee_percent ?? n.platformFeePercent ?? 0,
       }
-    } catch (err: any) {
-      // If that fails, try without parameters (fallback to single-group mode)
-      if (err.message?.includes('wrong number of arguments')) {
-        console.warn('Contract does not accept groupId parameter, using single-group mode')
-        return await getGroup()
-      }
-      throw err
-    }
-  }, [simulateCall, getGroup])
+    },
+    [simulateCall]
+  )
 
-  const getMemberByGroup = React.useCallback(async (address: string, groupId: string): Promise<Member> => {
-    try {
-      // Try with both parameters
-      const res = await simulateCall('get_member', 
+  const getMemberByGroup = React.useCallback(
+    async (address: string, groupId: string): Promise<Member> => {
+      const res = await simulateCall(
+        'get_member',
         nativeToScVal(address, { type: 'address' }),
         nativeToScVal(groupId, { type: 'string' })
       )
       const n = scValToNative(res)
-      return { 
-        ...n, 
-        joinTimestamp: BigInt(n.join_timestamp || n.joinTimestamp || 0), 
-        totalContributed: BigInt(n.total_contributed || n.totalContributed || 0),
-        joinOrder: n.join_order ?? n.joinOrder ?? 0
+      return {
+        address: n.address,
+        joinTimestamp: BigInt(n.join_timestamp ?? n.joinTimestamp ?? 0),
+        joinOrder: n.join_order ?? n.joinOrder ?? 0,
+        status: n.status,
+        totalContributed: BigInt(n.total_contributed ?? n.totalContributed ?? 0),
+        hasReceivedPayout: n.has_received_payout ?? n.hasReceivedPayout ?? false,
+        payoutRound: n.payout_round ?? n.payoutRound ?? 0,
       }
-    } catch (err: any) {
-      // Fallback to single-parameter version
-      if (err.message?.includes('wrong number of arguments')) {
-        console.warn('Contract does not accept groupId parameter, using single-group mode')
-        return await getMember(address)
-      }
-      throw err
-    }
-  }, [simulateCall, getMember])
+    },
+    [simulateCall]
+  )
 
-  const getMembersByGroup = React.useCallback(async (groupId: string) => {
-    try {
-      const res = await simulateCall('get_members', nativeToScVal(groupId, { type: 'string' }))
+  const getMembersByGroup = React.useCallback(
+    async (groupId: string): Promise<Member[]> => {
+      const res = await simulateCall(
+        'get_members',
+        nativeToScVal(groupId, { type: 'string' })
+      )
       const addrs = scValToNative(res) as string[]
-      return Promise.all(addrs.map(a => getMemberByGroup(a, groupId)))
-    } catch (err: any) {
-      // Fallback to parameterless version
-      if (err.message?.includes('wrong number of arguments')) {
-        console.warn('Contract does not accept groupId parameter, using single-group mode')
-        return await getMembers()
-      }
-      throw err
-    }
-  }, [simulateCall, getMemberByGroup])
+      return Promise.all(addrs.map((a) => getMemberByGroup(a, groupId)))
+    },
+    [simulateCall, getMemberByGroup]
+  )
 
-  const getRoundContributionsByGroup = React.useCallback(async (groupId: string, round: number) => {
-    try {
-      const res = await simulateCall('get_round_contributions', 
+  const getRoundContributionsByGroup = React.useCallback(
+    async (groupId: string, round: number): Promise<Contribution[]> => {
+      const res = await simulateCall(
+        'get_round_contributions',
         nativeToScVal(groupId, { type: 'string' }),
         nativeToScVal(round, { type: 'u32' })
       )
-      return (scValToNative(res) as any[]).map(c => ({ 
-        ...c, 
-        amount: BigInt(c.amount || 0), 
-        timestamp: BigInt(c.timestamp || 0) 
+      return (scValToNative(res) as any[]).map((c) => ({
+        member: c.member,
+        amount: BigInt(c.amount ?? 0),
+        round: c.round,
+        timestamp: BigInt(c.timestamp ?? 0),
       }))
-    } catch (err: any) {
-      if (err.message?.includes('wrong number of arguments')) {
-        console.warn('Contract does not accept groupId parameter, using single-group mode')
-        return await getRoundContributions(round)
-      }
-      throw err
-    }
-  }, [simulateCall, getRoundContributions])
+    },
+    [simulateCall]
+  )
 
-  const getRoundPayoutsByGroup = React.useCallback(async (groupId: string, round: number) => {
-    try {
-      const res = await simulateCall('get_round_payouts', 
+  const getRoundPayoutsByGroup = React.useCallback(
+    async (groupId: string, round: number): Promise<Payout[]> => {
+      const res = await simulateCall(
+        'get_round_payouts',
         nativeToScVal(groupId, { type: 'string' }),
         nativeToScVal(round, { type: 'u32' })
       )
-      return (scValToNative(res) as any[]).map(p => ({ 
-        ...p, 
-        amount: BigInt(p.amount || 0), 
-        timestamp: BigInt(p.timestamp || 0) 
+      return (scValToNative(res) as any[]).map((p) => ({
+        recipient: p.recipient,
+        amount: BigInt(p.amount ?? 0),
+        round: p.round,
+        timestamp: BigInt(p.timestamp ?? 0),
       }))
-    } catch (err: any) {
-      if (err.message?.includes('wrong number of arguments')) {
-        console.warn('Contract does not accept groupId parameter, using single-group mode')
-        return await getRoundPayouts(round)
-      }
-      throw err
-    }
-  }, [simulateCall, getRoundPayouts])
+    },
+    [simulateCall]
+  )
 
-  const getRoundDeadlineByGroup = React.useCallback(async (groupId: string, round: number) => {
-    try {
-      const res = await simulateCall('get_round_deadline', 
+  const getRoundDeadlineByGroup = React.useCallback(
+    async (groupId: string, round: number): Promise<bigint> => {
+      const res = await simulateCall(
+        'get_round_deadline',
         nativeToScVal(groupId, { type: 'string' }),
         nativeToScVal(round, { type: 'u32' })
       )
       return BigInt(scValToNative(res))
-    } catch (err: any) {
-      if (err.message?.includes('wrong number of arguments')) {
-        console.warn('Contract does not accept groupId parameter, using single-group mode')
-        return await getRoundDeadline(round)
-      }
-      throw err
-    }
-  }, [simulateCall, getRoundDeadline])
+    },
+    [simulateCall]
+  )
 
-  // ===== USER AND DISCOVERY METHODS =====
-  
-  const getUserGroups = React.useCallback(async (address: string) => {
-    try {
-      const res = await simulateCall('get_user_groups', nativeToScVal(address, { type: 'address' }))
-      return scValToNative(res) as string[]
-    } catch (err: any) {
-      // If function doesn't exist in deployed contract, return empty array
-      if (err.message?.includes('non-existent contract function')) {
-        console.warn('get_user_groups not available in deployed contract')
-        return []
+  const getUserGroups = React.useCallback(
+    async (address: string): Promise<string[]> => {
+      try {
+        const res = await simulateCall(
+          'get_user_groups',
+          nativeToScVal(address, { type: 'address' })
+        )
+        return scValToNative(res) as string[]
+      } catch (err: any) {
+        if (err.message?.includes('non-existent contract function')) return []
+        throw err
       }
-      throw err
-    }
-  }, [simulateCall])
+    },
+    [simulateCall]
+  )
 
-  const getAllGroups = React.useCallback(async () => {
+  const getAllGroups = React.useCallback(async (): Promise<string[]> => {
     try {
       const res = await simulateCall('get_all_groups')
       return scValToNative(res) as string[]
     } catch (err: any) {
-      // If function doesn't exist in deployed contract, return empty array
-      if (err.message?.includes('non-existent contract function')) {
-        console.warn('get_all_groups not available in deployed contract')
-        return []
-      }
+      if (err.message?.includes('non-existent contract function')) return []
       throw err
     }
   }, [simulateCall])
 
-  // ===== TRANSACTION METHODS =====
-  
-  const createGroup = React.useCallback(async (p: CreateGroupParams) => {
-    if (!wallet.publicKey) throw new Error('Wallet not connected')
-    
-    // Double-check timestamp is in the future
-    const currentTime = Math.floor(Date.now() / 1000)
-    if (Number(p.startTimestamp) <= currentTime) {
-      throw new Error(`Start timestamp must be in the future. Current: ${currentTime}, Provided: ${p.startTimestamp}`)
-    }
-    
-    const frequencyScVal = xdr.ScVal.scvVec([
-      xdr.ScVal.scvSymbol(p.frequency) // The variant name
-    ])
-    
-    console.log('Creating group with params:', {
-      admin: wallet.publicKey,
-      groupId: p.groupId,
-      name: p.name,
-      contributionAmount: p.contributionAmount.toString(),
-      totalMembers: p.totalMembers,
-      frequency: p.frequency,
-      startTimestamp: p.startTimestamp.toString(),
-      isPublic: p.isPublic,
-      currentTime
-    })
-    
-    return await sendTransaction('create_group', 
-      nativeToScVal(wallet.publicKey, { type: 'address' }),
-      nativeToScVal(p.groupId, { type: 'string' }),
-      nativeToScVal(p.name, { type: 'string' }),
-      nativeToScVal(p.contributionAmount, { type: 'i128' }),
-      nativeToScVal(p.totalMembers, { type: 'u32' }),
-      frequencyScVal,
-      nativeToScVal(p.startTimestamp, { type: 'u64' }),
-      nativeToScVal(p.isPublic, { type: 'bool' })
-    )
-  }, [wallet.publicKey, sendTransaction])
+  // ===== WRITE METHODS =====
 
-  const joinGroup = React.useCallback(async (groupId?: string) => {
-    if (!wallet.publicKey) throw new Error('Wallet not connected')
-    
-    if (groupId) {
-      // Try with groupId parameter
-      return await sendTransaction('join_group', 
+  const createGroup = React.useCallback(
+    async (p: CreateGroupParams) => {
+      if (!wallet.publicKey) throw new Error('Wallet not connected')
+
+      const currentTime = Math.floor(Date.now() / 1000)
+      if (Number(p.startTimestamp) <= currentTime) {
+        throw new Error(
+          `Start timestamp must be in the future. Current: ${currentTime}, Provided: ${p.startTimestamp}`
+        )
+      }
+
+      const frequencyScVal = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(p.frequency)])
+
+      return await sendTransaction(
+        'create_group',
+        nativeToScVal(wallet.publicKey, { type: 'address' }),
+        nativeToScVal(p.groupId, { type: 'string' }),
+        nativeToScVal(p.name, { type: 'string' }),
+        nativeToScVal(p.contributionAmount, { type: 'i128' }),
+        nativeToScVal(p.totalMembers, { type: 'u32' }),
+        frequencyScVal,
+        nativeToScVal(p.startTimestamp, { type: 'u64' }),
+        nativeToScVal(p.isPublic, { type: 'bool' })
+      )
+    },
+    [wallet.publicKey, sendTransaction]
+  )
+
+  const joinGroup = React.useCallback(
+    async (groupId: string) => {
+      if (!wallet.publicKey) throw new Error('Wallet not connected')
+
+      return await sendTransaction(
+        'join_group',
         nativeToScVal(wallet.publicKey, { type: 'address' }),
         nativeToScVal(groupId, { type: 'string' })
       )
-    } else {
-      // Try without groupId (single-group mode)
-      return await sendTransaction('join_group', nativeToScVal(wallet.publicKey, { type: 'address' }))
-    }
-  }, [wallet.publicKey, sendTransaction])
+    },
+    [wallet.publicKey, sendTransaction]
+  )
 
-  const contribute = React.useCallback(async (amount: bigint, groupId?: string) => {
-    if (!wallet.publicKey) throw new Error('Wallet not connected')
-    
-    if (groupId) {
-      // Try with groupId parameter
-      return await sendTransaction('contribute', 
+  /**
+   * Contribute to the current round of a group.
+   * The amount is fixed on-chain — do NOT pass an amount here.
+   */
+  const contribute = React.useCallback(
+    async (groupId: string) => {
+      if (!wallet.publicKey) throw new Error('Wallet not connected')
+
+      return await sendTransaction(
+        'contribute',
         nativeToScVal(wallet.publicKey, { type: 'address' }),
-        nativeToScVal(groupId, { type: 'string' }),
-        nativeToScVal(amount, { type: 'i128' })
+        nativeToScVal(groupId, { type: 'string' })
       )
-    } else {
-      // Try without groupId (single-group mode)
-      return await sendTransaction('contribute', 
-        nativeToScVal(wallet.publicKey, { type: 'address' }),
-        nativeToScVal(amount, { type: 'i128' })
-      )
-    }
-  }, [wallet.publicKey, sendTransaction])
+    },
+    [wallet.publicKey, sendTransaction]
+  )
 
-  const value = React.useMemo(() => ({
-    // Existing single-group methods
-    getGroup, getMember, getMembers, getRoundContributions, getRoundPayouts,
-    getRoundDeadline,
-    
-    // New multi-group methods
-    getGroupById, getMemberByGroup, getMembersByGroup, 
-    getRoundContributionsByGroup, getRoundPayoutsByGroup, getRoundDeadlineByGroup,
-    
-    // User and discovery methods
-    getUserGroups, getAllGroups,
-    
-    // Transaction methods
-    createGroup, joinGroup, contribute,
-    
-    // Contract info
-    contractId, isReady, error
-  }), [
-    // Existing single-group methods
-    getGroup, getMember, getMembers, getRoundContributions, getRoundPayouts,
-    getRoundDeadline,
-    
-    // New multi-group methods
-    getGroupById, getMemberByGroup, getMembersByGroup, 
-    getRoundContributionsByGroup, getRoundPayoutsByGroup, getRoundDeadlineByGroup,
-    
-    // User and discovery methods
-    getUserGroups, getAllGroups,
-    
-    // Transaction methods
-    createGroup, joinGroup, contribute,
-    
-    // Contract info
-    contractId, isReady, error
-  ])
+  const value = React.useMemo(
+    () => ({
+      getGroupById,
+      getMemberByGroup,
+      getMembersByGroup,
+      getRoundContributionsByGroup,
+      getRoundPayoutsByGroup,
+      getRoundDeadlineByGroup,
+      getUserGroups,
+      getAllGroups,
+      createGroup,
+      joinGroup,
+      contribute,
+      contractId,
+      isReady,
+      error,
+    }),
+    [
+      getGroupById,
+      getMemberByGroup,
+      getMembersByGroup,
+      getRoundContributionsByGroup,
+      getRoundPayoutsByGroup,
+      getRoundDeadlineByGroup,
+      getUserGroups,
+      getAllGroups,
+      createGroup,
+      joinGroup,
+      contribute,
+      contractId,
+      isReady,
+      error,
+    ]
+  )
 
-  return <SavingsContractContext.Provider value={value}>{children}</SavingsContractContext.Provider>
+  return (
+    <SavingsContractContext.Provider value={value}>
+      {children}
+    </SavingsContractContext.Provider>
+  )
 }
 
 export const useSavingsContract = () => {
