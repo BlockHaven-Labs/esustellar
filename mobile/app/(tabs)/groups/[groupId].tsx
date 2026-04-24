@@ -70,7 +70,7 @@ export default function GroupDetailPage() {
   const router = useRouter();
   const params = useLocalSearchParams<{ groupId?: string }>();
   const groupId = params.groupId ?? '';
-  const group = MOCK_GROUPS.find((item) => item.id === groupId) || MOCK_GROUPS[0];
+  const group = MOCK_GROUPS.find((item) => item.id === groupId) || null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -82,19 +82,30 @@ export default function GroupDetailPage() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <GroupDetailHeader group={group} />
+        {group ? (
+          <>
+            <GroupDetailHeader group={group} />
 
-        <View style={styles.section}>
-          <Text style={styles.sectionHeading}>Overview</Text>
-          <Text style={styles.sectionText}>
-            This is the group detail screen for “{group.name}”. The group has a contribution amount of {group.contribution} paid {group.frequency.toLowerCase()}, and currently includes {group.memberCount} members.
-          </Text>
-        </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionHeading}>Overview</Text>
+              <Text style={styles.sectionText}>
+                This is the group detail screen for “{group.name}”. The group has a contribution amount of {group.contribution} paid {group.frequency.toLowerCase()}, and currently includes {group.memberCount} members.
+              </Text>
+            </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionHeading}>Group ID</Text>
-          <Text style={styles.sectionText}>{groupId || 'Unknown'}</Text>
-        </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionHeading}>Group ID</Text>
+              <Text style={styles.sectionText}>{groupId}</Text>
+            </View>
+          </>
+        ) : (
+          <View style={styles.section}>
+            <Text style={styles.sectionHeading}>Group not found</Text>
+            <Text style={styles.sectionText}>
+              No mock group was found for the requested ID. Use a valid group link to see details.
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
