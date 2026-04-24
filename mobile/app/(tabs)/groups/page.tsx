@@ -81,7 +81,38 @@ function getFilteredGroups(filter: FilterKey) {
 export default function GroupsPage() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('All');
+  const [refreshing, setRefreshing] = useState(false);
   const filteredGroups = getFilteredGroups(activeFilter);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    const timeout = setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
+
+    return () => clearTimeout(timeout);
+  }, []);
+
+  const renderGroup = ({ item }: { item: Group }) => (
+    <Pressable
+      key={item.id}
+      onPress={() => router.push(`/groups/${item.id}`)}
+      style={styles.groupCard}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.groupName}>{item.name}</Text>
+        <Badge label={item.status} variant={STATUS_VARIANT_MAP[item.status]} />
+      </View>
+
+      <View style={styles.cardRow}>
+        <View>
+          <Text style={styles.cardAmount}>{item.contribution}</Text>
+          <Text style={styles.cardMeta}>{item.frequency}</Text>
+        </View>
+        <Text style={styles.cardMeta}>{item.memberCount} members</Text>
+      </View>
+    </Pressable>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -108,35 +139,25 @@ export default function GroupsPage() {
         })}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {filteredGroups.map((group) => (
-          <Pressable
-            key={group.id}
-            onPress={() => router.push(`/groups/${group.id}`)}
-            style={styles.groupCard}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.groupName}>{group.name}</Text>
-              <Badge label={group.status} variant={STATUS_VARIANT_MAP[group.status]} />
-            </View>
-
-            <View style={styles.cardRow}>
-              <View>
-                <Text style={styles.cardAmount}>{group.contribution}</Text>
-                <Text style={styles.cardMeta}>{group.frequency}</Text>
-              </View>
-              <Text style={styles.cardMeta}>{group.memberCount} members</Text>
-            </View>
-          </Pressable>
-        ))}
-
-        {filteredGroups.length === 0 && (
+      <FlatList
+        data={filteredGroups}
+        keyExtractor={(item) => item.id}
+        renderItem={renderGroup}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#0F172A"
+          />
+        }
+        ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No groups to show</Text>
             <Text style={styles.emptyMessage}>Try another filter to see matching groups.</Text>
           </View>
-        )}
-      </ScrollView>
+        }
+      />
     </SafeAreaView>
   );
 }
