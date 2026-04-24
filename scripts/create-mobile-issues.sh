@@ -7,19 +7,37 @@
 #
 # Requirements:
 #   - A GitHub Personal Access Token with `repo` scope
-#   - curl and jq installed
+#   - curl and python3 installed
 # ============================================================
 
 set -euo pipefail
 
 REPO="BlockHaven-Labs/esustellar"
 API="https://api.github.com/repos/$REPO/issues"
-TOKEN="${GITHUB_TOKEN:?Please set the GITHUB_TOKEN environment variable}"
+TOKEN="${GITHUB_TOKEN:?Please set GITHUB_TOKEN to a GitHub PAT with 'repo' scope}"
+
+# Validate the token before creating any issues
+_check=$(curl -s -o /dev/null -w "%{http_code}" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/user)
+if [[ "$_check" != "200" ]]; then
+  echo "❌  Token validation failed (HTTP $_check)."
+  echo "    Make sure GITHUB_TOKEN is a valid PAT with 'repo' scope."
+  echo "    Verify it with: curl -s -H \"Authorization: Bearer \$GITHUB_TOKEN\" https://api.github.com/user | grep login"
+  exit 1
+fi
 
 create_issue() {
   local title="$1"
   local body="$2"
   local labels_json="$3"   # e.g. '["mobile","good first issue"]'
+
+  local payload
+  payload=$(python3 -c "
+import json, sys
+print(json.dumps({'title': sys.argv[1], 'body': sys.argv[2], 'labels': json.loads(sys.argv[3])}))
+" "$title" "$body" "$labels_json")
 
   local response
   response=$(curl -s -w "\n%{http_code}" -X POST "$API" \
@@ -27,11 +45,7 @@ create_issue() {
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     -H "Content-Type: application/json" \
-    --data-binary "$(jq -cn \
-      --arg t "$title" \
-      --arg b "$body" \
-      --argjson l "$labels_json" \
-      '{title:$t,body:$b,labels:$l}')")
+    --data-binary "$payload")
 
   local http_code
   http_code=$(echo "$response" | tail -1)
@@ -40,11 +54,11 @@ create_issue() {
 
   if [[ "$http_code" == "201" ]]; then
     local num
-    num=$(echo "$body_resp" | jq -r '.number')
+    num=$(echo "$body_resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('number','?'))")
     echo "✅  #$num  $title"
   else
     echo "❌  HTTP $http_code — $title"
-    echo "    $(echo "$body_resp" | jq -r '.message // empty')"
+    echo "    $(echo "$body_resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('message',''))")"
   fi
 
   sleep 0.8   # stay well within GitHub's rate limit
