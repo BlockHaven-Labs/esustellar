@@ -36,7 +36,7 @@ create_issue() {
   local payload
   payload=$(node -e "
 const [,t,b,l]=process.argv;
-process.stdout.write(JSON.stringify({title:t,body:b,labels:JSON.parse(l)}));
+process.stdout.write(JSON.stringify({title:t,body:b,labels:JSON.parse(l)}).replace(/[^\x00-\x7F]/g,c=>'\\\\u'+c.charCodeAt(0).toString(16).padStart(4,'0')));
 " "$title" "$body" "$labels_json")
 
   local response
@@ -2241,7 +2241,3 @@ echo ""
 echo "======================================"
 echo "  ✅  All mobile issues created!"
 echo "======================================"
-SCRIPT_EOF
-
-echo "Script written successfully"
-wc -l /home/runner/work/esustellar/esustellar/scripts/create-mobile-issues.sh
