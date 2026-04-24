@@ -7,7 +7,7 @@
 #
 # Requirements:
 #   - A GitHub Personal Access Token with `repo` scope
-#   - curl and python3 installed
+#   - curl and node (Node.js) installed
 # ============================================================
 
 set -euo pipefail
@@ -34,9 +34,9 @@ create_issue() {
   local labels_json="$3"   # e.g. '["mobile","good first issue"]'
 
   local payload
-  payload=$(python3 -c "
-import json, sys
-print(json.dumps({'title': sys.argv[1], 'body': sys.argv[2], 'labels': json.loads(sys.argv[3])}))
+  payload=$(node -e "
+const [,,t,b,l]=process.argv;
+process.stdout.write(JSON.stringify({title:t,body:b,labels:JSON.parse(l)}));
 " "$title" "$body" "$labels_json")
 
   local response
@@ -54,11 +54,11 @@ print(json.dumps({'title': sys.argv[1], 'body': sys.argv[2], 'labels': json.load
 
   if [[ "$http_code" == "201" ]]; then
     local num
-    num=$(echo "$body_resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('number','?'))")
+    num=$(echo "$body_resp" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(String(JSON.parse(d).number||'?')))")
     echo "✅  #$num  $title"
   else
     echo "❌  HTTP $http_code — $title"
-    echo "    $(echo "$body_resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('message',''))")"
+    echo "    $(echo "$body_resp" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d).message||''))")"
   fi
 
   sleep 0.8   # stay well within GitHub's rate limit
