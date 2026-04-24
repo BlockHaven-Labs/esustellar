@@ -35,7 +35,7 @@ create_issue() {
 
   local payload
   payload=$(node -e "
-const [,,t,b,l]=process.argv;
+const [,t,b,l]=process.argv;
 process.stdout.write(JSON.stringify({title:t,body:b,labels:JSON.parse(l)}));
 " "$title" "$body" "$labels_json")
 
