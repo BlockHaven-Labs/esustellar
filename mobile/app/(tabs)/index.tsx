@@ -39,12 +39,10 @@ export default function HomeScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <HomeHeader />
-      {/* Balance placeholder */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Total Balance</Text>
         <Text style={styles.sectionValue}>— XLM</Text>
       </View>
-      {/* Quick actions placeholder */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Quick Actions</Text>
       </View>
