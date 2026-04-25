@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
 
 function getGreeting(): string {
@@ -14,6 +15,7 @@ function truncateAddress(address: string): string {
 }
 
 function HomeHeader() {
+  const router = useRouter();
   const wallet = useAuthStore((s) => s.wallet);
   const displayName = wallet ? truncateAddress(wallet.publicKey) : 'EsuStellar User';
 
@@ -26,7 +28,7 @@ function HomeHeader() {
       <TouchableOpacity
         accessibilityLabel="Notifications"
         accessibilityRole="button"
-        onPress={() => console.log('notifications')}
+        onPress={() => router.push('/notifications')}
         style={styles.bell}
       >
         <Text style={styles.bellIcon}>🔔</Text>
