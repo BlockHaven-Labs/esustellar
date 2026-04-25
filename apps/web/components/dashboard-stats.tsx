@@ -8,6 +8,7 @@ import { useWallet } from "@/hooks/use-wallet"
 import { useRegistryContract } from "@/context/registryContract"
 import { useSavingsContract } from "@/context/savingsContract"
 import { getDaysRemaining, timestampToDate, troopsToXLM, logDebug } from "@/lib/dashboardStats"
+import { formatDate as formatDateLocale, formatXLM as formatXLMLocale } from "@/lib/format"
 
 type DashboardStatsState = {
   totalContributed: number
@@ -54,13 +55,10 @@ const normalizeEnum = (value: unknown): string | null => {
 
 const normalizeAddress = (value: unknown): string | null => (typeof value === "string" ? value : null)
 
-const formatXLM = (amount: number): string =>
-  `${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`
+const formatXLM = (amount: number): string => formatXLMLocale(amount)
 
 const formatDate = (deadlineTs: number): string =>
-  new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
-    timestampToDate(deadlineTs)
-  )
+  formatDateLocale(timestampToDate(deadlineTs), { month: "short", day: "numeric" })
 
 export function DashboardStats() {
   const { publicKey, isConnected } = useWallet()
