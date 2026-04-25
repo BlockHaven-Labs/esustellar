@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
@@ -13,15 +13,16 @@ function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-function HomeHeader() {
+const HomeHeader = React.memo(() => {
   const { t } = useTranslation();
   const wallet = useAuthStore((s) => s.wallet);
-  const displayName = wallet ? truncateAddress(wallet.publicKey) : t('home.defaultUser');
+  const displayName = useMemo(() => wallet ? truncateAddress(wallet.publicKey) : t('home.defaultUser'), [wallet, t]);
+  const greeting = useMemo(() => getGreeting(new Date().getHours(), t), [t]);
 
   return (
     <View style={styles.header}>
       <View>
-        <Text style={styles.greeting}>{getGreeting(new Date().getHours(), t)}</Text>
+        <Text style={styles.greeting}>{greeting}</Text>
         <Text style={styles.address}>{displayName}</Text>
       </View>
       <TouchableOpacity
@@ -34,7 +35,7 @@ function HomeHeader() {
       </TouchableOpacity>
     </View>
   );
-}
+});
 
 export default function HomeScreen() {
   const { t } = useTranslation();

@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
-    "@react-native-async-storage/async-storage": "^1.20.0",
+    "@react-native-async-storage/async-storage": "^1.24.0",
     "expo": "~51.0.0",
     "expo-haptics": "~12.8.1",
     "expo-localization": "~15.0.0",
@@ -27,10 +27,10 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
-    "babel-plugin-module-resolver": "^5.0.0",
     "@testing-library/react-native": "^12.4.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "babel-plugin-module-resolver": "^5.0.0",
     "detox": "^20.18.0",
     "eslint": "^8.57.0",
     "eslint-config-expo": "^7.0.0",

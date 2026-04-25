@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -51,7 +51,7 @@ const padding: Record<Size, ViewStyle> = {
 
 const fontSize: Record<Size, number> = { sm: 13, md: 15, lg: 17 };
 
-export default function Button({
+const Button = React.memo<ButtonProps>(({
   variant = 'primary',
   size = 'md',
   onPress,
@@ -60,10 +60,10 @@ export default function Button({
   destructive,
   style,
   children,
-}: ButtonProps) {
+}) => {
   const isDisabled = disabled || loading;
 
-  const handlePress = () => {
+  const handlePress = useCallback(() => {
     if (!isDisabled && onPress) {
       if (destructive) {
         triggerHapticFeedback.heavy();
@@ -72,40 +72,46 @@ export default function Button({
       }
       onPress();
     }
-  };
+  }, [isDisabled, onPress, destructive]);
+
+  const buttonStyle = useMemo(() => [
+    styles.base,
+    padding[size],
+    {
+      backgroundColor: bg[variant],
+      borderColor: border[variant],
+      opacity: isDisabled ? 0.5 : 1,
+    },
+    style,
+  ], [size, variant, isDisabled, style]);
+
+  const textStyle = useMemo(() => ({
+    color: textColor[variant],
+    fontSize: fontSize[size],
+    fontWeight: '600' as const,
+  }), [variant, size]);
 
   return (
     <TouchableOpacity
       onPress={handlePress}
       disabled={isDisabled}
-      style={[
-        styles.base,
-        padding[size],
-        {
-          backgroundColor: bg[variant],
-          borderColor: border[variant],
-          opacity: isDisabled ? 0.5 : 1,
-        },
-        style,
-      ]}
+      style={buttonStyle}
       activeOpacity={0.8}
     >
       {loading ? (
         <ActivityIndicator color={textColor[variant]} size="small" />
       ) : (
-        <Text
-          style={{
-            color: textColor[variant],
-            fontSize: fontSize[size],
-            fontWeight: '600',
-          }}
-        >
+        <Text style={textStyle}>
           {children}
         </Text>
       )}
     </TouchableOpacity>
   );
-}
+});
+
+Button.displayName = 'Button';
+
+export default Button;
 
 const styles = StyleSheet.create({
   base: {

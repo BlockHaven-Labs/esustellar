@@ -11,6 +11,8 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
+    const startTime = Date.now();
+
     async function initialize() {
       await loadLanguage();
 
@@ -21,6 +23,11 @@ export default function RootLayout() {
         router.replace('/onboarding');
       }
       setChecking(false);
+
+      const endTime = Date.now();
+      const startupTime = endTime - startTime;
+      console.log(`App startup time: ${startupTime}ms`);
+      // Optionally send to analytics
     }
 
     initialize();

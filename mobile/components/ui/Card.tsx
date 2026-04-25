@@ -7,7 +7,7 @@ interface Props {
   onPress?: () => void;
 }
 
-export function Card({ children, style, onPress }: Props) {
+const Card = React.memo<Props>(({ children, style, onPress }) => {
   const content = <View style={[styles.card, style]}>{children}</View>;
 
   if (onPress) {
@@ -19,7 +19,11 @@ export function Card({ children, style, onPress }: Props) {
   }
 
   return content;
-}
+});
+
+Card.displayName = 'Card';
+
+export { Card };
 
 const styles = StyleSheet.create({
   card: {
