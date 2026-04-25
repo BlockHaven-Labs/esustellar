@@ -6,12 +6,13 @@ import {
   Text,
   Pressable,
   StyleSheet,
+  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Avatar } from '../../components/ui/Avatar';
-import { Button } from '../../components/ui/Button';
-import { DisconnectModal } from '../../components/wallet/DisconnectModal';
-import { useAuthStore } from '../../store/authStore';
+import { Avatar } from '../../../components/ui/Avatar';
+import { Button } from '../../../components/ui/Button';
+import { DisconnectModal } from '../../../components/wallet/DisconnectModal';
+import { useAuthStore } from '../../../store/authStore';
 
 // Truncate wallet address
 function truncateAddress(address: string): string {
@@ -53,7 +54,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Pressable
             style={styles.settingsRow}
-            onPress={() => router.push('/settings')}
+            onPress={() => router.push('/profile/settings')}
             accessibilityRole="button"
           >
             <Text style={styles.settingsLabel}>Settings</Text>
