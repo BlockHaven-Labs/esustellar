@@ -8,6 +8,7 @@ import {
   SecurityStatus,
   BiometricCapability,
 } from '../../services/security';
+import { useRouter } from 'expo-router';
 
 // Stub wallet address — replace with real value from wallet context
 const WALLET_ADDRESS = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
@@ -15,6 +16,7 @@ const WALLET_ADDRESS = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
 // ── Settings Page ────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [biometricCap, setBiometricCap] = useState<BiometricCapability>({
     status: SecurityStatus.UNKNOWN,
     supportedTypes: [],
@@ -212,6 +214,23 @@ export default function SettingsPage() {
             title="Copy wallet address"
           >
             📋
+          </button>
+        </div>
+      </section>
+
+      {/* ── Notifications Section ───────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <h2 className="text-lg font-semibold text-gray-800">Notifications</h2>
+        <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <button
+            onClick={() => router.push('/(tabs)/profile/notifications-settings')}
+            className="w-full flex items-center justify-between p-2 hover:bg-gray-100 rounded transition-colors"
+          >
+            <div className="text-left">
+              <p className="text-sm font-medium text-gray-900">Notification Settings</p>
+              <p className="text-xs text-gray-500">Manage push notification preferences</p>
+            </div>
+            <span className="text-gray-400">→</span>
           </button>
         </div>
       </section>
