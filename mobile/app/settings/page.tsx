@@ -1,3 +1,4 @@
+export { default } from './index';
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';

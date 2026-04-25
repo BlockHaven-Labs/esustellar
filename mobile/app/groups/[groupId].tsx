@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, Share } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, Share, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Avatar } from '../../components/ui/Avatar';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MemberAvatarStack } from '../../components/groups/MemberAvatarStack';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { Card } from '../../components/ui/Card';
@@ -53,15 +51,16 @@ interface GroupData {
   currentUserAddress: string;
 }
 
-export default function GroupDetailScreen({ params }: { params: { groupId: string } }) {
+export default function GroupDetailScreen() {
   const router = useRouter();
+  const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const [group, setGroup] = useState<GroupData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Mock data - replace with actual API call
     const mockGroup: GroupData = {
-      id: params.groupId,
+      id: groupId,
       name: 'Family Savings Circle',
       description: 'A savings group for family members to save together and support each other',
       contractAddress: '0x1234567890abcdef1234567890abcdef12345678',
@@ -104,7 +103,7 @@ export default function GroupDetailScreen({ params }: { params: { groupId: strin
       setGroup(mockGroup);
       setLoading(false);
     }, 1000);
-  }, [params.groupId]);
+  }, [groupId]);
 
   const handleShareInvite = async () => {
     try {
@@ -112,7 +111,7 @@ export default function GroupDetailScreen({ params }: { params: { groupId: strin
         message: `Join our savings group "${group?.name}"! Use invite code: ${group?.id}`,
         title: 'Invite to Savings Group'
       });
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to share invite');
     }
   };
