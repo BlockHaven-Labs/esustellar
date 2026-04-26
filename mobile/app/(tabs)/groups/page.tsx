@@ -3,7 +3,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { FlatList, RefreshControl, SafeAreaView, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Badge, ErrorState, LoadingSkeleton } from '../../../components/ui';
+import { Badge, ErrorState, LoadingSkeleton, TextInput } from '../../../components/ui';
+import { useDebounce } from '../../../hooks/useDebounce';
 
 type GroupStatus = 'Active' | 'Open' | 'Paused' | 'Closed' | 'Pending';
 type Group = {
@@ -85,6 +86,8 @@ export default function GroupsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const fetchGroups = useCallback(async () => {
     setLoading(true);
@@ -109,7 +112,8 @@ export default function GroupsPage() {
   }, [fetchGroups]);
 
   const filteredGroups = getFilteredGroups(activeFilter).filter(g => 
-    groups.some(pg => pg.id === g.id)
+    groups.some(pg => pg.id === g.id) && 
+    (debouncedSearchQuery === '' || g.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
   );
 
   const onRefresh = useCallback(async () => {
@@ -143,6 +147,13 @@ export default function GroupsPage() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Groups</Text>
+        <TextInput
+          placeholder="Search groups..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={styles.searchInput}
+          containerStyle={styles.searchContainer}
+        />
       </View>
 
       <View style={styles.filterBar}>
@@ -210,6 +221,15 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  searchContainer: {
+    marginTop: 12,
+    marginBottom: 0,
+  },
+  searchInput: {
+    backgroundColor: '#F1F5F9',
+    color: '#0F172A',
+    borderColor: '#E2E8F0',
   },
   filterBar: {
     flexDirection: 'row',
