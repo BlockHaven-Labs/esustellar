@@ -112,9 +112,15 @@ export default function GroupsPage() {
     fetchGroups();
   }, [fetchGroups]);
 
-  const filteredGroups = getFilteredGroups(activeFilter).filter(g => 
-    groups.some(pg => pg.id === g.id) && 
-    (debouncedSearchQuery === '' || g.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
+  const filteredGroups = useMemo(
+    () =>
+      getFilteredGroups(activeFilter).filter(
+        (g) =>
+          groups.some((pg) => pg.id === g.id) &&
+          (debouncedSearchQuery === '' ||
+            g.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())),
+      ),
+    [activeFilter, groups, debouncedSearchQuery],
   );
 
   const onRefresh = useCallback(async () => {
@@ -123,6 +129,7 @@ export default function GroupsPage() {
     setRefreshing(false);
   }, [fetchGroups]);
 
+  // useCallback: stable reference prevents FlatList from re-rendering all items on parent update
   const renderGroup = useCallback(({ item }: { item: Group }) => (
     <Pressable
       key={item.id}

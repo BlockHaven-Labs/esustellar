@@ -17,6 +17,8 @@ const STATUS_COLORS: Record<Status, string> = {
   completed: '#6366F1',
 };
 
+// Before: plain function — re-renders on every parent update
+// After: React.memo — only re-renders when own props change
 export const GroupCard = React.memo(function GroupCard({ name, status, contributionAmount, dueDate, onPress }: Props) {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} testID="group-card">

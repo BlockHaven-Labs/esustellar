@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 
 const SIZES = { sm: 32, md: 40, lg: 56 };
 const COLORS = ['#6366F1','#8B5CF6','#EC4899','#F59E0B','#10B981','#3B82F6','#EF4444'];
@@ -20,20 +21,31 @@ interface Props {
   size?: 'sm' | 'md' | 'lg';
 }
 
-export function Avatar({ uri, name, size = 'md' }: Props) {
+// Before: plain RN Image — no caching, no placeholder
+// After: expo-image with memory-disk cache and initials placeholder
+export const Avatar = React.memo(function Avatar({ uri, name, size = 'md' }: Props) {
   const px = SIZES[size];
-  const style = { width: px, height: px, borderRadius: px / 2 };
+  const circleStyle = { width: px, height: px, borderRadius: px / 2 };
 
   if (uri) {
-    return <Image source={{ uri }} style={style} />;
+    return (
+      <ExpoImage
+        source={{ uri }}
+        style={circleStyle}
+        cachePolicy="memory-disk"
+        placeholder={{ thumbhash: undefined }}
+        transition={200}
+        contentFit="cover"
+      />
+    );
   }
 
   return (
-    <View style={[style, styles.fallback, { backgroundColor: getBgColor(name) }]}>
+    <View style={[circleStyle, styles.fallback, { backgroundColor: getBgColor(name) }]}>
       <Text style={[styles.initials, { fontSize: px * 0.35 }]}>{getInitials(name).toUpperCase()}</Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },

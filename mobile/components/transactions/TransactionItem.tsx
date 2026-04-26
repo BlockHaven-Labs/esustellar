@@ -34,6 +34,8 @@ function relativeDate(dateStr: string): string {
   return `${days}d ago`;
 }
 
+// Before: plain function — re-renders on every parent update
+// After: React.memo — only re-renders when own props change
 export const TransactionItem = React.memo(function TransactionItem({ type, description, amount, date }: Props) {
   const color = COLOR[type];
   return (
