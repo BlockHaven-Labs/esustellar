@@ -3,84 +3,22 @@ import * as Localization from 'expo-localization';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-export type SupportedLanguage = 'en' | 'es';
+import en from '../../locales/en.json';
+import fr from '../../locales/fr.json';
+import sw from '../../locales/sw.json';
+
+export type SupportedLanguage = 'en' | 'es' | 'fr' | 'sw';
 export const LANGUAGE_STORAGE_KEY = 'esustellar_app_language';
 
 export const languageOptions = [
   { label: 'English', value: 'en' as SupportedLanguage },
   { label: 'Español', value: 'es' as SupportedLanguage },
+  { label: 'Français', value: 'fr' as SupportedLanguage },
+  { label: 'Kiswahili', value: 'sw' as SupportedLanguage },
 ];
 
 const resources = {
-  en: {
-    translation: {
-      tabs: {
-        home: 'Home',
-        groups: 'Groups',
-        notifications: 'Notifications',
-        profile: 'Profile',
-      },
-      home: {
-        goodMorning: 'Good morning',
-        goodAfternoon: 'Good afternoon',
-        goodEvening: 'Good evening',
-        defaultUser: 'EsuStellar User',
-        totalBalance: 'Total Balance',
-        quickActions: 'Quick Actions',
-        balanceValue: '— XLM',
-      },
-      settings: {
-        title: 'Security Settings',
-        walletAddress: 'Wallet Address',
-        copyWalletAddress: 'Copy wallet address',
-        copyToast: 'Wallet address copied to clipboard',
-        copyFailed: 'Failed to copy wallet address',
-        biometricAuthentication: 'Biometric Authentication',
-        supported: 'Supported',
-        enableBiometrics: 'Enable biometrics',
-        useToSignIn: 'Use {{supportedLabel}} to sign in',
-        checkingDeviceCapabilities: 'Checking device capabilities…',
-        biometricsNotSupported: 'Biometrics not supported on this device',
-        setUpPinFallback: 'Set a PIN below as a fallback when biometrics are unavailable.',
-        noBiometricsEnrolled: 'No biometrics enrolled',
-        setupBiometricsHelper:
-          'Please set up fingerprint or face recognition in your device settings, then return here to enable it.',
-        about: 'About',
-        version: 'Version',
-        build: 'Build',
-        pinFallback: 'PIN Fallback',
-        pinDescription:
-          'Set a 4-6 digit PIN as a fallback when biometrics are unavailable.',
-        setUpPin: 'Set up PIN',
-        enterPin: 'Enter your PIN',
-        confirmYourPin: 'Confirm your PIN',
-        pinDigits: '4-6 digits',
-        reenterPin: 'Re-enter PIN',
-        cancel: 'Cancel',
-        next: 'Next',
-        confirm: 'Confirm',
-        pinSet: 'PIN is set',
-        pinFallbackInfo: 'Used as fallback when biometrics fail',
-        change: 'Change',
-        remove: 'Remove',
-        pinMustDigits: 'PIN must be 4-6 digits',
-        pinsDoNotMatch: 'PINs do not match',
-        biometricsEnabled: 'Biometric authentication enabled',
-        biometricsDisabled: 'Biometric authentication disabled',
-        biometricFailed: 'Biometric verification failed',
-        failedToSavePin: 'Failed to save PIN',
-        pinRemoved: 'PIN removed',
-        language: 'Language',
-        languageLabel: 'Choose your app language',
-        languageChangeSuccess: 'Language updated.',
-      },
-      profile: {
-        editProfile: 'Edit Profile',
-        settings: 'Settings',
-        disconnectWallet: 'Disconnect Wallet',
-      },
-    },
-  },
+  en: { translation: en },
   es: {
     translation: {
       tabs: {
@@ -97,6 +35,37 @@ const resources = {
         totalBalance: 'Saldo total',
         quickActions: 'Accesos rápidos',
         balanceValue: '— XLM',
+        notifications: 'Notificaciones',
+      },
+      onboarding: {
+        skip: 'Omitir',
+        next: 'Siguiente',
+        getStarted: 'Comenzar',
+        stayInformed: 'Mantente informado',
+        notificationBody:
+          'Recibe recordatorios de fechas de vencimiento, pagos y actualizaciones del grupo para no perderte ningún momento importante.',
+        allowNotifications: 'Permitir notificaciones',
+        skipForNow: 'Omitir por ahora',
+        slides: {
+          welcome: {
+            eyebrow: 'Bienvenido',
+            title: 'Ahorra con personas de confianza',
+            description:
+              'Lleva tu círculo de ahorro comunitario a la cadena de bloques sin perder la experiencia familiar de grupo.',
+          },
+          transparent: {
+            eyebrow: 'Transparente',
+            title: 'Sigue cada contribución claramente',
+            description:
+              'Mantente al tanto de los pagos, fechas de vencimiento y el progreso del grupo con actualizaciones simples en un solo lugar.',
+          },
+          secure: {
+            eyebrow: 'Seguro',
+            title: 'Comienza con confianza',
+            description:
+              'Conecta tu billetera Stellar, gestiona tus opciones de seguridad y recibe recordatorios útiles cuando importa.',
+          },
+        },
       },
       settings: {
         title: 'Ajustes de seguridad',
@@ -149,8 +118,13 @@ const resources = {
         settings: 'Ajustes',
         disconnectWallet: 'Desconectar billetera',
       },
+      lock: {
+        tapToUnlock: 'Toca para desbloquear',
+      },
     },
   },
+  fr: { translation: fr },
+  sw: { translation: sw },
 };
 
 i18n.use(initReactI18next).init({
@@ -182,9 +156,10 @@ export const changeLanguage = async (language: SupportedLanguage): Promise<void>
 export const loadLanguage = async (): Promise<SupportedLanguage> => {
   try {
     const stored = await AsyncStorage.getItem(LANGUAGE_STORAGE_KEY);
-    const language = stored && languageOptions.some((item) => item.value === stored)
-      ? (stored as SupportedLanguage)
-      : getDeviceLanguage();
+    const language =
+      stored && languageOptions.some((item) => item.value === stored)
+        ? (stored as SupportedLanguage)
+        : getDeviceLanguage();
 
     await i18n.changeLanguage(language);
     return language;
