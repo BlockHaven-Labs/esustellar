@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { FlatList, RefreshControl, SafeAreaView, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Badge } from '../../../components/ui/Badge';
+import { Badge, ErrorState, LoadingSkeleton } from '../../../components/ui';
 
 type GroupStatus = 'Active' | 'Open' | 'Paused' | 'Closed' | 'Pending';
 type Group = {
@@ -82,16 +82,41 @@ export default function GroupsPage() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('All');
   const [refreshing, setRefreshing] = useState(false);
-  const filteredGroups = getFilteredGroups(activeFilter);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    const timeout = setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-
-    return () => clearTimeout(timeout);
+  const fetchGroups = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    
+    // 30% failure rate simulation
+    if (Math.random() < 0.3) {
+      setError('Failed to fetch groups. Please check your connection and try again.');
+      setLoading(false);
+      return;
+    }
+    
+    setGroups(MOCK_GROUPS);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  const filteredGroups = getFilteredGroups(activeFilter).filter(g => 
+    groups.some(pg => pg.id === g.id)
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchGroups();
+    setRefreshing(false);
+  }, [fetchGroups]);
 
   const renderGroup = ({ item }: { item: Group }) => (
     <Pressable
@@ -139,25 +164,31 @@ export default function GroupsPage() {
         })}
       </View>
 
-      <FlatList
-        data={filteredGroups}
-        keyExtractor={(item) => item.id}
-        renderItem={renderGroup}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#0F172A"
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No groups to show</Text>
-            <Text style={styles.emptyMessage}>Try another filter to see matching groups.</Text>
-          </View>
-        }
-      />
+      {loading && !refreshing ? (
+        <LoadingSkeleton />
+      ) : error ? (
+        <ErrorState message={error} onRetry={fetchGroups} />
+      ) : (
+        <FlatList
+          data={filteredGroups}
+          keyExtractor={(item) => item.id}
+          renderItem={renderGroup}
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#0F172A"
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No groups to show</Text>
+              <Text style={styles.emptyMessage}>Try another filter to see matching groups.</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
