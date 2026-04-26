@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { FlatList, RefreshControl, SafeAreaView, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Badge } from '../../../components/ui/Badge';
+import { Badge, ErrorState, LoadingSkeleton, TextInput } from '../../../components/ui';
+import { useDebounce } from '../../../hooks/useDebounce';
+import { formatXLM } from '../../../utils/stellar';
 
 type GroupStatus = 'Active' | 'Open' | 'Paused' | 'Closed' | 'Pending';
 type Group = {
   id: string;
   name: string;
   status: GroupStatus;
-  contribution: string;
+  contribution: number;
   frequency: string;
   memberCount: number;
   userJoined: boolean;
@@ -25,7 +27,7 @@ const MOCK_GROUPS: Group[] = [
     id: '1',
     name: 'Solar Saver Collective',
     status: 'Active',
-    contribution: '45 XLM',
+    contribution: 45,
     frequency: 'Monthly',
     memberCount: 8,
     userJoined: true,
@@ -34,7 +36,7 @@ const MOCK_GROUPS: Group[] = [
     id: '2',
     name: 'Lunar Growth Syndicate',
     status: 'Open',
-    contribution: '90 XLM',
+    contribution: 90,
     frequency: 'Biweekly',
     memberCount: 12,
     userJoined: false,
@@ -43,7 +45,7 @@ const MOCK_GROUPS: Group[] = [
     id: '3',
     name: 'Horizon Funding Group',
     status: 'Open',
-    contribution: '120 XLM',
+    contribution: 120,
     frequency: 'Weekly',
     memberCount: 5,
     userJoined: true,
@@ -52,7 +54,7 @@ const MOCK_GROUPS: Group[] = [
     id: '4',
     name: 'Orbit Growth Fund',
     status: 'Paused',
-    contribution: '60 XLM',
+    contribution: 60,
     frequency: 'Monthly',
     memberCount: 10,
     userJoined: false,
@@ -82,16 +84,44 @@ export default function GroupsPage() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('All');
   const [refreshing, setRefreshing] = useState(false);
-  const filteredGroups = getFilteredGroups(activeFilter);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    const timeout = setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-
-    return () => clearTimeout(timeout);
+  const fetchGroups = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    
+    // 30% failure rate simulation
+    if (Math.random() < 0.3) {
+      setError('Failed to fetch groups. Please check your connection and try again.');
+      setLoading(false);
+      return;
+    }
+    
+    setGroups(MOCK_GROUPS);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  const filteredGroups = getFilteredGroups(activeFilter).filter(g => 
+    groups.some(pg => pg.id === g.id) && 
+    (debouncedSearchQuery === '' || g.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchGroups();
+    setRefreshing(false);
+  }, [fetchGroups]);
 
   const renderGroup = ({ item }: { item: Group }) => (
     <Pressable
@@ -106,7 +136,7 @@ export default function GroupsPage() {
 
       <View style={styles.cardRow}>
         <View>
-          <Text style={styles.cardAmount}>{item.contribution}</Text>
+          <Text style={styles.cardAmount}>{formatXLM(item.contribution)}</Text>
           <Text style={styles.cardMeta}>{item.frequency}</Text>
         </View>
         <Text style={styles.cardMeta}>{item.memberCount} members</Text>
@@ -118,6 +148,13 @@ export default function GroupsPage() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Groups</Text>
+        <TextInput
+          placeholder="Search groups..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={styles.searchInput}
+          containerStyle={styles.searchContainer}
+        />
       </View>
 
       <View style={styles.filterBar}>
@@ -139,25 +176,31 @@ export default function GroupsPage() {
         })}
       </View>
 
-      <FlatList
-        data={filteredGroups}
-        keyExtractor={(item) => item.id}
-        renderItem={renderGroup}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#0F172A"
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No groups to show</Text>
-            <Text style={styles.emptyMessage}>Try another filter to see matching groups.</Text>
-          </View>
-        }
-      />
+      {loading && !refreshing ? (
+        <LoadingSkeleton />
+      ) : error ? (
+        <ErrorState message={error} onRetry={fetchGroups} />
+      ) : (
+        <FlatList
+          data={filteredGroups}
+          keyExtractor={(item) => item.id}
+          renderItem={renderGroup}
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#0F172A"
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No groups to show</Text>
+              <Text style={styles.emptyMessage}>Try another filter to see matching groups.</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -179,6 +222,15 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  searchContainer: {
+    marginTop: 12,
+    marginBottom: 0,
+  },
+  searchInput: {
+    backgroundColor: '#F1F5F9',
+    color: '#0F172A',
+    borderColor: '#E2E8F0',
   },
   filterBar: {
     flexDirection: 'row',

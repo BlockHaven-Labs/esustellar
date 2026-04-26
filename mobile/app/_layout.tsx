@@ -109,24 +109,26 @@ function RootLayoutContent() {
 
     void initialize();
 
-    return () => {
-      active = false;
-    };
+    initialize();
   }, [router]);
+
+  // ── Notifications ───────────────────────────────────────────────────────
 
   const dismissBanner = useCallback(() => {
     if (bannerTimerRef.current) {
       clearTimeout(bannerTimerRef.current);
       bannerTimerRef.current = null;
     }
-
     setBanner(null);
   }, []);
 
   const navigateFromNotification = useCallback(
     (data?: Record<string, unknown>) => {
       dismissBanner();
-      router.push(getRouteFromNotificationData(data) as never);
+      const route = getRouteFromNotificationData(data);
+      if (route) {
+        router.push(route as any);
+      }
     },
     [dismissBanner, router],
   );
@@ -164,10 +166,7 @@ function RootLayoutContent() {
       });
 
     void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (!response) {
-        return;
-      }
-
+      if (!response) return;
       navigateFromNotification(
         response.notification.request.content.data as Record<string, unknown>,
       );
@@ -176,7 +175,6 @@ function RootLayoutContent() {
     return () => {
       receivedSubscription.remove();
       responseSubscription.remove();
-
       if (bannerTimerRef.current) {
         clearTimeout(bannerTimerRef.current);
       }
