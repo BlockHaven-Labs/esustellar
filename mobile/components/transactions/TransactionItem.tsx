@@ -34,7 +34,7 @@ function relativeDate(dateStr: string): string {
   return `${days}d ago`;
 }
 
-export function TransactionItem({ type, description, amount, date }: Props) {
+export const TransactionItem = React.memo(function TransactionItem({ type, description, amount, date }: Props) {
   const color = COLOR[type];
   return (
     <View style={styles.row} accessibilityRole="text">
@@ -48,7 +48,7 @@ export function TransactionItem({ type, description, amount, date }: Props) {
       <Text style={[styles.amount, { color }]}>{formatXLM(amount)}</Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {

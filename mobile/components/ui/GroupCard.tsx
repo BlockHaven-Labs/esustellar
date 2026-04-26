@@ -17,7 +17,7 @@ const STATUS_COLORS: Record<Status, string> = {
   completed: '#6366F1',
 };
 
-export function GroupCard({ name, status, contributionAmount, dueDate, onPress }: Props) {
+export const GroupCard = React.memo(function GroupCard({ name, status, contributionAmount, dueDate, onPress }: Props) {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} testID="group-card">
       <View style={styles.row}>
@@ -34,7 +34,7 @@ export function GroupCard({ name, status, contributionAmount, dueDate, onPress }
       )}
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: { backgroundColor: '#1E293B', borderRadius: 12, padding: 16, marginBottom: 12 },

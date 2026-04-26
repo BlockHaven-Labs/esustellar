@@ -123,7 +123,7 @@ export default function GroupsPage() {
     setRefreshing(false);
   }, [fetchGroups]);
 
-  const renderGroup = ({ item }: { item: Group }) => (
+  const renderGroup = useCallback(({ item }: { item: Group }) => (
     <Pressable
       key={item.id}
       onPress={() => router.push(`/groups/${item.id}`)}
@@ -142,7 +142,7 @@ export default function GroupsPage() {
         <Text style={styles.cardMeta}>{item.memberCount} members</Text>
       </View>
     </Pressable>
-  );
+  ), [router]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -185,6 +185,10 @@ export default function GroupsPage() {
           data={filteredGroups}
           keyExtractor={(item) => item.id}
           renderItem={renderGroup}
+          getItemLayout={(_, index) => ({ length: 110, offset: 110 * index, index })}
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
           contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl
