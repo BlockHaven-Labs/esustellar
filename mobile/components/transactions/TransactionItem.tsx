@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { formatXLM } from '../../utils/formatXLM';
+import { formatXLM } from '../../utils/stellar';
 
 export type TransactionType = 'contribution' | 'payout' | 'fee';
 

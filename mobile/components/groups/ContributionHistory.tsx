@@ -4,6 +4,7 @@ import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { SectionHeader } from '../ui/SectionHeader';
 import { EmptyState } from '../ui/EmptyState';
+import { formatXLM } from '../../utils/stellar';
 
 type Transaction = {
   contributor: string;
@@ -33,7 +34,7 @@ export function ContributionHistory({ transactions }: ContributionHistoryProps) 
       </View>
       
       <View style={styles.amountColumn}>
-        <Text style={styles.amountText}>{item.amount} XLM</Text>
+        <Text style={styles.amountText}>{formatXLM(item.amount)}</Text>
       </View>
       
       <View style={styles.dateColumn}>

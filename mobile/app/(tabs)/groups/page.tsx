@@ -5,13 +5,14 @@ import { FlatList, RefreshControl, SafeAreaView, View, Text, Pressable, StyleShe
 import { useRouter } from 'expo-router';
 import { Badge, ErrorState, LoadingSkeleton, TextInput } from '../../../components/ui';
 import { useDebounce } from '../../../hooks/useDebounce';
+import { formatXLM } from '../../../utils/stellar';
 
 type GroupStatus = 'Active' | 'Open' | 'Paused' | 'Closed' | 'Pending';
 type Group = {
   id: string;
   name: string;
   status: GroupStatus;
-  contribution: string;
+  contribution: number;
   frequency: string;
   memberCount: number;
   userJoined: boolean;
@@ -26,7 +27,7 @@ const MOCK_GROUPS: Group[] = [
     id: '1',
     name: 'Solar Saver Collective',
     status: 'Active',
-    contribution: '45 XLM',
+    contribution: 45,
     frequency: 'Monthly',
     memberCount: 8,
     userJoined: true,
@@ -35,7 +36,7 @@ const MOCK_GROUPS: Group[] = [
     id: '2',
     name: 'Lunar Growth Syndicate',
     status: 'Open',
-    contribution: '90 XLM',
+    contribution: 90,
     frequency: 'Biweekly',
     memberCount: 12,
     userJoined: false,
@@ -44,7 +45,7 @@ const MOCK_GROUPS: Group[] = [
     id: '3',
     name: 'Horizon Funding Group',
     status: 'Open',
-    contribution: '120 XLM',
+    contribution: 120,
     frequency: 'Weekly',
     memberCount: 5,
     userJoined: true,
@@ -53,7 +54,7 @@ const MOCK_GROUPS: Group[] = [
     id: '4',
     name: 'Orbit Growth Fund',
     status: 'Paused',
-    contribution: '60 XLM',
+    contribution: 60,
     frequency: 'Monthly',
     memberCount: 10,
     userJoined: false,
@@ -135,7 +136,7 @@ export default function GroupsPage() {
 
       <View style={styles.cardRow}>
         <View>
-          <Text style={styles.cardAmount}>{item.contribution}</Text>
+          <Text style={styles.cardAmount}>{formatXLM(item.contribution)}</Text>
           <Text style={styles.cardMeta}>{item.frequency}</Text>
         </View>
         <Text style={styles.cardMeta}>{item.memberCount} members</Text>
