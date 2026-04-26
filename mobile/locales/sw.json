@@ -1,0 +1,95 @@
+{
+  "tabs": {
+    "home": "Nyumbani",
+    "groups": "Vikundi",
+    "notifications": "Arifa",
+    "profile": "Wasifu"
+  },
+  "home": {
+    "goodMorning": "Habari za asubuhi",
+    "goodAfternoon": "Habari za mchana",
+    "goodEvening": "Habari za jioni",
+    "defaultUser": "Mtumiaji wa EsuStellar",
+    "totalBalance": "Jumla ya Salio",
+    "quickActions": "Vitendo vya Haraka",
+    "balanceValue": "— XLM",
+    "notifications": "Arifa"
+  },
+  "onboarding": {
+    "skip": "Ruka",
+    "next": "Endelea",
+    "getStarted": "Anza",
+    "stayInformed": "Kaa na habari",
+    "notificationBody": "Pokea vikumbusho vya tarehe za mwisho, malipo, na masasisho ya kikundi ili usikose wakati muhimu.",
+    "allowNotifications": "Ruhusu Arifa",
+    "skipForNow": "Ruka kwa sasa",
+    "slides": {
+      "welcome": {
+        "eyebrow": "Karibu",
+        "title": "Weka akiba na watu unaowaaminia",
+        "description": "Leta mzunguko wako wa akiba ya jamii kwenye blockchain bila kupoteza uzoefu wa kawaida wa kikundi."
+      },
+      "transparent": {
+        "eyebrow": "Uwazi",
+        "title": "Fuatilia kila mchango kwa uwazi",
+        "description": "Fuatilia malipo, tarehe za mwisho, na maendeleo ya kikundi kwa masasisho rahisi mahali pamoja."
+      },
+      "secure": {
+        "eyebrow": "Salama",
+        "title": "Anza kwa ujasiri",
+        "description": "Unganisha pochi yako ya Stellar, simamia chaguo zako za usalama, na upokee vikumbusho vya msaada wakati unahitajika."
+      }
+    }
+  },
+  "settings": {
+    "title": "Mipangilio ya Usalama",
+    "walletAddress": "Anwani ya Pochi",
+    "copyWalletAddress": "Nakili anwani ya pochi",
+    "copyToast": "Anwani ya pochi imenakiliwa kwenye ubao wa kunakili",
+    "copyFailed": "Imeshindwa kunakili anwani ya pochi",
+    "biometricAuthentication": "Uthibitishaji wa Biometriki",
+    "supported": "Inasaidiwa",
+    "enableBiometrics": "Wezesha biometriki",
+    "useToSignIn": "Tumia {{supportedLabel}} kuingia",
+    "checkingDeviceCapabilities": "Inakagua uwezo wa kifaa…",
+    "biometricsNotSupported": "Biometriki haziungwi mkono kwenye kifaa hiki",
+    "setUpPinFallback": "Weka PIN hapa chini kama mbadala wakati biometriki haipatikani.",
+    "noBiometricsEnrolled": "Hakuna biometriki zilizosajiliwa",
+    "setupBiometricsHelper": "Tafadhali sanidi alama ya kidole au utambuzi wa uso katika mipangilio ya kifaa chako, kisha rudi hapa kuiwezesha.",
+    "about": "Kuhusu",
+    "version": "Toleo",
+    "build": "Muundo",
+    "pinFallback": "PIN ya Mbadala",
+    "pinDescription": "Weka PIN ya tarakimu 4-6 kama mbadala wakati biometriki haipatikani.",
+    "setUpPin": "Weka PIN",
+    "enterPin": "Ingiza PIN yako",
+    "confirmYourPin": "Thibitisha PIN yako",
+    "pinDigits": "Tarakimu 4-6",
+    "reenterPin": "Ingiza tena PIN",
+    "cancel": "Ghairi",
+    "next": "Endelea",
+    "confirm": "Thibitisha",
+    "pinSet": "PIN imewekwa",
+    "pinFallbackInfo": "Inatumika kama mbadala wakati biometriki inashindwa",
+    "change": "Badilisha",
+    "remove": "Ondoa",
+    "pinMustDigits": "PIN lazima iwe tarakimu 4-6",
+    "pinsDoNotMatch": "PIN hazilingani",
+    "biometricsEnabled": "Uthibitishaji wa biometriki umewezeshwa",
+    "biometricsDisabled": "Uthibitishaji wa biometriki umezimwa",
+    "biometricFailed": "Uthibitishaji wa biometriki umeshindwa",
+    "failedToSavePin": "Imeshindwa kuhifadhi PIN",
+    "pinRemoved": "PIN imeondolewa",
+    "language": "Lugha",
+    "languageLabel": "Chagua lugha ya programu",
+    "languageChangeSuccess": "Lugha imesasishwa."
+  },
+  "profile": {
+    "editProfile": "Hariri Wasifu",
+    "settings": "Mipangilio",
+    "disconnectWallet": "Tenganisha Pochi"
+  },
+  "lock": {
+    "tapToUnlock": "Gusa ili kufungua"
+  }
+}
