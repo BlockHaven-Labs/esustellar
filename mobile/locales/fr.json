@@ -1,0 +1,95 @@
+{
+  "tabs": {
+    "home": "Accueil",
+    "groups": "Groupes",
+    "notifications": "Notifications",
+    "profile": "Profil"
+  },
+  "home": {
+    "goodMorning": "Bonjour",
+    "goodAfternoon": "Bon après-midi",
+    "goodEvening": "Bonsoir",
+    "defaultUser": "Utilisateur EsuStellar",
+    "totalBalance": "Solde total",
+    "quickActions": "Actions rapides",
+    "balanceValue": "— XLM",
+    "notifications": "Notifications"
+  },
+  "onboarding": {
+    "skip": "Passer",
+    "next": "Suivant",
+    "getStarted": "Commencer",
+    "stayInformed": "Restez informé",
+    "notificationBody": "Recevez des rappels pour les échéances, les paiements et les mises à jour de groupe afin de ne jamais manquer un moment important.",
+    "allowNotifications": "Autoriser les notifications",
+    "skipForNow": "Passer pour l'instant",
+    "slides": {
+      "welcome": {
+        "eyebrow": "Bienvenue",
+        "title": "Épargnez avec des personnes de confiance",
+        "description": "Amenez votre tontine communautaire sur la blockchain sans perdre l'expérience de groupe familière."
+      },
+      "transparent": {
+        "eyebrow": "Transparent",
+        "title": "Suivez chaque contribution clairement",
+        "description": "Gardez un œil sur les paiements, les échéances et la progression du groupe avec des mises à jour simples en un seul endroit."
+      },
+      "secure": {
+        "eyebrow": "Sécurisé",
+        "title": "Commencez en toute confiance",
+        "description": "Connectez votre portefeuille Stellar, gérez vos options de sécurité et recevez des rappels utiles au bon moment."
+      }
+    }
+  },
+  "settings": {
+    "title": "Paramètres de sécurité",
+    "walletAddress": "Adresse du portefeuille",
+    "copyWalletAddress": "Copier l'adresse du portefeuille",
+    "copyToast": "Adresse du portefeuille copiée dans le presse-papiers",
+    "copyFailed": "Échec de la copie de l'adresse du portefeuille",
+    "biometricAuthentication": "Authentification biométrique",
+    "supported": "Pris en charge",
+    "enableBiometrics": "Activer la biométrie",
+    "useToSignIn": "Utiliser {{supportedLabel}} pour se connecter",
+    "checkingDeviceCapabilities": "Vérification des capacités de l'appareil…",
+    "biometricsNotSupported": "La biométrie n'est pas prise en charge sur cet appareil",
+    "setUpPinFallback": "Définissez un code PIN ci-dessous comme solution de secours lorsque la biométrie n'est pas disponible.",
+    "noBiometricsEnrolled": "Aucune biométrie enregistrée",
+    "setupBiometricsHelper": "Veuillez configurer l'empreinte digitale ou la reconnaissance faciale dans les paramètres de votre appareil, puis revenez ici pour l'activer.",
+    "about": "À propos",
+    "version": "Version",
+    "build": "Build",
+    "pinFallback": "Code PIN de secours",
+    "pinDescription": "Définissez un code PIN de 4 à 6 chiffres comme solution de secours lorsque la biométrie n'est pas disponible.",
+    "setUpPin": "Configurer le code PIN",
+    "enterPin": "Entrez votre code PIN",
+    "confirmYourPin": "Confirmez votre code PIN",
+    "pinDigits": "4 à 6 chiffres",
+    "reenterPin": "Ressaisissez le code PIN",
+    "cancel": "Annuler",
+    "next": "Suivant",
+    "confirm": "Confirmer",
+    "pinSet": "Le code PIN est défini",
+    "pinFallbackInfo": "Utilisé comme solution de secours lorsque la biométrie échoue",
+    "change": "Modifier",
+    "remove": "Supprimer",
+    "pinMustDigits": "Le code PIN doit comporter 4 à 6 chiffres",
+    "pinsDoNotMatch": "Les codes PIN ne correspondent pas",
+    "biometricsEnabled": "Authentification biométrique activée",
+    "biometricsDisabled": "Authentification biométrique désactivée",
+    "biometricFailed": "La vérification biométrique a échoué",
+    "failedToSavePin": "Échec de l'enregistrement du code PIN",
+    "pinRemoved": "Code PIN supprimé",
+    "language": "Langue",
+    "languageLabel": "Choisissez la langue de l'application",
+    "languageChangeSuccess": "Langue mise à jour."
+  },
+  "profile": {
+    "editProfile": "Modifier le profil",
+    "settings": "Paramètres",
+    "disconnectWallet": "Déconnecter le portefeuille"
+  },
+  "lock": {
+    "tapToUnlock": "Appuyez pour déverrouiller"
+  }
+}

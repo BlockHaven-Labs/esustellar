@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "EsuStellar",
+    "slug": "esustellar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "jsEngine": "hermes",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "jsEngine": "hermes"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      },
+      "jsEngine": "hermes"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-localization"
+    ],
+    "scheme": "esustellar"
+  }
+}

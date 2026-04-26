@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { NotificationBanner } from '../components/notifications/NotificationBanner';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useAutoLock } from '../hooks/useAutoLock';
@@ -41,6 +42,7 @@ function RootLayoutContent() {
   const [locked, setLocked] = useState(false);
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation();
 
   const promptBiometric = useCallback(async () => {
     const enabled = await AsyncStorage.getItem(BIOMETRIC_LOCK_KEY);
@@ -139,7 +141,7 @@ function RootLayoutContent() {
     setBanner({
       body: content.body ?? undefined,
       data: (content.data ?? {}) as Record<string, unknown>,
-      title: content.title ?? 'New notification',
+      title: content.title ?? t('tabs.notifications'),
     });
 
     if (bannerTimerRef.current) {
@@ -211,7 +213,7 @@ function RootLayoutContent() {
         <View style={styles.overlay}>
           <Text style={styles.overlayText}>EsuStellar</Text>
           <Text style={styles.lockHint} onPress={promptBiometric}>
-            Tap to unlock
+            {t('lock.tapToUnlock')}
           </Text>
         </View>
       )}

@@ -192,6 +192,10 @@ export default function GroupsPage() {
           data={filteredGroups}
           keyExtractor={(item) => item.id}
           renderItem={renderGroup}
+          getItemLayout={(_, index) => ({ length: 110, offset: 110 * index, index })}
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
           contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl
