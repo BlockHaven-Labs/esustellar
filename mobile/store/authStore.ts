@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -13,11 +14,15 @@ export interface SessionState {
   connectedAt: string | null;
 }
 
+export type ColorSchemePreference = 'dark' | 'light' | 'system';
+
 export interface AuthState {
   /** Details of the currently connected wallet */
   wallet: WalletInfo | null;
   /** Current session information */
   session: SessionState;
+  /** Preferred app color scheme */
+  colorScheme: ColorSchemePreference;
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
@@ -27,6 +32,8 @@ export interface AuthState {
   setSession: (session: Partial<SessionState>) => void;
   /** Convenience: mark the user as fully authenticated */
   login: (wallet: WalletInfo) => void;
+  /** Update the preferred app color scheme */
+  setColorScheme: (colorScheme: ColorSchemePreference) => void;
   /** Log out – clears wallet & resets session */
   logout: () => void;
 }
@@ -45,9 +52,9 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       wallet: null,
       session: { ...initialSession },
+      colorScheme: 'system',
 
-      setWallet: (wallet) =>
-        set({ wallet }),
+      setWallet: (wallet) => set({ wallet }),
 
       setSession: (partial) =>
         set((state) => ({
@@ -63,6 +70,8 @@ export const useAuthStore = create<AuthState>()(
           },
         }),
 
+      setColorScheme: (colorScheme) => set({ colorScheme }),
+
       logout: () =>
         set({
           wallet: null,
@@ -71,6 +80,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'esustellar-auth',
+      storage: createJSONStorage(() => AsyncStorage),
     },
   ),
 );
