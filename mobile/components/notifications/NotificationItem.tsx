@@ -23,14 +23,16 @@ const typeToEmoji: Record<NotificationType, string> = {
   status: '📢',
 };
 
-export const NotificationItem: React.FC<NotificationItemProps> = ({
+// Before: plain FC — re-renders on every parent update
+// After: React.memo — only re-renders when own props change
+export const NotificationItem = React.memo<NotificationItemProps>(function NotificationItem({
   type,
   title,
   message,
   date,
   read,
   onPress,
-}) => {
+}) {
   return (
     <Pressable style={styles.container} onPress={onPress}>
       <View style={styles.left}>
@@ -46,7 +48,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
       <Text style={styles.date}>{dayjs(date).fromNow()}</Text>
     </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

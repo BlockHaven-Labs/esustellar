@@ -34,7 +34,9 @@ function relativeDate(dateStr: string): string {
   return `${days}d ago`;
 }
 
-export function TransactionItem({ type, description, amount, date }: Props) {
+// Before: plain function — re-renders on every parent update
+// After: React.memo — only re-renders when own props change
+export const TransactionItem = React.memo(function TransactionItem({ type, description, amount, date }: Props) {
   const color = COLOR[type];
   return (
     <View style={styles.row} accessibilityRole="text">
@@ -48,7 +50,7 @@ export function TransactionItem({ type, description, amount, date }: Props) {
       <Text style={[styles.amount, { color }]}>{formatXLM(amount)}</Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {
