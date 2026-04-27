@@ -367,6 +367,24 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        {/* Wallet Recovery */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Wallet Recovery
+          </Text>
+          <Text style={[styles.helperText, { color: colors.subtext }]}>
+            Review backup instructions and recovery safety checks.
+          </Text>
+          <Button onPress={() => router.push('/wallet/recovery')}>
+            Open Recovery Options
+          </Button>
+        </View>
+
         {/* About */}
         <View
           style={[
