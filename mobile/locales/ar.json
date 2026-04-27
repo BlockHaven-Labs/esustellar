@@ -1,0 +1,95 @@
+{
+  "tabs": {
+    "home": "Home",
+    "groups": "Groups",
+    "notifications": "Notifications",
+    "profile": "Profile"
+  },
+  "home": {
+    "goodMorning": "Good morning",
+    "goodAfternoon": "Good afternoon",
+    "goodEvening": "Good evening",
+    "defaultUser": "EsuStellar User",
+    "totalBalance": "Total Balance",
+    "quickActions": "Quick Actions",
+    "balanceValue": "— XLM",
+    "notifications": "Notifications"
+  },
+  "onboarding": {
+    "skip": "Skip",
+    "next": "Next",
+    "getStarted": "Get Started",
+    "stayInformed": "Stay informed",
+    "notificationBody": "Get reminders for due dates, payouts, and group updates so you never miss an important moment.",
+    "allowNotifications": "Allow Notifications",
+    "skipForNow": "Skip for now",
+    "slides": {
+      "welcome": {
+        "eyebrow": "Welcome",
+        "title": "Save with people you trust",
+        "description": "Bring your community savings circle on-chain without losing the familiar group experience."
+      },
+      "transparent": {
+        "eyebrow": "Transparent",
+        "title": "Track every contribution clearly",
+        "description": "Stay on top of payouts, due dates, and group progress with simple updates in one place."
+      },
+      "secure": {
+        "eyebrow": "Secure",
+        "title": "Start with confidence",
+        "description": "Connect your Stellar wallet, manage your security options, and receive helpful reminders when it matters."
+      }
+    }
+  },
+  "settings": {
+    "title": "Security Settings",
+    "walletAddress": "Wallet Address",
+    "copyWalletAddress": "Copy wallet address",
+    "copyToast": "Wallet address copied to clipboard",
+    "copyFailed": "Failed to copy wallet address",
+    "biometricAuthentication": "Biometric Authentication",
+    "supported": "Supported",
+    "enableBiometrics": "Enable biometrics",
+    "useToSignIn": "Use {{supportedLabel}} to sign in",
+    "checkingDeviceCapabilities": "Checking device capabilities…",
+    "biometricsNotSupported": "Biometrics not supported on this device",
+    "setUpPinFallback": "Set a PIN below as a fallback when biometrics are unavailable.",
+    "noBiometricsEnrolled": "No biometrics enrolled",
+    "setupBiometricsHelper": "Please set up fingerprint or face recognition in your device settings, then return here to enable it.",
+    "about": "About",
+    "version": "Version",
+    "build": "Build",
+    "pinFallback": "PIN Fallback",
+    "pinDescription": "Set a 4-6 digit PIN as a fallback when biometrics are unavailable.",
+    "setUpPin": "Set up PIN",
+    "enterPin": "Enter your PIN",
+    "confirmYourPin": "Confirm your PIN",
+    "pinDigits": "4-6 digits",
+    "reenterPin": "Re-enter PIN",
+    "cancel": "Cancel",
+    "next": "Next",
+    "confirm": "Confirm",
+    "pinSet": "PIN is set",
+    "pinFallbackInfo": "Used as fallback when biometrics fail",
+    "change": "Change",
+    "remove": "Remove",
+    "pinMustDigits": "PIN must be 4-6 digits",
+    "pinsDoNotMatch": "PINs do not match",
+    "biometricsEnabled": "Biometric authentication enabled",
+    "biometricsDisabled": "Biometric authentication disabled",
+    "biometricFailed": "Biometric verification failed",
+    "failedToSavePin": "Failed to save PIN",
+    "pinRemoved": "PIN removed",
+    "language": "Language",
+    "languageLabel": "Choose your app language",
+    "languageChangeSuccess": "Language updated."
+  },
+  "profile": {
+    "editProfile": "Edit Profile",
+    "settings": "Settings",
+    "disconnectWallet": "Disconnect Wallet"
+  },
+  "lock": {
+    "tapToUnlock": "Tap to unlock"
+  }
+}
