@@ -1,18 +1,23 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { getIllustration, type IllustrationType } from './Illustration';
 
 interface Props {
-  icon: string;
+  icon?: string;
+  illustration?: IllustrationType;
   title: string;
   message: string;
   actionLabel?: string;
   onAction?: () => void;
 }
 
-export function EmptyState({ icon, title, message, actionLabel, onAction }: Props) {
+export function EmptyState({ icon, illustration, title, message, actionLabel, onAction }: Props) {
+  // Support both icon prop and illustration type
+  const displayIcon = icon || (illustration ? getIllustration(illustration).emoji : '📦');
+
   return (
     <View style={styles.container}>
-      <Text style={styles.icon}>{icon}</Text>
+      <Text style={styles.icon}>{displayIcon}</Text>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
       {actionLabel && (
