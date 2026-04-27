@@ -32,7 +32,6 @@ import {
 } from '../../services/security/securityPreferences';
 
 import {
-  changeLanguage,
   getLanguage,
   languageOptions,
   loadLanguage,
@@ -239,22 +238,12 @@ export default function SettingsScreen() {
           ]}
         >
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Language
+            {t('settings.language')}
           </Text>
-          {languageOptions.map((opt) => (
-            <Button
-              key={opt.value}
-              onPress={async () => {
-                await changeLanguage(opt.value);
-                setLanguage(opt.value);
-              }}
-            >
-              {opt.label}
-            </Button>
-          ))}
-          <Text style={[styles.helperText, { color: colors.subtext }]}>
-            Current: {language.toUpperCase()}
-          </Text>
+          <Button onPress={() => router.push('/settings/language')}>
+            {languageOptions.find((o) => o.value === language)?.label ??
+              language.toUpperCase()}
+          </Button>
         </View>
 
         {/* Appearance */}
