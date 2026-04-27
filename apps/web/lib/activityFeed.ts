@@ -1,5 +1,6 @@
 import { Horizon, rpc, xdr, scValToNative } from "@stellar/stellar-sdk";
 import { SOROBAN_RPC_URL } from "@/config/walletConfig";
+import { formatDate, formatXLM, formatXLMFromStroops } from "@/lib/format";
 
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
 const horizonServer = new Horizon.Server(HORIZON_URL);
@@ -110,9 +111,7 @@ interface ParsedEvent {
  * 1 XLM = 10_000_000 stroops
  */
 function formatXlm(amount: bigint | number | string): string {
-  const raw = BigInt(amount);
-  const xlm = Number(raw) / 10_000_000;
-  return `${xlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`;
+  return formatXLMFromStroops(amount);
 }
 
 /**
@@ -401,7 +400,11 @@ async function parseOperation(
     if (op.asset_type !== "native") return null; // Only care about XLM
 
     const isRecipient = op.to === userAddress;
-    const formattedAmount = `${parseFloat(op.amount).toLocaleString()} XLM`;
+    // Horizon returns the raw on-chain amount, which can be smaller than
+    // 0.01 XLM (e.g. `0.004`). Pass Stellar's max precision (7 decimal
+    // digits, matching the stroop denominator) so small payments don't
+    // get rounded away to "0 XLM" by the 2-decimal summary default.
+    const formattedAmount = formatXLM(parseFloat(op.amount), 7);
 
     if (isRecipient) {
       return {
@@ -489,11 +492,7 @@ function formatTime(isoString: string): string {
     return `${days} day${days !== 1 ? "s" : ""} ago`;
   }
 
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDate(date);
 }
 
 function shortenAddress(address: string): string {
