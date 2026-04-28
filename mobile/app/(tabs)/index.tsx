@@ -1,8 +1,12 @@
 import React, { useMemo } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../context/ThemeContext';
+import { useRefresh } from '../../hooks/useRefresh';
+import { triggerHapticFeedback } from '../../utils/haptics';
+import { logger } from '../../utils/logger';
 
 function getGreeting(hour: number, t: any): string {
   if (hour < 12) return t('home.goodMorning');
@@ -17,6 +21,7 @@ function truncateAddress(address: string): string {
 const HomeHeader = React.memo(() => {
   const router = useRouter();
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const wallet = useAuthStore((s) => s.wallet);
   const displayName = useMemo(() => wallet ? truncateAddress(wallet.publicKey) : t('home.defaultUser'), [wallet, t]);
   const greeting = useMemo(() => getGreeting(new Date().getHours(), t), [t]);
@@ -24,13 +29,16 @@ const HomeHeader = React.memo(() => {
   return (
     <View style={styles.header}>
       <View>
-        <Text style={styles.greeting}>{greeting}</Text>
-        <Text style={styles.address}>{displayName}</Text>
+        <Text style={[styles.greeting, { color: colors.text }]}>{greeting}</Text>
+        <Text style={[styles.address, { color: colors.subtext }]}>{displayName}</Text>
       </View>
       <TouchableOpacity
         accessibilityLabel={t('home.notifications')}
         accessibilityRole="button"
-        onPress={() => router.push('/notifications')}
+        onPress={() => {
+          triggerHapticFeedback.selection();
+          router.push('/notifications');
+        }}
         style={styles.bell}
       >
         <Text style={styles.bellIcon}>🔔</Text>
@@ -41,23 +49,41 @@ const HomeHeader = React.memo(() => {
 
 export default function HomeScreen() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
+
+  const fetchData = useMemo(() => async () => {
+    logger.info('HomeScreen', 'Refreshing home data');
+  }, []);
+
+  const { refreshing, onRefresh } = useRefresh(fetchData);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.accent}
+          colors={[colors.accent]}
+        />
+      }
+    >
       <HomeHeader />
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>{t('home.totalBalance')}</Text>
-        <Text style={styles.sectionValue}>{t('home.balanceValue')}</Text>
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t('home.totalBalance')}</Text>
+        <Text style={[styles.sectionValue, { color: colors.text }]}>{t('home.balanceValue')}</Text>
       </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>{t('home.quickActions')}</Text>
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t('home.quickActions')}</Text>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1 },
   content: { padding: 16 },
   header: {
     flexDirection: 'row',
@@ -65,18 +91,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  greeting: { fontSize: 22, fontWeight: '700', color: '#F8FAFC' },
-  address: { fontSize: 13, color: '#94A3B8', marginTop: 2 },
+  greeting: { fontSize: 22, fontWeight: '700' },
+  address: { fontSize: 13, marginTop: 2 },
   bell: { padding: 8 },
   bellIcon: { fontSize: 22 },
   section: {
-    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#334155',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
   },
-  sectionLabel: { fontSize: 13, color: '#94A3B8', marginBottom: 4 },
-  sectionValue: { fontSize: 24, fontWeight: '700', color: '#F8FAFC' },
+  sectionLabel: { fontSize: 13, marginBottom: 4 },
+  sectionValue: { fontSize: 24, fontWeight: '700' },
 });

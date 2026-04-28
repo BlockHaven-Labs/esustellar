@@ -1,13 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-
-const TAB_BAR_BG = '#0F172A';
-const ACTIVE = '#6366F1';
-const INACTIVE = '#64748B';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function TabsLayout() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
 
   // 🔹 TODO: replace with store later
   const unreadCount = 12;
@@ -20,9 +18,9 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: TAB_BAR_BG, borderTopWidth: 0 },
-        tabBarActiveTintColor: ACTIVE,
-        tabBarInactiveTintColor: INACTIVE,
+        tabBarStyle: { backgroundColor: colors.card, borderTopWidth: 0 },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.subtext,
       }}
     >
       <Tabs.Screen

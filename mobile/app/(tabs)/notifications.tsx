@@ -2,12 +2,16 @@ import React, { useState } from 'react';
 import { Alert, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import Button from '../../components/ui/Button';
 import { scheduleLocalNotification } from '../../services/notifications/notificationService';
+import { useTheme } from '../../context/ThemeContext';
+import { logger } from '../../utils/logger';
 
 export default function NotificationsScreen() {
   const [scheduling, setScheduling] = useState(false);
+  const { colors } = useTheme();
 
   const scheduleGroupNotification = async () => {
     setScheduling(true);
+    logger.info('NotificationsScreen', 'Scheduling group notification');
 
     try {
       await scheduleLocalNotification({
@@ -24,7 +28,8 @@ export default function NotificationsScreen() {
         'Notification scheduled',
         'A test notification will appear in 2 seconds.'
       );
-    } catch {
+    } catch (err) {
+      logger.error('NotificationsScreen', 'Failed to schedule notification', err);
       Alert.alert('Unable to schedule notification', 'Please try again.');
     } finally {
       setScheduling(false);
@@ -33,6 +38,7 @@ export default function NotificationsScreen() {
 
   const scheduleUnknownRouteNotification = async () => {
     setScheduling(true);
+    logger.info('NotificationsScreen', 'Scheduling fallback notification');
 
     try {
       await scheduleLocalNotification({
@@ -48,7 +54,8 @@ export default function NotificationsScreen() {
         'Fallback notification scheduled',
         'A test notification with an unknown route will appear in 2 seconds.'
       );
-    } catch {
+    } catch (err) {
+      logger.error('NotificationsScreen', 'Failed to schedule fallback notification', err);
       Alert.alert('Unable to schedule notification', 'Please try again.');
     } finally {
       setScheduling(false);
@@ -56,10 +63,10 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Notifications</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
+        <Text style={[styles.subtitle, { color: colors.subtext }]}>
           Trigger a local notification to verify foreground banners and tap
           navigation.
         </Text>
@@ -86,7 +93,6 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#0F172A',
     flex: 1,
   },
   content: {
@@ -95,13 +101,11 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   title: {
-    color: '#F8FAFC',
     fontSize: 28,
     fontWeight: '800',
     marginBottom: 12,
   },
   subtitle: {
-    color: '#CBD5E1',
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 24,
