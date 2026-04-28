@@ -17,6 +17,7 @@ import { useAutoLock } from '../hooks/useAutoLock';
 import { loadLanguage } from '../constants/i18n';
 import { getRouteFromNotificationData } from '../services/notifications/notificationRouting';
 import { biometricService } from '../services/security';
+import { logger } from '../utils/logger';
 
 const ONBOARDING_KEY = 'onboardingComplete';
 const BIOMETRIC_LOCK_KEY = 'biometricLockEnabled';
@@ -96,6 +97,7 @@ function RootLayoutContent() {
 
     const initialize = async () => {
       await loadLanguage();
+      logger.info('RootLayout', 'App initializing');
 
       const onboardingComplete = await AsyncStorage.getItem(ONBOARDING_KEY);
 

@@ -11,10 +11,28 @@ export const triggerHapticFeedback = {
     }
   },
   
+  medium: () => {
+    if (Platform.OS === 'web') return;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (error) {
+      // Silently fail if haptics aren't available (e.g., simulator)
+    }
+  },
+
   heavy: () => {
     if (Platform.OS === 'web') return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    } catch (error) {
+      // Silently fail if haptics aren't available (e.g., simulator)
+    }
+  },
+
+  selection: () => {
+    if (Platform.OS === 'web') return;
+    try {
+      Haptics.selectionAsync();
     } catch (error) {
       // Silently fail if haptics aren't available (e.g., simulator)
     }
