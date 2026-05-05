@@ -96,8 +96,7 @@ export function useUpcomingPayments() {
 
       setPayingGroupId(groupId);
       try {
-        const stroops = BigInt(Math.floor(amountXLM * 10_000_000));
-        await savings.contribute(stroops, groupId);
+        await savings.contribute(groupId);
         await fetchPayments();
       } finally {
         setPayingGroupId(null);
