@@ -89,6 +89,8 @@ const ProfileScreen = React.memo(() => {
 });
 
 export default ProfileScreen;
+
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0F172A',

@@ -236,6 +236,44 @@ class GroupsApiService {
   }
 
   /**
+   * Create a new group
+   */
+  async createGroup(groupData: Partial<Group>, creatorAddress: string): Promise<ApiResponse<Group>> {
+    try {
+      console.log(`Creating group: ${groupData.name}`);
+      
+      // Mock API call - replace with actual implementation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const newGroup: Group = {
+        id: 'group_' + Date.now(),
+        name: groupData.name || 'New Group',
+        description: groupData.description || '',
+        contractAddress: '0x' + Math.random().toString(16).substr(2, 40),
+        contributionAmount: groupData.contributionAmount || 0,
+        payoutFrequency: groupData.payoutFrequency || 'monthly',
+        maxMembers: groupData.maxMembers || 10,
+        currentMembers: 1,
+        createdAt: new Date().toISOString(),
+        creatorAddress,
+        isActive: true,
+      };
+
+      return {
+        success: true,
+        data: newGroup,
+        message: 'Group created successfully',
+      };
+    } catch (error) {
+      console.error('Failed to create group:', error);
+      return {
+        success: false,
+        error: 'Failed to create group',
+      };
+    }
+  }
+
+  /**
    * Leave a group
    */
   async leaveGroup(groupId: string, userAddress: string): Promise<ApiResponse<any>> {
