@@ -130,11 +130,23 @@ class BackgroundSyncService {
    * Sync transactions data
    */
   private async syncTransactions(userAddress: string) {
-    const result = await transactionsApi.getUserTransactions(userAddress);
-    if (result.success && result.data) {
-      queryClient.setQueryData(['transactions', 'user', userAddress], result);
-      console.log('[SyncService] Transactions synced successfully');
+    const result = await transactionSyncService.syncTransactions(userAddress);
+    
+    if (!result.success) {
+      console.error('[SyncService] Transaction sync failed:', result.error);
+      return;
     }
+
+    const existingData = queryClient.getQueryData<{ data?: Transaction[] }>(
+      queryKeys.transactions.user(userAddress)
+    );
+    
+    queryClient.setQueryData(
+      queryKeys.transactions.user(userAddress),
+      { ...existingData, data: existingData?.data || [] }
+    );
+    
+    console.log('[SyncService] Transactions synced successfully');
   }
 
   /**
