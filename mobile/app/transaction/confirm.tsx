@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Button from '../../components/ui/Button';
+import { triggerHapticFeedback } from '../../utils/haptics';
 
 type TxType = 'contribution' | 'payout' | 'fee';
 
@@ -98,11 +99,13 @@ export default function TransactionConfirmScreen() {
   const canProceed = recipientChecked && irreversibleChecked;
 
   const handleContinue = () => {
+    triggerHapticFeedback.medium();
     if (!canProceed) return;
     setReviewComplete(true);
   };
 
   const handleConfirm = async () => {
+    triggerHapticFeedback.success();
     setSubmitting(true);
     await new Promise((r) => setTimeout(r, 1500));
     router.replace({
@@ -112,6 +115,7 @@ export default function TransactionConfirmScreen() {
   };
 
   const handleCancel = () => {
+    triggerHapticFeedback.warning();
     router.back();
   };
 
@@ -164,12 +168,12 @@ export default function TransactionConfirmScreen() {
           <CheckRow
             label="I verified the recipient wallet address"
             checked={recipientChecked}
-            onToggle={() => setRecipientChecked((prev) => !prev)}
+            onToggle={() => { triggerHapticFeedback.selection(); setRecipientChecked((prev) => !prev); }}
           />
           <CheckRow
             label="I understand this transaction cannot be reversed"
             checked={irreversibleChecked}
-            onToggle={() => setIrreversibleChecked((prev) => !prev)}
+            onToggle={() => { triggerHapticFeedback.selection(); setIrreversibleChecked((prev) => !prev); }}
           />
         </View>
       </ScrollView>

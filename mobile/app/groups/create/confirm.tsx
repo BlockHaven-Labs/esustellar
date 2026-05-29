@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { triggerHapticFeedback } from '../../utils/haptics';
 
 export default function ConfirmGroupScreen() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function ConfirmGroupScreen() {
         payoutFrequency,
       });
       // Navigate to the new group's detail screen on success
+      triggerHapticFeedback.success();
       router.replace('/groups');
     } catch {
       // handle error
@@ -52,7 +54,7 @@ export default function ConfirmGroupScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => { triggerHapticFeedback.warning(); router.back(); }} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Review & Confirm</Text>

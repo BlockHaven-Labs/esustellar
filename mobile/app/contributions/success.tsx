@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SafeAreaView, ScrollView, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { triggerHapticFeedback } from '../../utils/haptics';
 import { Button } from '../../components/ui/Button';
 
 export default function ContributionSuccessScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ groupName?: string; amount?: string; txHash?: string }>();
   const groupName = params.groupName ?? 'Unknown Group';
+
+  useEffect(() => { triggerHapticFeedback.success(); }, []);
   const amount = params.amount ?? '0 XLM';
 
   return (
