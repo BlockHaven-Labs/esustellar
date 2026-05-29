@@ -18,7 +18,11 @@ export function truncateAddress(address: string, leading = 4, trailing = 4): str
 export function formatXLM(amount: number, decimals = 2): string {
   const value = isNaN(amount) || amount === null || amount === undefined ? 0 : amount;
   
-  const parts = value.toFixed(decimals).split('.');
+  const sign = value >= 0 ? 1 : -1;
+  const factor = Math.pow(10, decimals);
+  const rounded = sign * (Math.round(Math.abs(value) * factor) / factor);
+  
+  const parts = rounded.toFixed(decimals).split('.');
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   
   return `${parts.join('.')} XLM`;

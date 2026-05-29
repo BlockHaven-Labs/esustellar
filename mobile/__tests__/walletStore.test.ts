@@ -1,4 +1,4 @@
-import { useWalletStore } from '../../stores/walletStore';
+import { useWalletStore } from '@/stores/walletStore';
 
 beforeEach(() => {
   useWalletStore.setState({ address: null, isConnecting: false });

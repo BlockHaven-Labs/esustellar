@@ -21,9 +21,9 @@ describe('Avatar', () => {
   });
 
   it('renders without error for different sizes', () => {
-    const { rerender, getByText } = render(<Avatar name="AB" size="sm" />);
+    const { rerender, getByText } = render(<Avatar name="A B" size="sm" />);
     expect(getByText('AB')).toBeTruthy();
-    rerender(<Avatar name="AB" size="lg" />);
+    rerender(<Avatar name="A B" size="lg" />);
     expect(getByText('AB')).toBeTruthy();
   });
 });

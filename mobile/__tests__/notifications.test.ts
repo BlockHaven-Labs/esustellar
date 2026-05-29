@@ -1,7 +1,7 @@
 import {
   registerForPushNotificationsAsync,
   scheduleLocalNotification,
-} from '../../services/notifications';
+} from '@/services/notifications';
 
 describe('notifications', () => {
   it('returns push token on a device', async () => {

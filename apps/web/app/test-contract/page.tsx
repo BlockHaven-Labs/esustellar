@@ -5,6 +5,7 @@ import { useWallet } from '@/hooks/use-wallet'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Header } from '@/components/header'
 import { Footer } from '@/components/footer'
 
@@ -14,13 +15,14 @@ export default function TestContractPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
+  const [testGroupId, setTestGroupId] = useState('test-group-1')
 
   // Test Read Methods (No wallet needed)
   const testGetGroup = async () => {
     setLoading(true)
     setError(null)
     try {
-      const group = await contract.getGroup()
+      const group = await contract.getGroupById(testGroupId)
       setResult(group)
       console.log('Group:', group)
     } catch (err: any) {
@@ -50,7 +52,7 @@ export default function TestContractPage() {
     setLoading(true)
     setError(null)
     try {
-      const members = await contract.getMembers()
+      const members = await contract.getMembersByGroup(testGroupId)
       setResult(members)
       console.log('Members:', members)
     } catch (err: any) {
@@ -69,7 +71,7 @@ export default function TestContractPage() {
     setLoading(true)
     setError(null)
     try {
-      const member = await contract.getMember(wallet.publicKey)
+      const member = await contract.getMemberByGroup(wallet.publicKey, testGroupId)
       setResult(member)
       console.log('Member:', member)
     } catch (err: any) {
@@ -84,7 +86,7 @@ export default function TestContractPage() {
     setLoading(true)
     setError(null)
     try {
-      const contributions = await contract.getRoundContributions(1)
+      const contributions = await contract.getRoundContributionsByGroup(testGroupId, 1)
       setResult(contributions)
       console.log('Contributions:', contributions)
     } catch (err: any) {
@@ -142,7 +144,8 @@ export default function TestContractPage() {
       }
       
       await contract.createGroup(params)
-      setResult('Group created successfully! Check console for details.')
+      setTestGroupId(params.groupId)
+      setResult(`Group created successfully! Active Group ID updated to: ${params.groupId}`)
       console.log('Group created:', params.groupId)
     } catch (err: any) {
       setError(err.message)
@@ -161,7 +164,7 @@ export default function TestContractPage() {
     setLoading(true)
     setError(null)
     try {
-      await contract.joinGroup()
+      await contract.joinGroup(testGroupId)
       setResult('Joined group successfully!')
       console.log('Joined group')
     } catch (err: any) {
@@ -181,7 +184,7 @@ export default function TestContractPage() {
     setLoading(true)
     setError(null)
     try {
-      await contract.contribute(BigInt(100_000_000)) // 10 XLM
+      await contract.contribute(testGroupId)
       setResult('Contribution successful!')
       console.log('Contributed')
     } catch (err: any) {
@@ -210,6 +213,26 @@ export default function TestContractPage() {
               <p><strong>Wallet Connected:</strong> {wallet.isConnected ? '✅' : '❌'}</p>
               <p><strong>Wallet Address:</strong> {wallet.publicKey || 'Not connected'}</p>
               {contract.error && <p className="text-red-500"><strong>Error:</strong> {contract.error}</p>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Test Configuration */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Test Configuration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col space-y-2">
+              <label htmlFor="testGroupIdInput" className="text-sm font-semibold text-foreground">Active Group ID for testing:</label>
+              <Input
+                id="testGroupIdInput"
+                type="text"
+                value={testGroupId}
+                onChange={(e) => setTestGroupId(e.target.value)}
+                placeholder="Enter Group ID"
+                className="max-w-md"
+              />
             </div>
           </CardContent>
         </Card>

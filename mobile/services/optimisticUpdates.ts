@@ -4,13 +4,31 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '../queryClient';
-import { groupsApi, type Group } from './api/groupsApi';
+import { queryKeys } from './queryClient';
+import { groupsApi, type Group as ApiGroup, type ApiResponse } from './api/groupsApi';
 import { useGroupsStore } from '../stores/groupsStore';
+import type { Group as StoreGroup } from '../types/group';
 
 interface UseOptimisticGroupsOptions {
   onSuccess?: () => void;
   onError?: (error: Error) => void;
+}
+
+/**
+ * Maps an API group interface to the local store group interface
+ */
+export function mapApiGroupToStoreGroup(apiGroup: ApiGroup): StoreGroup {
+  return {
+    id: apiGroup.id,
+    name: apiGroup.name,
+    description: apiGroup.description,
+    status: apiGroup.isActive ? 'active' : 'pending',
+    contributionAmount: apiGroup.contributionAmount,
+    memberCount: apiGroup.currentMembers ?? 0,
+    maxMembers: apiGroup.maxMembers,
+    payoutFrequency: apiGroup.payoutFrequency,
+    creatorAddress: apiGroup.creatorAddress,
+  };
 }
 
 /**
@@ -25,7 +43,7 @@ export function useGroupsQuery(userAddress: string) {
       setLoading(true);
       const result = await groupsApi.getUserGroups(userAddress);
       if (result.success && result.data) {
-        setGroups(result.data);
+        setGroups(result.data.map(mapApiGroupToStoreGroup));
       }
       setLoading(false);
       return result;
@@ -45,15 +63,18 @@ export function useJoinGroupMutation(userAddress: string, options?: UseOptimisti
     mutationFn: ({ inviteCode }: { inviteCode: string }) =>
       groupsApi.joinGroupWithCode(inviteCode, userAddress),
     
-    onMutate: async ({ inviteCode }) => {
+    onMutate: async () => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: queryKeys.groups.user(userAddress) });
 
       // Snapshot previous value for rollback
       const previousGroups = groups;
+      const previousQueryData = queryClient.getQueryData<ApiResponse<ApiGroup[]>>(
+        queryKeys.groups.user(userAddress)
+      );
 
       // Optimistically add a pending group
-      const optimisticGroup: Group = {
+      const optimisticGroup: ApiGroup = {
         id: `temp_${Date.now()}`,
         name: 'Joining group...',
         description: '',
@@ -67,15 +88,38 @@ export function useJoinGroupMutation(userAddress: string, options?: UseOptimisti
         isActive: false,
       };
 
-      setGroups([...groups, optimisticGroup]);
+      // Update Zustand store
+      setGroups([...groups, mapApiGroupToStoreGroup(optimisticGroup)]);
 
-      return { previousGroups };
+      // Update React Query cache
+      if (previousQueryData && previousQueryData.success && previousQueryData.data) {
+        queryClient.setQueryData<ApiResponse<ApiGroup[]>>(
+          queryKeys.groups.user(userAddress),
+          {
+            ...previousQueryData,
+            data: [...previousQueryData.data, optimisticGroup],
+          }
+        );
+      } else {
+        queryClient.setQueryData<ApiResponse<ApiGroup[]>>(
+          queryKeys.groups.user(userAddress),
+          {
+            success: true,
+            data: [optimisticGroup],
+          }
+        );
+      }
+
+      return { previousGroups, previousQueryData };
     },
 
     onError: (error, _variables, context) => {
       // Rollback on error
       if (context?.previousGroups) {
         setGroups(context.previousGroups);
+      }
+      if (context?.previousQueryData) {
+        queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
       }
       options?.onError?.(error);
     },
@@ -86,6 +130,10 @@ export function useJoinGroupMutation(userAddress: string, options?: UseOptimisti
         if (context?.previousGroups) {
           setGroups(context.previousGroups);
         }
+        if (context?.previousQueryData) {
+          queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
+        }
+        options?.onError?.(new Error(result.error || 'Failed to join group'));
         return;
       }
       // Invalidate to fetch real data
@@ -110,22 +158,47 @@ export function useLeaveGroupMutation(userAddress: string, options?: UseOptimist
       await queryClient.cancelQueries({ queryKey: queryKeys.groups.user(userAddress) });
 
       const previousGroups = groups;
+      const previousQueryData = queryClient.getQueryData<ApiResponse<ApiGroup[]>>(
+        queryKeys.groups.user(userAddress)
+      );
 
-      // Optimistically remove the group
+      // Optimistically remove the group from Zustand store
       setGroups(groups.filter(g => g.id !== groupId));
 
-      return { previousGroups };
+      // Optimistically remove from React Query cache
+      if (previousQueryData && previousQueryData.success && previousQueryData.data) {
+        queryClient.setQueryData<ApiResponse<ApiGroup[]>>(
+          queryKeys.groups.user(userAddress),
+          {
+            ...previousQueryData,
+            data: previousQueryData.data.filter(g => g.id !== groupId),
+          }
+        );
+      }
+
+      return { previousGroups, previousQueryData };
     },
 
     onError: (error, _variables, context) => {
       if (context?.previousGroups) {
         setGroups(context.previousGroups);
       }
+      if (context?.previousQueryData) {
+        queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
+      }
       options?.onError?.(error);
     },
 
-    onSuccess: (result) => {
+    onSuccess: (result, _variables, context) => {
       if (!result.success) {
+        // Rollback if API returned error
+        if (context?.previousGroups) {
+          setGroups(context.previousGroups);
+        }
+        if (context?.previousQueryData) {
+          queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
+        }
+        options?.onError?.(new Error(result.error || 'Failed to leave group'));
         return;
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.groups.user(userAddress) });
@@ -142,16 +215,19 @@ export function useCreateGroupMutation(userAddress: string, options?: UseOptimis
   const { setGroups, groups } = useGroupsStore();
 
   return useMutation({
-    mutationFn: (groupData: Partial<Group>) =>
+    mutationFn: (groupData: Partial<ApiGroup>) =>
       groupsApi.createGroup(groupData, userAddress),
 
     onMutate: async (groupData) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.groups.user(userAddress) });
 
       const previousGroups = groups;
+      const previousQueryData = queryClient.getQueryData<ApiResponse<ApiGroup[]>>(
+        queryKeys.groups.user(userAddress)
+      );
 
       // Optimistically add the new group
-      const optimisticGroup: Group = {
+      const optimisticGroup: ApiGroup = {
         id: `temp_${Date.now()}`,
         name: groupData.name || 'Creating group...',
         description: groupData.description || '',
@@ -165,20 +241,120 @@ export function useCreateGroupMutation(userAddress: string, options?: UseOptimis
         isActive: true,
       };
 
-      setGroups([...groups, optimisticGroup]);
+      // Update Zustand store
+      setGroups([...groups, mapApiGroupToStoreGroup(optimisticGroup)]);
 
-      return { previousGroups };
+      // Update React Query cache
+      if (previousQueryData && previousQueryData.success && previousQueryData.data) {
+        queryClient.setQueryData<ApiResponse<ApiGroup[]>>(
+          queryKeys.groups.user(userAddress),
+          {
+            ...previousQueryData,
+            data: [...previousQueryData.data, optimisticGroup],
+          }
+        );
+      } else {
+        queryClient.setQueryData<ApiResponse<ApiGroup[]>>(
+          queryKeys.groups.user(userAddress),
+          {
+            success: true,
+            data: [optimisticGroup],
+          }
+        );
+      }
+
+      return { previousGroups, previousQueryData };
     },
 
     onError: (error, _variables, context) => {
       if (context?.previousGroups) {
         setGroups(context.previousGroups);
       }
+      if (context?.previousQueryData) {
+        queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
+      }
       options?.onError?.(error);
     },
 
-    onSuccess: (result) => {
+    onSuccess: (result, _variables, context) => {
       if (!result.success) {
+        // Rollback if API returned error
+        if (context?.previousGroups) {
+          setGroups(context.previousGroups);
+        }
+        if (context?.previousQueryData) {
+          queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
+        }
+        options?.onError?.(new Error(result.error || 'Failed to create group'));
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.user(userAddress) });
+      options?.onSuccess?.();
+    },
+  });
+}
+
+/**
+ * Hook for updating group settings with optimistic update
+ */
+export function useUpdateGroupSettingsMutation(userAddress: string, options?: UseOptimisticGroupsOptions) {
+  const queryClient = useQueryClient();
+  const { setGroups, groups } = useGroupsStore();
+
+  return useMutation({
+    mutationFn: ({ groupId, settings }: { groupId: string; settings: Partial<ApiGroup> }) =>
+      groupsApi.updateGroupSettings(groupId, userAddress, settings),
+
+    onMutate: async ({ groupId, settings }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.groups.user(userAddress) });
+
+      const previousGroups = groups;
+      const previousQueryData = queryClient.getQueryData<ApiResponse<ApiGroup[]>>(
+        queryKeys.groups.user(userAddress)
+      );
+
+      // Optimistically update Zustand store
+      const updatedGroups = groups.map(g => 
+        g.id === groupId ? { ...g, ...settings } : g
+      );
+      setGroups(updatedGroups);
+
+      // Optimistically update React Query cache
+      if (previousQueryData && previousQueryData.success && previousQueryData.data) {
+        queryClient.setQueryData<ApiResponse<ApiGroup[]>>(
+          queryKeys.groups.user(userAddress),
+          {
+            ...previousQueryData,
+            data: previousQueryData.data.map(g => 
+              g.id === groupId ? { ...g, ...settings } : g
+            ),
+          }
+        );
+      }
+
+      return { previousGroups, previousQueryData };
+    },
+
+    onError: (error, _variables, context) => {
+      if (context?.previousGroups) {
+        setGroups(context.previousGroups);
+      }
+      if (context?.previousQueryData) {
+        queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
+      }
+      options?.onError?.(error);
+    },
+
+    onSuccess: (result, _variables, context) => {
+      if (!result.success) {
+        // Rollback if API returned error
+        if (context?.previousGroups) {
+          setGroups(context.previousGroups);
+        }
+        if (context?.previousQueryData) {
+          queryClient.setQueryData(queryKeys.groups.user(userAddress), context.previousQueryData);
+        }
+        options?.onError?.(new Error(result.error || 'Failed to update group settings'));
         return;
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.groups.user(userAddress) });

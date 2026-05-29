@@ -37,8 +37,13 @@ describe('authStore colorScheme persistence', () => {
     useAuthStore.getState().setColorScheme('light');
     await flush();
 
+    // Temporarily mock setItem so the next store change isn't persisted
+    const mockSetItem = jest.spyOn(AsyncStorage, 'setItem').mockImplementation(async () => {});
     useAuthStore.setState({ colorScheme: 'system' });
     expect(useAuthStore.getState().colorScheme).toBe('system');
+
+    await flush();
+    mockSetItem.mockRestore();
 
     await useAuthStore.persist.rehydrate();
 
