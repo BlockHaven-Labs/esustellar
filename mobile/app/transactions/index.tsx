@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { TransactionItem, TransactionType } from '../../components/transactions/TransactionItem';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { useRefresh } from '../../hooks/useRefresh';
 
 interface Transaction {
   id: string;
@@ -44,12 +45,13 @@ export default function TransactionHistory() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  const loadPage = useCallback(async (pageNum: number, reset = false) => {
-    if (pageNum === 0 && reset) {
-      setRefreshing(true);
-    } else if (pageNum === 0) {
+  const loadPage = useCallback(async (
+    pageNum: number,
+    { reset = false, showFullLoader = true } = {},
+  ) => {
+    if (pageNum === 0 && showFullLoader) {
       setLoading(true);
-    } else {
+    } else if (pageNum > 0) {
       setLoadingMore(true);
     }
 
@@ -70,14 +72,15 @@ export default function TransactionHistory() {
     loadPage(0);
   }, [loadPage]);
 
-  const handleRefresh = useCallback(() => {
-    if (loading || refreshing || loadingMore) return;
-    loadPage(0, true);
-  }, [loadPage, loading, refreshing, loadingMore]);
+  const handleRefresh = useCallback(
+    () => loadPage(0, { reset: true, showFullLoader: false }),
+    [loadPage],
+  );
+  const { refreshing, onRefresh } = useRefresh(handleRefresh);
 
   const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore) loadPage(page + 1);
-  }, [loadingMore, hasMore, page, loadPage]);
+    if (!loadingMore && !refreshing && hasMore) loadPage(page + 1);
+  }, [loadingMore, refreshing, hasMore, page, loadPage]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -121,7 +124,8 @@ export default function TransactionHistory() {
           onEndReachedThreshold={0.3}
           ListEmptyComponent={
             <EmptyState
-              icon="📭"
+              tone="dark"
+              illustration="transactions"
               title="No transactions yet"
               message="Your contributions and payouts will appear here."
             />

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { QueryClientProvider } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { Slot, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -17,8 +18,9 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useAutoLock } from '../hooks/useAutoLock';
 import { loadLanguage } from '../constants/i18n';
 import { getRouteFromNotificationData } from '../services/notifications/notificationRouting';
+import { queryClient } from '../services/queryClient';
 import { biometricService } from '../services/security';
-import { logger } from '../utils/logger';
+import { logger } from '../services/logger';
 
 const ONBOARDING_KEY = 'onboardingComplete';
 const BIOMETRIC_LOCK_KEY = 'biometricLockEnabled';
@@ -227,9 +229,11 @@ function RootLayoutContent() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <RootLayoutContent />
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <RootLayoutContent />
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 
@@ -242,21 +246,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  overlay: {
+   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#6C63FF',
+    backgroundColor: '#0B1220',     // Dark background for overlay
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 9999,
   },
   overlayText: {
-    color: '#FFFFFF',
+    color: '#F3F4F6',
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: 1,
   },
   lockHint: {
-    color: 'rgba(255,255,255,0.75)',
+    color: '#9CA3AF',
     fontSize: 14,
     marginTop: 16,
   },

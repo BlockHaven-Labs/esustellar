@@ -7,6 +7,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { triggerHapticFeedback } from '../../utils/haptics';
+import { useTheme } from '../../context/ThemeContext';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost';
 type Size = 'sm' | 'md' | 'lg';
@@ -21,27 +22,6 @@ interface ButtonProps {
   style?: ViewStyle;
   children: React.ReactNode;
 }
-
-const bg: Record<Variant, string> = {
-  primary: '#6366F1',
-  secondary: '#1E293B',
-  outline: 'transparent',
-  ghost: 'transparent',
-};
-
-const border: Record<Variant, string> = {
-  primary: '#6366F1',
-  secondary: '#1E293B',
-  outline: '#6366F1',
-  ghost: 'transparent',
-};
-
-const textColor: Record<Variant, string> = {
-  primary: '#fff',
-  secondary: '#fff',
-  outline: '#6366F1',
-  ghost: '#6366F1',
-};
 
 const padding: Record<Size, ViewStyle> = {
   sm: { paddingVertical: 6, paddingHorizontal: 12 },
@@ -61,7 +41,31 @@ const Button = React.memo<ButtonProps>(({
   style,
   children,
 }) => {
+  const { colors, resolvedColorScheme } = useTheme();
   const isDisabled = disabled || loading;
+  const secondaryBg = resolvedColorScheme === 'dark' ? '#1F2937' : '#1E293B';
+  const onAccentText = resolvedColorScheme === 'dark' ? '#0B1220' : '#FFFFFF';
+
+  const bg: Record<Variant, string> = {
+    primary: colors.accent,
+    secondary: secondaryBg,
+    outline: 'transparent',
+    ghost: 'transparent',
+  };
+
+  const border: Record<Variant, string> = {
+    primary: colors.accent,
+    secondary: secondaryBg,
+    outline: colors.accent,
+    ghost: 'transparent',
+  };
+
+  const textColor: Record<Variant, string> = {
+    primary: onAccentText,
+    secondary: '#FFFFFF',
+    outline: colors.accent,
+    ghost: colors.accent,
+  };
 
   const handlePress = useCallback(() => {
     if (!isDisabled && onPress) {

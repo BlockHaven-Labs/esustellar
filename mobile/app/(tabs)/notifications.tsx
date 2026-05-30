@@ -5,7 +5,7 @@ import { scheduleLocalNotification } from '../../services/notifications/notifica
 import { useTheme } from '../../context/ThemeContext';
 import { useRefresh } from '../../hooks/useRefresh';
 import { useInvalidateNotifications } from '../../hooks/useNotifications';
-import { logger } from '../../utils/logger';
+import { logger } from '../../services/logger';
 
 export default function NotificationsScreen() {
   const [scheduling, setScheduling] = useState(false);

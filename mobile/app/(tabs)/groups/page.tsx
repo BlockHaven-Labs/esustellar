@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { FlatList, RefreshControl, SafeAreaView, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Badge, ErrorState, LoadingSkeleton, TextInput } from '../../../components/ui';
+import { Badge, EmptyState, ErrorState, LoadingSkeleton, TextInput } from '../../../components/ui';
 import { useDebounce } from '../../../hooks/useDebounce';
+import { useRefresh } from '../../../hooks/useRefresh';
 import { formatXLM } from '../../../utils/stellar';
 
 type GroupStatus = 'Active' | 'Open' | 'Paused' | 'Closed' | 'Pending';
@@ -83,15 +84,16 @@ function getFilteredGroups(filter: FilterKey) {
 export default function GroupsPage() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('All');
-  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  const fetchGroups = useCallback(async () => {
-    setLoading(true);
+  const fetchGroups = useCallback(async ({ showFullLoader = true } = {}) => {
+    if (showFullLoader) {
+      setLoading(true);
+    }
     setError(null);
     
     // Simulate network delay
@@ -100,12 +102,16 @@ export default function GroupsPage() {
     // 30% failure rate simulation
     if (Math.random() < 0.3) {
       setError('Failed to fetch groups. Please check your connection and try again.');
-      setLoading(false);
+      if (showFullLoader) {
+        setLoading(false);
+      }
       return;
     }
     
     setGroups(MOCK_GROUPS);
-    setLoading(false);
+    if (showFullLoader) {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -123,11 +129,11 @@ export default function GroupsPage() {
     [activeFilter, groups, debouncedSearchQuery],
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchGroups();
-    setRefreshing(false);
-  }, [fetchGroups]);
+  const refreshGroups = useCallback(
+    () => fetchGroups({ showFullLoader: false }),
+    [fetchGroups],
+  );
+  const { refreshing, onRefresh } = useRefresh(refreshGroups);
 
   // useCallback: stable reference prevents FlatList from re-rendering all items on parent update
   const renderGroup = useCallback(({ item }: { item: Group }) => (
@@ -188,11 +194,11 @@ export default function GroupsPage() {
       ) : error ? (
         <ErrorState message={error} onRetry={fetchGroups} />
       ) : (
-        <FlatList
+        <FlatList<Group>
           data={filteredGroups}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: Group) => item.id}
           renderItem={renderGroup}
-          getItemLayout={(_, index) => ({ length: 110, offset: 110 * index, index })}
+          getItemLayout={(_: unknown, index: number) => ({ length: 110, offset: 110 * index, index })}
           removeClippedSubviews
           maxToRenderPerBatch={10}
           windowSize={5}
@@ -205,10 +211,12 @@ export default function GroupsPage() {
             />
           }
           ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No groups to show</Text>
-              <Text style={styles.emptyMessage}>Try another filter to see matching groups.</Text>
-            </View>
+            <EmptyState
+              tone="light"
+              illustration="groups"
+              title="No groups to show"
+              message="Try another filter or adjust your search to see matching groups."
+            />
           }
         />
       )}
@@ -319,21 +327,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#475569',
     marginTop: 4,
-  },
-  emptyState: {
-    marginTop: 32,
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 8,
-  },
-  emptyMessage: {
-    fontSize: 15,
-    color: '#64748B',
-    textAlign: 'center',
-    maxWidth: 260,
   },
 });
