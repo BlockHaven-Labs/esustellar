@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../context/ThemeContext';
 import { useRefresh } from '../../hooks/useRefresh';
@@ -12,6 +13,7 @@ import { triggerHapticFeedback } from '../../utils/haptics';
 import { logger } from '../../services/logger';
 import WalletSwitcher from '../../components/wallet/WalletSwitcher';
 import { getActiveWallet, WalletEntry } from '../../services/wallet/multiWallet';
+import TutorialWalkthrough from '../../components/onboarding/TutorialWalkthrough';
 
 function getGreeting(hour: number, t: any): string {
   if (hour < 12) return t('home.goodMorning');
@@ -94,6 +96,8 @@ export default function HomeScreen() {
   const invalidateTransactions = useInvalidateTransactions();
   const invalidateNotifications = useInvalidateNotifications();
 
+  const [showTutorial, setShowTutorial] = useState(false);
+
   useEffect(() => {
     if (wallet) return;
 
@@ -110,6 +114,19 @@ export default function HomeScreen() {
     };
   }, [wallet, setWallet]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const complete = await AsyncStorage.getItem('tutorialComplete');
+        if (complete !== 'true') {
+          setShowTutorial(true);
+        }
+      } catch (e) {
+        logger.error('HomeScreen', 'Failed to read tutorial status', e as Error);
+      }
+    })();
+  }, []);
+
   const fetchData = useMemo(
     () => async () => {
       logger.info('HomeScreen', 'Refreshing home data');
@@ -125,27 +142,34 @@ export default function HomeScreen() {
   const { refreshing, onRefresh } = useRefresh(fetchData);
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.accent}
-          colors={[colors.accent]}
-        />
-      }
-    >
-      <HomeHeader />
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t('home.totalBalance')}</Text>
-        <Text style={[styles.sectionValue, { color: colors.text }]}>{t('home.balanceValue')}</Text>
-      </View>
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t('home.quickActions')}</Text>
-      </View>
-    </ScrollView>
+    <>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
+      >
+        <HomeHeader />
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t('home.totalBalance')}</Text>
+          <Text style={[styles.sectionValue, { color: colors.text }]}>{t('home.balanceValue')}</Text>
+        </View>
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t('home.quickActions')}</Text>
+        </View>
+      </ScrollView>
+
+      <TutorialWalkthrough
+        visible={showTutorial}
+        onClose={() => setShowTutorial(false)}
+      />
+    </>
   );
 }
 
