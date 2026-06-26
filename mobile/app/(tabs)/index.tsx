@@ -88,6 +88,7 @@ const HomeHeader = React.memo(() => {
 });
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { t } = useTranslation();
   const { colors } = useTheme();
   const wallet = useAuthStore((s) => s.wallet);
@@ -256,6 +257,16 @@ const styles = StyleSheet.create({
   },
   sectionLabel: { fontSize: 13, marginBottom: 4 },
   sectionValue: { fontSize: 24, fontWeight: '700' },
+  actionButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  actionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   quickActions: {
     marginTop: 12,
     gap: 10,

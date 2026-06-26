@@ -2,6 +2,8 @@
 
 ![alt text](image.png)
 
+[![codecov](https://codecov.io/gh/BlockHaven-Labs/esustellar/graph/badge.svg?token=CODECOV_TOKEN)](https://codecov.io/gh/BlockHaven-Labs/esustellar)
+
 Esustellar is an open-source platform that brings informal savings groups
 (Esusu / Ajo / Rotating Savings) to the Stellar blockchain.
 
