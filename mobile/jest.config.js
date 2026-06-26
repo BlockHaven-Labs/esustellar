@@ -1,10 +1,10 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  preset: 'jest-expo',
+  preset: 'react-native',
   testMatch: [
     '<rootDir>/__tests__/**/*.{test,spec}.{ts,tsx}',
-    '<rootDir>/services/**/*.test.{ts,tsx}',
-    '<rootDir>/components/**/*.test.{ts,tsx}',
+    '<rootDir>/tests/**/*.{test,spec}.{ts,tsx}',
+    '<rootDir>/tests/performance/*.ts',
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',

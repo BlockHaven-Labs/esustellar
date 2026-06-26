@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../context/ThemeContext';
 import { useRefresh } from '../../hooks/useRefresh';
@@ -12,6 +13,8 @@ import { triggerHapticFeedback } from '../../utils/haptics';
 import { logger } from '../../services/logger';
 import WalletSwitcher from '../../components/wallet/WalletSwitcher';
 import { getActiveWallet, WalletEntry } from '../../services/wallet/multiWallet';
+import { useKillSwitchStore } from '../../stores/killSwitchStore';
+import { useKillSwitch } from '../../hooks/useKillSwitch';
 
 function getGreeting(hour: number, t: any): string {
   if (hour < 12) return t('home.goodMorning');
@@ -52,8 +55,8 @@ const HomeHeader = React.memo(() => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.accountInfo}
-          accessibilityLabel="Switch wallet"
-          accessibilityRole="button"
+          aria-label="Switch wallet"
+          role="button"
           onPress={() => setSwitcherVisible(true)}
         >
           <Text style={[styles.greeting, { color: colors.text }]}>{greeting}</Text>
@@ -62,8 +65,8 @@ const HomeHeader = React.memo(() => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          accessibilityLabel={t('home.notifications')}
-          accessibilityRole="button"
+          aria-label={t('home.notifications')}
+          role="button"
           onPress={() => {
             triggerHapticFeedback.selection();
             router.push('/notifications');
@@ -95,6 +98,8 @@ export default function HomeScreen() {
   const invalidateTransactions = useInvalidateTransactions();
   const invalidateNotifications = useInvalidateNotifications();
 
+  const [showTutorial, setShowTutorial] = useState(false);
+
   useEffect(() => {
     if (wallet) return;
 
@@ -111,9 +116,22 @@ export default function HomeScreen() {
     };
   }, [wallet, setWallet]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const complete = await AsyncStorage.getItem('tutorialComplete');
+        if (complete !== 'true') {
+          setShowTutorial(true);
+        }
+      } catch (e) {
+        logger.error('HomeScreen', 'Failed to read tutorial status', e as Error);
+      }
+    })();
+  }, []);
+
   const fetchData = useMemo(
     () => async () => {
-      logger.info('HomeScreen', 'Refreshing home data');
+      logger.info('Refreshing home data', { component: 'HomeScreen' });
       await Promise.all([
         invalidateGroups(),
         invalidateTransactions(),
@@ -124,6 +142,16 @@ export default function HomeScreen() {
   );
 
   const { refreshing, onRefresh } = useRefresh(fetchData);
+
+  const startPolling = useKillSwitchStore((s) => s.startPolling);
+  const stopPolling = useKillSwitchStore((s) => s.stopPolling);
+  const contributions = useKillSwitch('contributions');
+  const groupCreation = useKillSwitch('group-creation');
+
+  useEffect(() => {
+    startPolling();
+    return () => stopPolling();
+  }, [startPolling, stopPolling]);
 
   return (
     <ScrollView
@@ -145,14 +173,55 @@ export default function HomeScreen() {
       </View>
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.sectionLabel, { color: colors.subtext }]}>{t('home.quickActions')}</Text>
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: colors.accent }]}
-          onPress={() => router.push('/onramp')}
-          accessibilityLabel="Buy crypto"
-          accessibilityRole="button"
-        >
-          <Text style={styles.actionButtonText}>💳 Buy Crypto</Text>
-        </TouchableOpacity>
+        <View style={styles.quickActions}>
+          <TouchableOpacity
+            style={[
+              styles.quickActionButton,
+              { backgroundColor: contributions.isEnabled ? colors.accent : colors.border },
+            ]}
+            disabled={!contributions.isEnabled}
+            onPress={() => {
+              triggerHapticFeedback.selection();
+              router.push('/contributions/wallet');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Contribute"
+            accessibilityState={{ disabled: !contributions.isEnabled }}
+          >
+            <Text style={[styles.quickActionLabel, { color: contributions.isEnabled ? '#fff' : colors.subtext }]}>
+              Contribute
+            </Text>
+          </TouchableOpacity>
+          {!contributions.isEnabled && (
+            <Text style={[styles.killSwitchMessage, { color: colors.subtext }]}>
+              {contributions.disabledMessage}
+            </Text>
+          )}
+
+          <TouchableOpacity
+            style={[
+              styles.quickActionButton,
+              { backgroundColor: groupCreation.isEnabled ? colors.accent : colors.border },
+            ]}
+            disabled={!groupCreation.isEnabled}
+            onPress={() => {
+              triggerHapticFeedback.selection();
+              router.push('/groups/create');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Create group"
+            accessibilityState={{ disabled: !groupCreation.isEnabled }}
+          >
+            <Text style={[styles.quickActionLabel, { color: groupCreation.isEnabled ? '#fff' : colors.subtext }]}>
+              New Group
+            </Text>
+          </TouchableOpacity>
+          {!groupCreation.isEnabled && (
+            <Text style={[styles.killSwitchMessage, { color: colors.subtext }]}>
+              {groupCreation.disabledMessage}
+            </Text>
+          )}
+        </View>
       </View>
     </ScrollView>
   );
@@ -160,26 +229,31 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 16 },
+  content: { padding: 20 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   accountInfo: {
     flex: 1,
   },
-  greeting: { fontSize: 22, fontWeight: '700' },
-  address: { fontSize: 13, marginTop: 2 },
-  switchHint: { fontSize: 12, marginTop: 4 },
-  bell: { padding: 8 },
-  bellIcon: { fontSize: 22 },
+  greeting: { fontSize: 28, fontWeight: '800', marginBottom: 4 },
+  address: { fontSize: 14, fontWeight: '500', opacity: 0.9 },
+  switchHint: { fontSize: 12, marginTop: 6, opacity: 0.7 },
+  bell: { padding: 10, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 20 },
+  bellIcon: { fontSize: 20 },
   section: {
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
   },
   sectionLabel: { fontSize: 13, marginBottom: 4 },
   sectionValue: { fontSize: 24, fontWeight: '700' },
@@ -193,5 +267,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  quickActions: {
+    marginTop: 12,
+    gap: 10,
+  },
+  quickActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 10,
+    gap: 10,
+  },
+  quickActionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  killSwitchMessage: {
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
 });

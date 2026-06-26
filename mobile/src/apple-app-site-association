@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "esustellar",
+    "slug": "esustellar",
+    "version": "1.0.0",
+    "scheme": "esustellar",
+    "ios": {
+      "bundleIdentifier": "com.blockhaven.esustellar",
+      "associatedDomains": [
+        "applinks:esustellar.blockhaven.io",
+        "webcredentials:esustellar.blockhaven.io"
+      ],
+      "supportsTablet": true,
+      "requiresFullScreen": false
+    },
+    "android": {
+      "package": "com.blockhaven.esustellar",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "esustellar.blockhaven.io",
+              "pathPrefix": "/app"
+            },
+            {
+              "scheme": "https",
+              "host": "esustellar.blockhaven.io",
+              "pathPrefix": "/share"
+            },
+            {
+              "scheme": "https",
+              "host": "esustellar.blockhaven.io",
+              "pathPrefix": "/invite"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}

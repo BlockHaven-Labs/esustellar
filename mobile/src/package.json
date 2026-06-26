@@ -1,0 +1,26 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.blockhaven.esustellar"],
+        "components": [
+          {
+            "/": "/app/*",
+            "comment": "All app deep-link paths"
+          },
+          {
+            "/": "/share/*",
+            "comment": "Shared content links"
+          },
+          {
+            "/": "/invite/*",
+            "comment": "Invitation links"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.com.blockhaven.esustellar"]
+  }
+}

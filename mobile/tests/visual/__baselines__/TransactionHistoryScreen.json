@@ -1,0 +1,21 @@
+{
+  "screen": "TransactionHistoryScreen",
+  "props": {
+    "transactions": [
+      {
+        "id": "t1",
+        "type": "contribution",
+        "amount": 100,
+        "date": "2025-01-15"
+      },
+      {
+        "id": "t2",
+        "type": "payout",
+        "amount": 800,
+        "date": "2025-02-01"
+      }
+    ]
+  },
+  "hash": "3269d0700ca6ac21",
+  "capturedAt": "2026-06-25T20:34:53.477Z"
+}

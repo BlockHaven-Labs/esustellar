@@ -1,0 +1,10 @@
+{
+  "screen": "HomeScreen",
+  "props": {
+    "walletConnected": false,
+    "groups": [],
+    "balance": "0.0000000"
+  },
+  "hash": "92add497e02b8f76",
+  "capturedAt": "2026-06-25T20:34:53.474Z"
+}
