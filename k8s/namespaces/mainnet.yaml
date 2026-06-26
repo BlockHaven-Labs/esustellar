@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: esustellar-mainnet
+  labels:
+    app.kubernetes.io/name: esustellar
+    environment: mainnet
