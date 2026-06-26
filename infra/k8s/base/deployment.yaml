@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esustellar-web
+  namespace: esustellar
+  labels:
+    app: esustellar-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: esustellar-web
+  template:
+    metadata:
+      labels:
+        app: esustellar-web
+    spec:
+      containers:
+        - name: web
+          image: blockhaven/esustellar-web:latest
+          ports:
+            - containerPort: 3000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: esustellar-web-config
+            - secretRef:
+                name: esustellar-web-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
