@@ -21,15 +21,13 @@ RUN cargo install --locked stellar-cli --version ${STELLAR_CLI_VERSION} \
 
 WORKDIR /workspace
 
-# Copy workspace manifests first for layer caching
 COPY Cargo.toml Cargo.lock ./
 COPY contracts/ contracts/
 
-# Build all contracts → WASM artifacts land in target/wasm32v1-none/release/
 RUN stellar contract build
 
+# Build-only image: no long-running process, so HEALTHCHECK is disabled.
 HEALTHCHECK NONE
 
-# ── Output stage ─────────────────────────────────────────────────────────────
 FROM scratch AS artifacts
 COPY --from=builder /workspace/target/wasm32v1-none/release/*.wasm /
