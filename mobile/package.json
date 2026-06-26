@@ -11,7 +11,15 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "test": "jest --watchAll=false",
-    "e2e": "detox test --configuration ios.sim.debug"
+    "e2e": "detox test --configuration ios.sim.debug",
+    "build:bundles": "expo export --platform all --output-dir dist/bundles",
+    "bundle:android": "expo export --platform android --output-dir dist/bundles",
+    "bundle:ios": "expo export --platform ios --output-dir dist/bundles",
+    "manifest:generate": "node scripts/generate-bundle-manifest.js",
+    "manifest:generate:staging": "node scripts/generate-bundle-manifest.js --base-url https://cdn.esustellar.com/bundles/staging --app-version 1.0.0 --out dist/module-manifest.json",
+    "manifest:generate:prod": "node scripts/generate-bundle-manifest.js --base-url https://cdn.esustellar.com/bundles/prod --app-version 1.0.0 --out dist/module-manifest.json",
+    "deploy:verify": "node -e \"const {deploymentVerifier}=require('./services/modules');deploymentVerifier.verify().then(r=>{ console.log(r.summary); process.exit(r.passed?0:1); })\"",
+    "release": "npm run build:bundles && npm run manifest:generate:prod && npm run deploy:verify"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.3",
