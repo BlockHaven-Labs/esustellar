@@ -1,0 +1,23 @@
+# Top-level Pre-Commit Hooks Configuration Pipeline
+# Reference: Issue #536
+
+default_stages: [commit]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+        description: "Validates structural correctness of YAML configurations"
+      - id: end-of-file-fixer
+        description: "Ensures style files terminate with a clean line break"
+      - id: trailing-whitespace
+        description: "Trims unneeded whitespace paddings"
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets (SoroTask Security Gateway)
+        description: "Scans staged files for high-entropy tokens and private keys"
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '(^Cargo\.lock$|^package-lock\.json$|^apps/docs-site/)'
