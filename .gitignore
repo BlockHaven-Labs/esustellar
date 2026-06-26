@@ -13,6 +13,9 @@ out/
 .env.local
 .env.*.local
 
+# Docker secrets
+secrets/
+
 # Soroban / Rust
 target/
 .soroban/
