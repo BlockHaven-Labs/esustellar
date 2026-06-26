@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alert-rules
+  namespace: esustellar-monitoring
+data:
+  alert-rules.yml: |
+    groups:
+      - name: esustellar-web
+        rules:
+          - alert: WebAppDown
+            expr: probe_success{job="esustellar-web"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Web app /api/health endpoint is failing"
+              description: "The web app health check has been returning non-200 for more than 2 minutes."
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High error rate on web app"
+              description: "Error rate is above 5% for the last 5 minutes."
