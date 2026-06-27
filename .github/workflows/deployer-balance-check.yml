@@ -1,0 +1,25 @@
+name: Deployer Balance Check
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  check-balance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deployer balance (testnet)
+        run: |
+          chmod +x scripts/check-deployer-balance.sh
+          DEPLOYER_PUBLIC_KEY="${{ secrets.DEPLOYER_PUBLIC_KEY }}" \
+            STELLAR_NETWORK="testnet" \
+            HORIZON_URL="https://horizon-testnet.stellar.org" \
+            scripts/check-deployer-balance.sh
+      - name: Check deployer balance (mainnet)
+        run: |
+          DEPLOYER_PUBLIC_KEY="${{ secrets.DEPLOYER_PUBLIC_KEY }}" \
+            STELLAR_NETWORK="mainnet" \
+            HORIZON_URL="https://horizon.stellar.org" \
+            scripts/check-deployer-balance.sh

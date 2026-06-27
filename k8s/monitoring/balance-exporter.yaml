@@ -1,0 +1,173 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: balance-exporter-script
+  namespace: esustellar-monitoring
+data:
+  index.mjs: |
+    import http from 'node:http';
+
+    const PORT = parseInt(process.env.PORT || '9464', 10);
+    const {
+      DEPLOYER_PUBLIC_KEY: PUBLIC_KEY,
+      HORIZON_URL_TESTNET = 'https://horizon-testnet.stellar.org',
+      HORIZON_URL_MAINNET = 'https://horizon.stellar.org',
+    } = process.env;
+
+    const WARNING = 500;
+    const CRITICAL = 100;
+
+    if (!PUBLIC_KEY) {
+      console.error('DEPLOYER_PUBLIC_KEY environment variable is required');
+      process.exit(1);
+    }
+
+    const networks = [
+      { name: 'testnet', horizon: HORIZON_URL_TESTNET.replace(/\/+$/, '') },
+      { name: 'mainnet', horizon: HORIZON_URL_MAINNET.replace(/\/+$/, '') },
+    ];
+
+    const state = {};
+    for (const { name } of networks) {
+      state[name] = { balance: 0, up: 0, error: '' };
+    }
+
+    async function fetchBalance(net) {
+      const { name, horizon } = net;
+      try {
+        const res = await fetch(`${horizon}/accounts/${PUBLIC_KEY}`);
+        if (!res.ok) throw new Error(`Horizon API returned HTTP ${res.status}`);
+        const data = await res.json();
+        const native = data.balances.find(b => b.asset_type === 'native');
+        state[name].balance = native ? parseFloat(native.balance) : 0;
+        state[name].up = 1;
+        state[name].error = '';
+      } catch (err) {
+        state[name].up = 0;
+        state[name].error = err.message;
+      }
+    }
+
+    async function fetchAll() {
+      await Promise.all(networks.map(fetchBalance));
+    }
+
+    function metrics() {
+      const lines = [];
+
+      for (const { name } of networks) {
+        const { balance, up, error } = state[name];
+
+        lines.push('# HELP deployer_account_balance Current XLM balance of the deployer account');
+        lines.push('# TYPE deployer_account_balance gauge');
+        lines.push(`deployer_account_balance{network="${name}"} ${balance}`);
+
+        lines.push('# HELP deployer_account_up Whether the deployer account was reachable via Horizon');
+        lines.push('# TYPE deployer_account_up gauge');
+        lines.push(`deployer_account_up{network="${name}"} ${up}`);
+
+        lines.push(`# HELP deployer_account_balance_threshold_warning Warning threshold exceeded (balance < ${WARNING} XLM)`);
+        lines.push('# TYPE deployer_account_balance_threshold_warning gauge');
+        lines.push(`deployer_account_balance_threshold_warning{network="${name}",threshold="${WARNING}"} ${balance < WARNING ? 1 : 0}`);
+
+        lines.push(`# HELP deployer_account_balance_threshold_critical Critical threshold exceeded (balance < ${CRITICAL} XLM)`);
+        lines.push('# TYPE deployer_account_balance_threshold_critical gauge');
+        lines.push(`deployer_account_balance_threshold_critical{network="${name}",threshold="${CRITICAL}"} ${balance < CRITICAL ? 1 : 0}`);
+
+        if (error) {
+          lines.push('# HELP deployer_account_fetch_error Error message from last fetch (1 = error)');
+          lines.push('# TYPE deployer_account_fetch_error gauge');
+          lines.push(`deployer_account_fetch_error{network="${name}"} 1`);
+        }
+      }
+
+      return lines.join('\n') + '\n';
+    }
+
+    const server = http.createServer((req, res) => {
+      if (req.url === '/metrics' || req.url === '/metrics/') {
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(metrics());
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('deployer-balance-exporter\n');
+      }
+    });
+
+    server.listen(PORT, () => {
+      console.log(`deployer-balance-exporter listening on :${PORT}`);
+    });
+
+    fetchAll();
+    setInterval(fetchAll, 30_000);
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deployer-config
+  namespace: esustellar-monitoring
+data:
+  DEPLOYER_PUBLIC_KEY: ""
+  HORIZON_URL_TESTNET: "https://horizon-testnet.stellar.org"
+  HORIZON_URL_MAINNET: "https://horizon.stellar.org"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployer-balance-exporter
+  namespace: esustellar-monitoring
+  labels:
+    app: deployer-balance-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deployer-balance-exporter
+  template:
+    metadata:
+      labels:
+        app: deployer-balance-exporter
+    spec:
+      containers:
+        - name: exporter
+          image: node:20-alpine
+          command:
+            - node
+            - /app/index.mjs
+          ports:
+            - containerPort: 9464
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: deployer-config
+          volumeMounts:
+            - name: script
+              mountPath: /app/index.mjs
+              subPath: index.mjs
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: script
+          configMap:
+            name: balance-exporter-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deployer-balance-exporter
+  namespace: esustellar-monitoring
+  labels:
+    app: deployer-balance-exporter
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9464
+      targetPort: metrics
+      name: metrics
+  selector:
+    app: deployer-balance-exporter

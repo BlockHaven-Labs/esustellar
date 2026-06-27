@@ -24,3 +24,29 @@ data:
             annotations:
               summary: "High error rate on web app"
               description: "Error rate is above 5% for the last 5 minutes."
+      - name: esustellar-deployer-balance
+        rules:
+          - alert: DeployerBalanceWarning
+            expr: deployer_account_balance_threshold_warning == 1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Deployer account balance low ({{ $value }} XLM) on {{ $labels.network }}"
+              description: "Deployer account {{ $labels.network }} balance is below 500 XLM. Current balance: {{ $value }} XLM. Fund the account to avoid deployment failures."
+          - alert: DeployerBalanceCritical
+            expr: deployer_account_balance_threshold_critical == 1
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Deployer account balance critically low ({{ $value }} XLM) on {{ $labels.network }}"
+              description: "Deployer account {{ $labels.network }} balance is below 100 XLM. Current balance: {{ $value }} XLM. Immediate funding required or contract deployments will fail."
+          - alert: DeployerAccountUnreachable
+            expr: deployer_account_up == 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Deployer account unreachable on {{ $labels.network }}"
+              description: "Cannot fetch deployer account balance from Horizon ({{ $labels.network }}). The Horizon endpoint may be down or the account may not exist."
