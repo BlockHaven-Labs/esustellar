@@ -9,6 +9,15 @@ The infra folder includes:
 - `.github/workflows/` — CI/CD pipelines
 - `docs/` — architecture, deployment, runbooks, standards
 
+## Branch Protection
+
+The `main` branch is protected with enforced rules:
+- **Required status checks**: Docker CI and E2E Status Gate must pass
+- **PR reviews**: At least 1 approval required
+- **Force pushes**: Disallowed
+
+See `docs/branch-protection.md` for detailed configuration and setup instructions.
+
 ## Principles
 
 1. **All infra changes must be reviewed** — no direct pushes to `main`
