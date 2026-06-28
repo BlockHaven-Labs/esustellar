@@ -8,6 +8,7 @@ import { GroupMembers } from '@/components/group-members'
 import { GroupTransactions } from '@/components/group-transactions'
 import { GroupPayoutSchedule } from '@/components/group-payout-schedule'
 import { useSavingsContract, type Group } from '@/context/savingsContract'
+import { logger } from '@/lib/logger'
 
 interface DisplayGroup {
   groupId: string
@@ -78,7 +79,7 @@ export default function GroupDetailPage({ params }: { params: Promise<{ id: stri
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Failed to load group.')
       } finally {
-        console.log('fetching group id:', id)
+        logger.debug('fetching group id', { id })
         if (!cancelled) setLoading(false)
       }
     })()

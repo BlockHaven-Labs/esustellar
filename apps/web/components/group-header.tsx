@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Users, Calendar, Coins, Clock, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useSavingsContract } from '@/context/savingsContract'
 import { useWallet } from '@/hooks/use-wallet'
+import { logger } from '@/lib/logger'
 
 interface GroupHeaderProps {
   groupId: string
@@ -62,7 +63,7 @@ export function GroupHeader({ groupId, group, onActionSuccess }: GroupHeaderProp
       setJoinSuccess(true)
       onActionSuccess?.()
     } catch (err) {
-      console.error('Join group failed:', err)
+      logger.error('Join group failed', { error: err instanceof Error ? err.message : String(err) })
       setJoinError(err instanceof Error ? err.message : 'Failed to join group. Please try again.')
     } finally {
       setIsJoining(false)
@@ -87,7 +88,7 @@ export function GroupHeader({ groupId, group, onActionSuccess }: GroupHeaderProp
       setContributeSuccess(true)
       onActionSuccess?.()
     } catch (err) {
-      console.error('Contribution failed:', err)
+      logger.error('Contribution failed', { error: err instanceof Error ? err.message : String(err) })
       setContributeError(err instanceof Error ? err.message : 'Contribution failed. Please try again.')
     } finally {
       setIsContributing(false)
