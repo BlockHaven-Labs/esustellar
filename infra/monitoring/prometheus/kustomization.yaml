@@ -4,6 +4,7 @@ namespace: esustellar-monitoring
 resources:
   - prometheus-deployment.yaml
   - alertmanager-deployment.yaml
+  - ../../../k8s/monitoring/balance-exporter.yaml
 configMapGenerator:
   - name: prometheus-alert-rules
     files:
