@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esustellar-config
+  namespace: esustellar-testnet
+  labels:
+    app: esustellar-web
+    environment: testnet
+data:
+  STELLAR_NETWORK: "testnet"
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_NETWORK: "testnet"
+  # Contract IDs will be updated by deployment script
+  NEXT_PUBLIC_SAVINGS_CONTRACT_ID: ""
+  NEXT_PUBLIC_REGISTRY_CONTRACT_ID: ""
+  NEXT_PUBLIC_CONTRACT_ID: ""

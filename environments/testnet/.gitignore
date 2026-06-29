@@ -1,0 +1,12 @@
+# Deployment metadata
+deployment-info.json
+
+# Secrets
+config/secrets/
+!config/secrets.example
+
+# Environment files with sensitive data
+config/testnet.env.local
+
+# Docker volumes
+stellar-data/
