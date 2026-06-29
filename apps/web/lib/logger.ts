@@ -1,42 +1,64 @@
-/**
- * Structured JSON logger for the esustellar Next.js app.
- * In production logs are emitted as JSON for Loki/Elasticsearch consumption.
- * In development logs are pretty-printed to the console.
- */
-
 type LogLevel = "debug" | "info" | "warn" | "error";
 
-interface LogEntry {
-  level: LogLevel;
-  message: string;
-  timestamp: string;
-  [key: string]: unknown;
+export interface LoggerOptions {
+  service?: string;
+  level?: LogLevel;
 }
 
-const isDev = process.env.NODE_ENV !== "production";
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-function emit(level: LogLevel, message: string, extra?: Record<string, unknown>) {
-  const entry: LogEntry = {
-    level,
-    message,
-    timestamp: new Date().toISOString(),
-    ...extra,
+export function createLogger(options: LoggerOptions = {}) {
+  const service = options.service ?? "web";
+  const level = options.level ?? (process.env.NODE_ENV === "production" ? "info" : "debug");
+
+  const emit = (entryLevel: LogLevel, message: string, context?: unknown) => {
+    const levels: Record<LogLevel, number> = {
+      debug: 10,
+      info: 20,
+      warn: 30,
+      error: 40,
+    };
+
+    if (levels[entryLevel] < levels[level]) {
+      return;
+    }
+
+    const payload = {
+      timestamp: new Date().toISOString(),
+      level: entryLevel,
+      service,
+      message,
+      context: isRecord(context) ? context : { value: context },
+    };
+
+    const output = JSON.stringify(payload);
+
+    if (entryLevel === "error") {
+      console.error(output);
+      return;
+    }
+
+    if (entryLevel === "warn") {
+      console.warn(output);
+      return;
+    }
+
+    if (entryLevel === "info") {
+      console.info(output);
+      return;
+    }
+
+    console.log(output);
   };
 
-  if (isDev) {
-    const prefix = { debug: "[debug]", info: "[info]", warn: "[warn]", error: "[error]" }[level];
-    const extras = extra ? " " + JSON.stringify(extra) : "";
-    // eslint-disable-next-line no-console
-    console[level === "debug" ? "log" : level](`${prefix} ${message}${extras}`);
-  } else {
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify(entry));
-  }
+  return {
+    debug: (message: string, context?: unknown) => emit("debug", message, context),
+    info: (message: string, context?: unknown) => emit("info", message, context),
+    warn: (message: string, context?: unknown) => emit("warn", message, context),
+    error: (message: string, context?: unknown) => emit("error", message, context),
+  };
 }
 
-export const logger = {
-  debug: (message: string, extra?: Record<string, unknown>) => emit("debug", message, extra),
-  info: (message: string, extra?: Record<string, unknown>) => emit("info", message, extra),
-  warn: (message: string, extra?: Record<string, unknown>) => emit("warn", message, extra),
-  error: (message: string, extra?: Record<string, unknown>) => emit("error", message, extra),
-};
+export const logger = createLogger();

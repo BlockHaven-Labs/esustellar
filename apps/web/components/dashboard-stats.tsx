@@ -9,6 +9,7 @@ import { useRegistryContract } from "@/context/registryContract"
 import { useSavingsContract } from "@/context/savingsContract"
 import { getDaysRemaining, timestampToDate, troopsToXLM, logDebug } from "@/lib/dashboardStats"
 import { formatDate as formatDateLocale, formatXLM as formatXLMLocale } from "@/lib/format"
+import { logger } from "@/lib/logger"
 
 type DashboardStatsState = {
   totalContributed: number
@@ -86,7 +87,7 @@ export function DashboardStats() {
       setErrorMessage(null)
 
       try {
-        console.log("Dashboard using contracts:", {
+        logger.info("Dashboard using contracts", {
           registry: registry.contractId,
           savings: savings.contractId,
         })
@@ -136,7 +137,7 @@ export function DashboardStats() {
 
         const totalGroupIds = [...new Set([...registryGroupIds, ...savingsGroupIds])]
 
-        console.log("Groups found:", {
+        logger.info("Groups found", {
           fromRegistry: registryGroupIds.length,
           fromSavings: savingsGroupIds.length,
           total: totalGroupIds.length,
@@ -239,7 +240,7 @@ export function DashboardStats() {
 
         // Validate data mismatch (Issue Requirement #4)
         if (totalGroupIds.length > 0 && finalStats.groupCount === 0) {
-          console.error("Data mismatch: groups found but stats show zero")
+          logger.error("Data mismatch: groups found but stats show zero")
         }
 
         logDebug("Final stats", finalStats)
