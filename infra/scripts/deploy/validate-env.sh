@@ -1,30 +1,41 @@
-#!/usr/bin/env bash
-# Validates that all required env vars are set and non-empty before deployment.
-# Usage: source .env && bash infra/scripts/deploy/validate-env.sh
+#!/bin/bash
+# validate-env.sh — Check required environment variables before deployment.
+# Usage: ./infra/scripts/deploy/validate-env.sh [env-file]
+#
+# Exits 0 if all required vars are present and non-empty, 1 otherwise.
 set -euo pipefail
 
+ENV_FILE="${1:-apps/web/.env.local}"
+
+# Load env file if it exists
+if [ -f "$ENV_FILE" ]; then
+  # shellcheck disable=SC1090
+  set -o allexport
+  source "$ENV_FILE"
+  set +o allexport
+fi
+
 REQUIRED_VARS=(
-  "STELLAR_NETWORK"
   "NEXT_PUBLIC_REGISTRY_CONTRACT_ID"
   "NEXT_PUBLIC_SAVINGS_CONTRACT_ID"
   "NEXT_PUBLIC_CONTRACT_ID"
-  "DEPLOYER_SECRET_KEY"
 )
 
-MISSING=()
-
+errors=0
 for var in "${REQUIRED_VARS[@]}"; do
   if [ -z "${!var:-}" ]; then
-    MISSING+=("$var")
+    echo "❌ Missing or empty: $var"
+    errors=$((errors + 1))
+  else
+    echo "✅ $var"
   fi
 done
 
-if [ ${#MISSING[@]} -gt 0 ]; then
-  echo "ERROR: The following required environment variables are missing or empty:"
-  for m in "${MISSING[@]}"; do
-    echo "  - $m"
-  done
+if [ "$errors" -gt 0 ]; then
+  echo ""
+  echo "❌ $errors required variable(s) not set. Aborting deployment."
   exit 1
 fi
 
-echo "All required environment variables are set."
+echo ""
+echo "✅ All required env vars are set."

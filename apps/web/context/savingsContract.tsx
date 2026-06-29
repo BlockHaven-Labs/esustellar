@@ -16,6 +16,7 @@ import {
   SOROBAN_NETWORK_PASSPHRASE,
   SOROBAN_RPC_URL,
 } from "@/config/walletConfig";
+import { logger } from "@/lib/logger";
 
 export type GroupStatus = "Open" | "Active" | "Completed" | "Paused";
 export type MemberStatus =
@@ -195,7 +196,7 @@ export function SavingsContractProvider({
         try {
           errorMessage += `\nResult: ${JSON.stringify(getResponse.resultXdr, null, 2)}`;
         } catch (e) {
-          console.error("Could not parse result XDR:", e);
+          logger.error("Could not parse result XDR", { error: e instanceof Error ? e.message : String(e) });
         }
       }
 
