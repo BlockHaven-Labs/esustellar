@@ -11,8 +11,8 @@ export function getDaysRemaining(deadlineTs: number): number {
   return Math.ceil((deadlineTs - nowTs) / 86400)
 }
 
+import { logger } from "@/lib/logger"
+
 export function logDebug(message: string, data?: unknown) {
-  if (process.env.NODE_ENV === "development") {
-    console.log(`[DashboardStats] ${message}`, data ?? "")
-  }
+  logger.debug(message, data)
 }

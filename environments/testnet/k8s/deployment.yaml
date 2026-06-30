@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esustellar-web
+  namespace: esustellar-testnet
+  labels:
+    app: esustellar-web
+    environment: testnet
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: esustellar-web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: esustellar-web
+        environment: testnet
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/blockhaven-labs/esustellar-web:testnet
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: esustellar-config
+            - secretRef:
+                name: esustellar-secrets
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

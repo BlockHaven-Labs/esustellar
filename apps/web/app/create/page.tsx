@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRegistryContract } from "@/context/registryContract";
+import { logger } from "@/lib/logger";
 
 export default function CreateGroupForm() {
   const { isConnected, connect, publicKey } = useWallet();
@@ -95,7 +96,7 @@ export default function CreateGroupForm() {
       // const groupId = generateGroupId();
       // Example: "grp1739721234567abc12345"
 
-      console.log("Creating group with params:", {
+      logger.info("Creating group with params", {
         groupId,
         name: groupName,
         contributionAmount: contributionStroops.toString(),
@@ -115,7 +116,7 @@ export default function CreateGroupForm() {
         isPublic: !isPrivate,
       });
 
-      console.log("Group created successfully:", result);
+      logger.info("Group created successfully", { result });
 
       // Step 2: Register group in Registry contract
       try {
@@ -128,9 +129,9 @@ export default function CreateGroupForm() {
           totalMembers: members,
         });
 
-        console.log("Group registered in Registry contract");
+        logger.info("Group registered in Registry contract");
       } catch (registryErr) {
-        console.error("Failed to register in Registry:", registryErr);
+        logger.error("Failed to register in Registry", { error: registryErr instanceof Error ? registryErr.message : String(registryErr) });
 
         setError("Group created but failed to register. Please contact support.");
         return;
@@ -151,7 +152,7 @@ export default function CreateGroupForm() {
         window.location.href = "/dashboard";
       }, 5000);
     } catch (err: any) {
-      console.error("Error creating group:", err);
+      logger.error("Error creating group", { error: err instanceof Error ? err.message : String(err) });
       setError(err.message || "Failed to create group. Please try again.");
     } finally {
       setIsLoading(false);

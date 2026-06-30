@@ -63,7 +63,10 @@ esustellar/
 ├── apps/
 │ └── web/ # Frontend application
 ├── contracts/
-│ └── savings/ # Soroban smart contract
+│ ├── savings/ # Soroban savings contract
+│ └── registry/ # Soroban registry contract
+├── environments/
+│ └── testnet/ # Testnet deployment workspace
 ├── packages/
 │ └── shared/ # Shared types & utils
 ├── docs/ # Architecture & specs

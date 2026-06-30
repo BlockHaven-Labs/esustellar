@@ -1,4 +1,4 @@
-# Deployment Process
+# Actions Process
 
 ## Overview
 
@@ -8,7 +8,7 @@ Developer Push → GitHub Actions → Build → Deploy
 
 ## Step-by-Step
 
-### 1. Build Contracts
+### 1. Build Actions
 
 ```bash
 cd contracts/savings && stellar contract build
@@ -16,15 +16,6 @@ cd ../registry && stellar contract build
 ```
 
 ### 2. Deploy to Testnet
-
-Using the dedicated testnet workspace:
-
-```bash
-cd environments/testnet
-./scripts/deploy.sh
-```
-
-Or use the legacy root-level script:
 
 ```bash
 STELLAR_NETWORK=testnet ./deploy.sh

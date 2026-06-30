@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useSavingsContract } from '@/context/savingsContract'
 import { useRegistryContract } from '@/context/registryContract'
 import { useWallet } from '@/hooks/use-wallet'
+import { logger } from '@/lib/logger'
 
 type JoinStep = 'idle' | 'joining' | 'registering' | 'done' | 'error'
 
@@ -49,7 +50,7 @@ export function useJoinGroup(): UseJoinGroupReturn {
       setStep('joining')
       await savings.joinGroup(groupId)
     } catch (err: any) {
-      console.error('join_group failed:', err)
+      logger.error('join_group failed', { error: err instanceof Error ? err.message : String(err) })
       setError(err.message || 'Failed to join group. Please try again.')
       setStep('error')
       return
@@ -66,13 +67,13 @@ export function useJoinGroup(): UseJoinGroupReturn {
       setStep('registering')
       await attemptRegister()
     } catch (firstErr) {
-      console.warn('add_member failed on first attempt, retrying...', firstErr)
+      logger.warn('add_member failed on first attempt, retrying...', { error: firstErr instanceof Error ? firstErr.message : String(firstErr) })
       await new Promise((resolve) => setTimeout(resolve, 2000))
 
       try {
         await attemptRegister()
       } catch (retryErr: any) {
-        console.error('add_member failed after retry:', retryErr)
+        logger.error('add_member failed after retry', { error: retryErr instanceof Error ? retryErr.message : String(retryErr) })
         // User HAS joined on-chain — make that clear in the error
         setError(
           `You have joined the group on-chain, but your membership could not be registered ` +
