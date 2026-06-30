@@ -23,6 +23,16 @@ The following GitHub Actions workflows must pass before any PR can be merged to 
   - `payout` — payout schedule & request payout
 - **Triggers**: Runs on every push to `main` and every PR targeting `main` (when mobile/packages paths change)
 
+### 3. CodeQL Analysis
+- **Workflow**: `.github/workflows/codeql.yml`
+- **Job**: `analyze`
+- **Purpose**: Static analysis for security vulnerabilities and code quality issues in TypeScript and Rust
+- **Languages analyzed**:
+  - TypeScript (mobile app, web app, SDK, shared packages)
+  - Rust (smart contracts for registry and savings)
+- **Triggers**: Runs on every push to `main`/`develop`, every PR targeting `main`/`develop`, and weekly on Sundays
+- **Note**: Findings should be reviewed and triaged before mainnet launch. See `docs/codeql-security.md` for details.
+
 ## Protection Rules
 
 ### Required Before Merging
