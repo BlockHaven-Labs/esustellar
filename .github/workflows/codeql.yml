@@ -1,3 +1,42 @@
+##############################################################################
+# CodeQL Analysis — EsuStellar
+#
+# Runs GitHub's CodeQL static analysis on TypeScript and Rust code.
+# This workflow helps identify security vulnerabilities and code quality issues
+# before mainnet launch.
+#
+# Triggers:
+#   - Push to main, develop branches
+#   - Pull requests to main, develop branches
+#   - Weekly schedule (Sundays at 00:00 UTC)
+#   - Manual workflow dispatch
+##############################################################################
+
+name: CodeQL Analysis
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at 00:00 UTC
+  workflow_dispatch:
+
+# Cancel in-flight runs on the same PR to save runner minutes
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 name: CodeQL SAST
 
 on:
@@ -20,6 +59,105 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        language: ['typescript', 'rust']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── TypeScript Analysis ───────────────────────────────────────────────────
+      - name: Initialize CodeQL (TypeScript)
+        if: matrix.language == 'typescript'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: typescript
+          queries: security-extended,security-and-quality
+          config: |
+            packs:
+              - codeql/javascript-queries:*
+            query-filters:
+              - exclude:
+                  id: js/unused-local-variable
+              - exclude:
+                  id: js/unused-import
+
+      - name: Setup Node.js for TypeScript
+        if: matrix.language == 'typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (mobile)
+        if: matrix.language == 'typescript'
+        working-directory: mobile
+        run: npm ci
+
+      - name: Install dependencies (web)
+        if: matrix.language == 'typescript'
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install dependencies (sdk)
+        if: matrix.language == 'typescript'
+        working-directory: packages/sdk
+        run: npm ci
+
+      - name: Install dependencies (shared)
+        if: matrix.language == 'typescript'
+        working-directory: packages/shared
+        run: npm ci
+
+      # ── Rust Analysis ─────────────────────────────────────────────────────────
+      - name: Initialize CodeQL (Rust)
+        if: matrix.language == 'rust'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: rust
+          queries: security-extended,security-and-quality
+          config: |
+            packs:
+              - codeql/rust-queries:*
+
+      - name: Setup Rust toolchain
+        if: matrix.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        if: matrix.language == 'rust'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Cargo index
+        if: matrix.language == 'rust'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Cargo build
+        if: matrix.language == 'rust'
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Rust contracts
+        if: matrix.language == 'rust'
+        run: |
+          cargo build --manifest-path contracts/registry/Cargo.toml
+          cargo build --manifest-path contracts/savings/Cargo.toml
+
+      # ── Perform Analysis ───────────────────────────────────────────────────────
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
+          upload: true
+          wait-for-processing: true
         language: [javascript-typescript]
 
     steps:
