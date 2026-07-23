@@ -108,6 +108,10 @@ cat > deployment-info.json <<EOF
 EOF
 
 echo ""
+echo -e "${YELLOW}📝 Step 5: Syncing contract IDs...${NC}"
+bash "$ROOT_DIR/scripts/sync-contract-ids.sh" "$ROOT_DIR/deployment-info.json"
+
+echo ""
 echo -e "${GREEN}🎉 Deployment complete!${NC}"
 echo ""
 echo "📋 Contract IDs:"
