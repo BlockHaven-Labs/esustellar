@@ -1,9 +1,9 @@
-# Deployment Process
+# Deployment & Scripts Process
 
 ## Overview
 
 ```
-Developer Push → GitHub Actions → Build → Deploy
+Developer Push → GitHub Actions → Build → Deploy → Smoke Test → Log Archiving
 ```
 
 ## Step-by-Step
@@ -17,33 +17,70 @@ cd ../registry && stellar contract build
 
 ### 2. Deploy to Testnet
 
-Using the dedicated testnet workspace:
+Using the deployment script:
 
 ```bash
-cd environments/testnet
-./scripts/deploy.sh
+./deploy.sh
 ```
 
-Or use the legacy root-level script:
+`deploy.sh` automatically:
+1. Builds both Registry and Savings contracts
+2. Sets up identity and funds deployer
+3. Deploys contracts to Stellar Testnet
+4. Updates `apps/web/.env.local` and `deployment-info.json`
+5. Runs the post-deploy contract smoke tests automatically
+
+---
+
+## 🧪 Post-Deploy Smoke Testing
+
+After deployment, verify that contract functions are responding properly on-chain:
 
 ```bash
-STELLAR_NETWORK=testnet ./deploy.sh
+# Run via npm script
+npm run smoke-test
+
+# Or run directly with parameters
+./scripts/post-deploy-smoke-test.sh \
+  --registry <REGISTRY_CONTRACT_ID> \
+  --savings <SAVINGS_CONTRACT_ID> \
+  --network testnet
 ```
 
-### 3. Verify
+The smoke test verifies core endpoints on both contracts:
+- `Registry`: `get_group_count`, `get_all_groups`, `get_all_public_groups`
+- `Savings`: `get_all_groups`
 
-- Check `deployment-info.json` for contract IDs
-- Confirm `.env.local` is updated
-- Run frontend health check
+---
 
-### 4. Docker Build & Push
+## 📦 Contract Event Log Archiving
+
+To query Stellar Horizon/Soroban RPC for contract events since the last run and append them to a local JSONL archive:
+
+```bash
+# Run via npm script
+npm run export-events
+
+# Or run directly with options
+./scripts/export-contract-events.sh \
+  --output logs/contract-events.jsonl \
+  --checkpoint logs/.event_checkpoint.json
+```
+
+Outputs:
+- Archive file: `logs/contract-events.jsonl`
+- Checkpoint file: `logs/.event_checkpoint.json`
+
+---
+
+## 4. Docker Build & Push
 
 ```bash
 docker build -t ghcr.io/blockhaven-labs/esustellar-web:latest .
 docker push ghcr.io/blockhaven-labs/esustellar-web:latest
 ```
 
-### 5. Production Deploy
+## 5. Production Deploy
 
 ```bash
 ssh <production-host>
