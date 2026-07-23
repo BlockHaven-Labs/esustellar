@@ -6,12 +6,18 @@ Soroban smart contracts for the EsuStellar savings platform.
 
 ```
 contracts/
-└── savings/
-    ├── src/
-    │   ├── lib.rs          # Main contract logic
-    │   └── tests.rs        # Comprehensive tests
-    ├── Cargo.toml          # Dependencies
-    └── deployment-info.json # Deployment records
+├── savings/              # Core savings group contract
+│   ├── src/
+│   │   ├── lib.rs        # Main contract logic
+│   │   └── tests.rs      # Comprehensive tests
+│   └── Cargo.toml        # Dependencies
+├── registry/             # Group registry & discovery contract
+│   ├── src/
+│   │   ├── lib.rs        # Registry logic
+│   │   └── tests.rs      # Registry tests
+│   └── Cargo.toml        # Dependencies
+├── README.md             # This file
+└── Dockerfile            # Reproducible WASM builds
 ```
 
 ## 🚀 Quick Start
@@ -36,6 +42,11 @@ cargo install --locked stellar-cli --features opt
 ### Build
 
 ```bash
+# Build both contracts
+cd contracts/registry && stellar contract build && cd ../..
+cd contracts/savings && stellar contract build && cd ../..
+
+# Or build individually
 cd contracts/savings
 stellar contract build
 ```
@@ -43,12 +54,19 @@ stellar contract build
 ### Test
 
 ```bash
+# Test both contracts
+cargo test --manifest-path contracts/savings/Cargo.toml
+cargo test --manifest-path contracts/registry/Cargo.toml
+
+# Or from within a contract directory
+cd contracts/savings
 cargo test
 ```
 
 ### Deploy to Testnet
 
 ```bash
+# From repo root
 chmod +x deploy.sh
 ./deploy.sh
 ```

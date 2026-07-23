@@ -22,6 +22,8 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    ArithmeticOverflow = 15,
+    DataExpired = 16,
 }
 
 // Data structures
@@ -353,7 +355,10 @@ impl SavingsContract {
             .set(&DataKey::Contributions(group_id.clone(), current_round), &round_contributions);
 
         member_data.status = MemberStatus::PaidCurrentRound;
-        member_data.total_contributed += group.contribution_amount;
+        member_data.total_contributed = member_data
+            .total_contributed
+            .checked_add(group.contribution_amount)
+            .ok_or(Error::ArithmeticOverflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
@@ -381,10 +386,15 @@ impl SavingsContract {
 
         let current_round = group.current_round;
 
-        // Calculate payout amount
-        let total_pool = group.contribution_amount * (group.total_members as i128);
+        // Calculate payout amount with overflow protection
+        let total_pool = group
+            .contribution_amount
+            .checked_mul(group.total_members as i128)
+            .ok_or(Error::ArithmeticOverflow)?;
         let platform_fee = (total_pool * (group.platform_fee_percent as i128)) / 10000;
-        let payout_amount = total_pool - platform_fee;
+        let payout_amount = total_pool
+            .checked_sub(platform_fee)
+            .ok_or(Error::ArithmeticOverflow)?;
 
         // Determine recipient (sequential by join_order)
         let recipient = Self::get_next_payout_recipient(&env, group_id.clone(), current_round)?;
