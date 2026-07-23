@@ -550,7 +550,14 @@ impl SavingsContract {
             .get(&DataKey::Members(group_id.clone()))
             .unwrap_or(Vec::new(&env));
 
-        // Find member with join_order matching current round (0-indexed)
+        let target_order = round - 1;
+
+        // The preferred recipient is the member whose join_order matches this
+        // round. If that member has defaulted (or was already paid), fall back
+        // to the next eligible member in join_order so a single default cannot
+        // stall payout for the rest of the group.
+        let mut best: Option<(u32, Address)> = None;
+
         for member_addr in members.iter() {
             let member_data: Member = env
                 .storage()
@@ -558,12 +565,27 @@ impl SavingsContract {
                 .get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
                 .unwrap();
 
-            if member_data.join_order == round - 1 && !member_data.has_received_payout {
-                return Ok(member_addr);
+            if member_data.has_received_payout
+                || member_data.status == MemberStatus::Defaulted
+                || member_data.join_order < target_order
+            {
+                continue;
+            }
+
+            let is_better = match &best {
+                None => true,
+                Some((best_order, _)) => member_data.join_order < *best_order,
+            };
+
+            if is_better {
+                best = Some((member_data.join_order, member_addr.clone()));
             }
         }
 
-        Err(Error::NoRecipientFound)
+        match best {
+            Some((_, addr)) => Ok(addr),
+            None => Err(Error::NoRecipientFound),
+        }
     }
 
     // View functions
