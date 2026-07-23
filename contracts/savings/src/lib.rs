@@ -22,6 +22,9 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    AdminOnly = 15,
+    RateLimited = 16,
+    NotAllPaid = 17,
 }
 
 // Data structures
@@ -111,6 +114,10 @@ pub enum DataKey {
     MemberCount(String),              // Namespaced by group_id
     AllGroups,                        // Global - Vec<String> of all group_ids
     UserGroups(Address),              // Global - Vec<String> of groups user belongs to
+    GroupPage(u32),                   // Paginated group storage - page number
+    GroupPageIndex,                   // Current page index counter
+    LastGroupTimestamp(Address),      // Per-address rate limit: last create_group timestamp
+    AdminGroups(String),              // Namespaced by group_id - admin's groups
 }
 
 #[contract]
@@ -131,6 +138,16 @@ impl SavingsContract {
         is_public: bool,
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
+
+        // Rate limit: max 1 group per address per 24 hours (86400 seconds)
+        let last_timestamp: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::LastGroupTimestamp(admin.clone()))
+            .unwrap_or(0);
+        if env.ledger().timestamp() < last_timestamp + 86400 {
+            return Err(Error::RateLimited);
+        }
 
         // Validations
         if contribution_amount < 10_000_000 {
@@ -161,7 +178,35 @@ impl SavingsContract {
         // Store group with namespaced key
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
         
-        // Add to global groups list
+        // Paginated storage: append to current page instead of monolithic Vec
+        let page_index: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupPageIndex)
+            .unwrap_or(0);
+        let mut current_page: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupPage(page_index))
+            .unwrap_or(Vec::new(&env));
+        
+        // Start new page if current has >= 100 entries
+        let (final_page, final_index) = if current_page.len() >= 100 {
+            let new_index = page_index + 1;
+            let new_page: Vec<String> = Vec::new(&env);
+            env.storage().persistent().set(&DataKey::GroupPageIndex, &new_index);
+            (new_page, new_index)
+        } else {
+            (current_page, page_index)
+        };
+        
+        let mut page_to_write = final_page;
+        page_to_write.push_back(group_id.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::GroupPage(final_index), &page_to_write);
+
+        // Also keep AllGroups for backward compatibility (but now it just tracks count)
         let mut all_groups: Vec<String> = env
             .storage()
             .persistent()
@@ -171,6 +216,11 @@ impl SavingsContract {
         env.storage()
             .persistent()
             .set(&DataKey::AllGroups, &all_groups);
+
+        // Update rate limit timestamp
+        env.storage()
+            .persistent()
+            .set(&DataKey::LastGroupTimestamp(admin.clone()), &env.ledger().timestamp());
 
         // Initialize admin's user groups list
         let mut admin_groups: Vec<String> = env
@@ -369,6 +419,164 @@ impl SavingsContract {
         }
 
         Ok(())
+    }
+
+    // ── Admin intervention functions ─────────────────────────────────────────
+
+    /// Cancel an Open group before it fills up. Only callable by the group admin.
+    pub fn cancel_group(
+        env: Env,
+        admin: Address,
+        group_id: String,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::AdminOnly);
+        }
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotAcceptingMembers);
+        }
+
+        group.status = GroupStatus::Completed; // Reuse Completed to mean "closed/cancelled"
+        env.storage()
+            .persistent()
+            .set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events()
+            .publish((symbol_short!("cancelled"),), group_id);
+
+        Ok(())
+    }
+
+    /// Remove a member from an Open group. Only callable by the group admin.
+    /// The member must not have contributed any funds yet.
+    pub fn remove_member(
+        env: Env,
+        admin: Address,
+        group_id: String,
+        member: Address,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::AdminOnly);
+        }
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotAcceptingMembers);
+        }
+
+        let mut member_data: Member = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MemberData(group_id.clone(), member.clone()))
+            .ok_or(Error::NotMember)?;
+
+        if member_data.total_contributed > 0 {
+            return Err(Error::MemberDefaulted); // Reuse: cannot remove contributing member
+        }
+
+        // Remove from storage
+        env.storage()
+            .persistent()
+            .remove(&DataKey::MemberData(group_id.clone(), member.clone()));
+
+        // Remove from members list
+        let mut members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+        
+        let mut new_members: Vec<Address> = Vec::new(&env);
+        for m in members.iter() {
+            if m != member {
+                new_members.push_back(m);
+            }
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::Members(group_id.clone()), &new_members);
+
+        // Decrement count
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MemberCount(group_id.clone()))
+            .unwrap_or(0);
+        if count > 0 {
+            env.storage()
+                .persistent()
+                .set(&DataKey::MemberCount(group_id.clone()), &(count - 1));
+        }
+
+        env.events()
+            .publish((symbol_short!("removed"),), (group_id, member));
+
+        Ok(())
+    }
+
+    /// Public retry entrypoint for distribute_payout.
+    /// Callable by anyone when a round has all contributions but payout never executed.
+    pub fn retry_distribution(
+        env: Env,
+        group_id: String,
+    ) -> Result<(), Error> {
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        let current_round = group.current_round;
+
+        // Verify all members have paid
+        let members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let contributions: Vec<Contribution> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Contributions(group_id.clone(), current_round))
+            .unwrap_or(Vec::new(&env));
+
+        if contributions.len() != members.len() {
+            return Err(Error::NotAllPaid);
+        }
+
+        // Check if payout already exists for this round
+        let existing_payouts: Vec<Payout> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Payouts(group_id.clone(), current_round))
+            .unwrap_or(Vec::new(&env));
+
+        if !existing_payouts.is_empty() {
+            return Ok(()); // Already distributed
+        }
+
+        Self::distribute_payout(env, group_id)
     }
 
     /// Distribute payout for current round
@@ -633,12 +841,44 @@ impl SavingsContract {
             .unwrap_or(Vec::new(&env))
     }
 
-    /// Get all groups in the system (for browsing/discovery)
+    /// Get all groups in the system (backward-compatible, returns full list)
     pub fn get_all_groups(env: Env) -> Vec<String> {
         env.storage()
             .persistent()
             .get(&DataKey::AllGroups)
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// Get a paginated slice of groups. Page 0 returns first PAGE_SIZE groups, etc.
+    pub fn get_groups_page(env: Env, page: u32, page_size: u32) -> Vec<String> {
+        let all_groups: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, all_groups.len() as usize);
+
+        let mut result: Vec<String> = Vec::new(&env);
+        if start < all_groups.len() as usize {
+            for i in start..end {
+                if let Some(group_id) = all_groups.get(i as u32) {
+                    result.push_back(group_id);
+                }
+            }
+        }
+        result
+    }
+
+    /// Get total number of groups (for pagination metadata)
+    pub fn get_group_total_count(env: Env) -> u32 {
+        let all_groups: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        all_groups.len()
     }
 }
 

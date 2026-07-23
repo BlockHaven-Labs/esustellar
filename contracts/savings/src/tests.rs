@@ -1,4 +1,4 @@
-use crate::{Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
+use crate::{Error, Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, String,
@@ -601,4 +601,188 @@ fn test_create_multiple_groups_no_panic() {
     // Verify all groups exist
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
+}
+
+#[test]
+fn test_rate_limit_create_group() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id1 = String::from_str(&env, "rate-limit-1");
+    let group_id2 = String::from_str(&env, "rate-limit-2");
+    let name = String::from_str(&env, "Rate Limit Test");
+
+    client.create_group(
+        &admin,
+        &group_id1,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    // Try to create another group immediately — should fail
+    let result = client.try_create_group(
+        &admin,
+        &group_id2,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+    assert_eq!(result, Err(Ok(Error::RateLimited)));
+}
+
+#[test]
+fn test_admin_cancel_group() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "cancel-test");
+    let name = String::from_str(&env, "Cancel Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Open);
+
+    // Admin cancels the group
+    client.cancel_group(&admin, &group_id);
+
+    // Group should now be completed (cancelled)
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Completed);
+}
+
+#[test]
+fn test_admin_remove_member() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "remove-test");
+    let name = String::from_str(&env, "Remove Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    let member = Address::generate(&env);
+    client.join_group(&member, &group_id);
+
+    let members = client.get_members(&group_id);
+    assert_eq!(members.len(), 2); // admin + member
+
+    // Admin removes the member
+    client.remove_member(&admin, &group_id, &member);
+
+    let members = client.get_members(&group_id);
+    assert_eq!(members.len(), 1); // only admin
+}
+
+#[test]
+fn test_retry_distribution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "retry-test");
+    let name = String::from_str(&env, "Retry Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    let group = client.get_group(&group_id);
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    // All members contribute
+    client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
+    client.contribute(&member3, &group_id);
+
+    // Payout should have been auto-distributed
+    let payouts = client.get_round_payouts(&group_id, &1);
+    assert_eq!(payouts.len(), 1);
+
+    // Retry should be a no-op since payout already exists
+    let result = client.try_retry_distribution(&group_id);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_paginated_groups() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let name = String::from_str(&env, "Test Group");
+
+    // Create 3 groups
+    for i in 1..=3 {
+        let group_id = match i {
+            1 => String::from_str(&env, "page-group-1"),
+            2 => String::from_str(&env, "page-group-2"),
+            _ => String::from_str(&env, "page-group-3"),
+        };
+        client.create_group(
+            &admin,
+            &group_id,
+            &name,
+            &100_000_000,
+            &5,
+            &Frequency::Monthly,
+            &(env.ledger().timestamp() + 86400),
+            &true,
+        );
+    }
+
+    // Get page 0 with page_size 2
+    let page0 = client.get_groups_page(&0, &2);
+    assert_eq!(page0.len(), 2);
+
+    // Get page 1 with page_size 2
+    let page1 = client.get_groups_page(&1, &2);
+    assert_eq!(page1.len(), 1);
+
+    // Total count
+    let total = client.get_group_total_count();
+    assert_eq!(total, 3);
 }
