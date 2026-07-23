@@ -1,4 +1,4 @@
-use crate::{Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
+use crate::{Error, Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, String,
@@ -601,4 +601,119 @@ fn test_create_multiple_groups_no_panic() {
     // Verify all groups exist
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
+}
+
+#[test]
+fn test_force_end_round() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "force-end-test");
+    let name = String::from_str(&env, "Force End Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    let group = client.get_group(&group_id);
+
+    // Fast forward past deadline + grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    // Force end the round
+    client.force_end_round(&group_id);
+
+    let group = client.get_group(&group_id);
+    // Round should have advanced
+    assert!(group.current_round > 1 || group.status == GroupStatus::Completed);
+}
+
+#[test]
+fn test_claim_refund() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "refund-test");
+    let name = String::from_str(&env, "Refund Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    let group = client.get_group(&group_id);
+
+    // Fast forward to round start
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    // Only admin and member2 contribute (member3 doesn't)
+    client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
+
+    // Fast forward past deadline + grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    // Force end the round
+    client.force_end_round(&group_id);
+
+    // member2 paid but didn't receive payout (admin got it since admin is join_order 0)
+    let refund = client.claim_refund(&member2, &group_id, &1);
+    assert_eq!(refund, Ok(100_000_000));
+}
+
+#[test]
+fn test_start_timestamp_max_offset() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "far-future-test");
+    let name = String::from_str(&env, "Far Future Test");
+
+    // Try to create a group starting more than 1 year from now
+    let far_future = env.ledger().timestamp() + 40_000_000; // ~1.27 years
+    let result = client.try_create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &far_future,
+        &true,
+    );
+    assert_eq!(result, Err(Ok(Error::StartDateTooFarInFuture)));
 }
