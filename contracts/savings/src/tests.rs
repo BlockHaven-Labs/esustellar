@@ -1,4 +1,4 @@
-use crate::{Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
+use crate::{Error, Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, String,
@@ -601,4 +601,153 @@ fn test_create_multiple_groups_no_panic() {
     // Verify all groups exist
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
+}
+
+#[test]
+fn test_pause_and_resume_group() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "pause-test");
+    let name = String::from_str(&env, "Pause Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+
+    // Pause the group
+    client.pause_group(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Paused);
+
+    // Resume the group
+    client.resume_group(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}
+
+#[test]
+fn test_cannot_contribute_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "pause-contrib-test");
+    let name = String::from_str(&env, "Pause Contrib Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    // Pause the group
+    client.pause_group(&admin, &group_id);
+
+    // Fast forward time
+    env.ledger().with_mut(|li| {
+        li.timestamp = env.ledger().timestamp() + 200;
+    });
+
+    // Try to contribute while paused — should fail
+    let result = client.try_contribute(&admin, &group_id);
+    assert_eq!(result, Err(Ok(Error::GroupNotActive)));
+}
+
+#[test]
+fn test_mark_defaulted_external() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "default-test");
+    let name = String::from_str(&env, "Default Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    let group = client.get_group(&group_id);
+
+    // Fast forward past deadline + grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    // Anyone can mark a member as defaulted
+    let caller = Address::generate(&env);
+    client.mark_defaulted(&member2, &group_id);
+
+    let member_data = client.get_member(&member2, &group_id);
+    assert_eq!(member_data.status, MemberStatus::Defaulted);
+}
+
+#[test]
+fn test_cannot_join_after_start_date() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "start-date-test");
+    let name = String::from_str(&env, "Start Date Test");
+
+    let start_time = env.ledger().timestamp() + 100;
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Weekly,
+        &start_time,
+        &true,
+    );
+
+    // Fast forward past start date
+    env.ledger().with_mut(|li| {
+        li.timestamp = start_time + 1;
+    });
+
+    // Try to join after start date — should fail
+    let member = Address::generate(&env);
+    let result = client.try_join_group(&member, &group_id);
+    assert_eq!(result, Err(Ok(Error::StartDateAlreadyPassed)));
 }
