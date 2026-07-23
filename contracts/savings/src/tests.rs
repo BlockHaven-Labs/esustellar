@@ -29,6 +29,7 @@ fn test_create_group_success() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
     );
 
     assert_eq!(group.name, name);
@@ -55,6 +56,7 @@ fn test_create_group_low_contribution() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
     );
 }
 
@@ -76,6 +78,7 @@ fn test_join_group() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
     );
 
     let members = client.get_members(&group_id);
@@ -114,6 +117,7 @@ fn test_cannot_join_full_group() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
     );
 
     let member2 = Address::generate(&env);
@@ -144,6 +148,7 @@ fn test_cannot_join_twice() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
     );
 
     let member = Address::generate(&env);
@@ -169,6 +174,7 @@ fn test_contribution_flow() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin,
     );
 
     let member2 = Address::generate(&env);
@@ -216,6 +222,7 @@ fn test_payout_order() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin,
     );
 
     let member2 = Address::generate(&env);
@@ -265,6 +272,7 @@ fn test_get_round_deadline() {
         &Frequency::Weekly,
         &start_time,
         &true,
+        &admin,
     );
 
     // Get round 1 deadline
@@ -300,6 +308,7 @@ fn test_get_user_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &user,
     );
 
     // User should now have 1 group
@@ -337,6 +346,7 @@ fn test_get_all_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin1,
     );
 
     // Should have 1 group
@@ -353,6 +363,7 @@ fn test_get_all_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin2,
     );
 
     // Should have 2 groups
@@ -387,6 +398,7 @@ fn test_user_joins_multiple_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
     );
 
     client.create_group(
@@ -398,6 +410,7 @@ fn test_user_joins_multiple_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
     );
 
     // User joins both groups
@@ -440,6 +453,7 @@ fn test_multiple_groups_isolated_state() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin1,
     );
 
     client.create_group(
@@ -451,6 +465,7 @@ fn test_multiple_groups_isolated_state() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 172800),
         &false,
+        &admin2,
     );
 
     // Verify groups are separate
@@ -504,6 +519,7 @@ fn test_multiple_groups_full_lifecycle() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin1,
     );
 
     client.create_group(
@@ -515,6 +531,7 @@ fn test_multiple_groups_full_lifecycle() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin2,
     );
 
     // Fill both groups
@@ -595,10 +612,34 @@ fn test_create_multiple_groups_no_panic() {
             &Frequency::Monthly,
             &(env.ledger().timestamp() + 86400),
             &true,
+            &admin,
         );
     }
 
     // Verify all groups exist
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
+}
+
+#[test]
+#[should_panic]
+fn test_create_group_max_contribution_exceeded() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "test-group-max");
+    let name = String::from_str(&env, "Test Savings");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &2_000_000_000_000, // 2M XLM - exceeds MAX_CONTRIBUTION
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+    );
 }
