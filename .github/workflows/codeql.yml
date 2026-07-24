@@ -151,6 +151,12 @@ jobs:
           cargo build --manifest-path contracts/registry/Cargo.toml
           cargo build --manifest-path contracts/savings/Cargo.toml
 
+      - name: Run cargo clippy (Rust)
+        if: matrix.language == 'rust'
+        run: |
+          cargo clippy --all-targets --manifest-path contracts/registry/Cargo.toml -- -D warnings
+          cargo clippy --all-targets --manifest-path contracts/savings/Cargo.toml -- -D warnings
+
       # ── Perform Analysis ───────────────────────────────────────────────────────
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3

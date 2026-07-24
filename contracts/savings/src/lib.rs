@@ -25,6 +25,12 @@ pub enum Error {
     NoRefundAvailable = 15,
     RoundNotStalled = 16,
     StartDateTooFarInFuture = 17,
+    GroupPaused = 15,
+    StartDateAlreadyPassed = 16,
+    ArithmeticOverflow = 15,
+    DataExpired = 16,
+    AlreadyInitialized = 15,
+    ContributionTooHigh = 16,
 }
 
 // Configuration constants
@@ -63,6 +69,14 @@ pub enum Frequency {
     Monthly,
 }
 
+// Configuration constants
+pub const MIN_MEMBERS: u32 = 3;
+pub const MAX_MEMBERS: u32 = 20;
+pub const MIN_CONTRIBUTION: i128 = 10_000_000; // 10 XLM in stroops (7 decimals)
+pub const MAX_CONTRIBUTION: i128 = 1_000_000_000_000; // 1,000,000 XLM max per contribution
+pub const DEFAULT_PLATFORM_FEE_BPS: u32 = 200; // 2% in basis points
+pub const GRACE_PERIOD_SECONDS: u64 = 259_200; // 3 days in seconds
+
 #[contracttype]
 #[derive(Clone)]
 pub struct SavingsGroup {
@@ -77,6 +91,8 @@ pub struct SavingsGroup {
     pub is_public: bool,
     pub current_round: u32,
     pub platform_fee_percent: u32, // in basis points (100 = 1%)
+    pub treasury: Address,         // Address that receives platform fees
+    pub token_address: Option<Address>, // SEP-41 token contract address (None = native XLM)
 }
 
 #[contracttype]
@@ -122,6 +138,9 @@ pub enum DataKey {
     MemberCount(String),              // Namespaced by group_id
     AllGroups,                        // Global - Vec<String> of all group_ids
     UserGroups(Address),              // Global - Vec<String> of groups user belongs to
+    Initialized,                      // Whether the contract has been initialized
+    Admin,                            // Contract-level admin address
+    Treasury(String),                 // Per-group treasury address for platform fees
 }
 
 #[contract]
@@ -129,6 +148,17 @@ pub struct SavingsContract;
 
 #[contractimpl]
 impl SavingsContract {
+    /// One-time initialization: sets the contract-level admin.
+    /// Must be called before any other function.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        if env.storage().persistent().has(&DataKey::Initialized) {
+            return Err(Error::AlreadyInitialized);
+        }
+        env.storage().persistent().set(&DataKey::Initialized, &true);
+        env.storage().persistent().set(&DataKey::Admin, &admin);
+        Ok(())
+    }
+
     /// Initialize a new savings group
     pub fn create_group(
         env: Env,
@@ -140,12 +170,17 @@ impl SavingsContract {
         frequency: Frequency,
         start_timestamp: u64,
         is_public: bool,
+        treasury: Address,
+        token_address: Option<Address>, // SEP-41 token address (None = native XLM)
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
 
         // Validations
         if contribution_amount < MIN_CONTRIBUTION {
             return Err(Error::ContributionTooLow);
+        }
+        if contribution_amount > MAX_CONTRIBUTION {
+            return Err(Error::ContributionTooHigh);
         }
         if total_members < MIN_MEMBERS || total_members > MAX_MEMBERS {
             return Err(Error::InvalidMemberCount);
@@ -169,10 +204,18 @@ impl SavingsContract {
             is_public,
             current_round: 0,
             platform_fee_percent: DEFAULT_PLATFORM_FEE_BPS,
+            treasury: treasury.clone(),
+            platform_fee_percent: 200, // 2%
+            token_address,
         };
         
         // Store group with namespaced key
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+        
+        // TODO (#670): Add cross-contract call to registry contract
+        // When a registry contract address is configured, the savings contract should call:
+        //   registry::Client::new(&env, &registry_addr).register_group(&group_id, &admin, &contribution_amount, ...)
+        // This ensures the registry stays in sync with on-chain state automatically.
         
         // Add to global groups list
         let mut all_groups: Vec<String> = env
@@ -224,6 +267,10 @@ impl SavingsContract {
 
         if group.status != GroupStatus::Open {
             return Err(Error::GroupNotAcceptingMembers);
+        }
+
+        if env.ledger().timestamp() >= group.start_timestamp {
+            return Err(Error::StartDateAlreadyPassed);
         }
 
         let member_count: u32 = env
@@ -282,6 +329,11 @@ impl SavingsContract {
         env.storage()
             .persistent()
             .set(&DataKey::UserGroups(member.clone()), &user_groups);
+
+        // TODO (#670): Add cross-contract call to registry contract
+        // When a registry contract address is configured, the savings contract should call:
+        //   registry::Client::new(&env, &registry_addr).add_member(&group_id, &member)
+        // This ensures the registry stays in sync with on-chain state automatically.
 
         // If group is full, change status to Active
         if new_count == group.total_members {
@@ -347,6 +399,14 @@ impl SavingsContract {
             return Err(Error::PaymentWindowClosed);
         }
 
+        if env.ledger().timestamp() > deadline {
+            // Past deadline but within grace period
+            member_data.status = MemberStatus::Overdue;
+            env.storage()
+                .persistent()
+                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+        }
+
         // Record contribution
         let contribution = Contribution {
             member: member.clone(),
@@ -354,6 +414,13 @@ impl SavingsContract {
             round: current_round,
             timestamp: env.ledger().timestamp(),
         };
+
+        // TODO (#672): Implement SEP-41 token transfer-in when token_address is Some
+        // For now, this contract tracks contributions internally without actual token custody.
+        // When token_address is Some, the contract should call:
+        //   token::Client::new(&env, &token_addr).transfer(&member, &env.current_contract_address(), &amount)
+        // This requires the member to have approved this contract as a spender via the token's
+        // transfer_from method, or the contract must use require_auth() which is already called above.
 
         let mut round_contributions: Vec<Contribution> = env
             .storage()
@@ -366,7 +433,10 @@ impl SavingsContract {
             .set(&DataKey::Contributions(group_id.clone(), current_round), &round_contributions);
 
         member_data.status = MemberStatus::PaidCurrentRound;
-        member_data.total_contributed += group.contribution_amount;
+        member_data.total_contributed = member_data
+            .total_contributed
+            .checked_add(group.contribution_amount)
+            .ok_or(Error::ArithmeticOverflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
@@ -391,10 +461,19 @@ impl SavingsContract {
         group_id: String,
     ) -> Result<(), Error> {
         let group: SavingsGroup = env
+    /// Pause a group (admin only). No contributions or payouts allowed while paused.
+    pub fn pause_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut group: SavingsGroup = env
             .storage()
             .persistent()
             .get(&DataKey::Group(group_id.clone()))
             .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::NotMember);
+        }
 
         if group.status != GroupStatus::Active {
             return Err(Error::GroupNotActive);
@@ -438,6 +517,42 @@ impl SavingsContract {
 
         // Distribute payout to designated recipient (even if not all paid)
         Self::distribute_payout(env, group_id)?;
+        group.status = GroupStatus::Paused;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events()
+            .publish((symbol_short!("paused"),), group_id);
+
+        Ok(())
+    }
+
+    /// Resume a paused group (admin only).
+    pub fn resume_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::NotMember);
+        }
+
+        if group.status != GroupStatus::Paused {
+            return Err(Error::GroupNotActive);
+        }
+
+        group.status = GroupStatus::Active;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events()
+            .publish((symbol_short!("resumed"),), group_id);
 
         Ok(())
     }
@@ -454,12 +569,25 @@ impl SavingsContract {
         member.require_auth();
 
         let _group: SavingsGroup = env
+    /// Mark a member as defaulted. Callable by any party once the grace period has passed.
+    /// This fixes the issue where defaults were only detectable via the defaulting member's own call.
+    pub fn mark_defaulted(
+        env: Env,
+        member: Address,
+        group_id: String,
+    ) -> Result<(), Error> {
+        let group: SavingsGroup = env
             .storage()
             .persistent()
             .get(&DataKey::Group(group_id.clone()))
             .ok_or(Error::GroupNotFound)?;
 
         let member_data: Member = env
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        let mut member_data: Member = env
             .storage()
             .persistent()
             .get(&DataKey::MemberData(group_id.clone(), member.clone()))
@@ -503,6 +631,32 @@ impl SavingsContract {
         // For now, we just return the refundable amount and mark it as claimed.
         // The contribution record remains but the member can withdraw equivalent value.
         Ok(contributed_amount)
+        if member_data.status == MemberStatus::Defaulted
+            || member_data.status == MemberStatus::ReceivedPayout
+        {
+            return Ok(()); // Already defaulted or received payout
+        }
+
+        let deadline: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RoundDeadline(group_id.clone(), group.current_round))
+            .unwrap_or(0);
+
+        if env.ledger().timestamp() > deadline + 259_200 {
+            // Past grace period (3 days)
+            member_data.status = MemberStatus::Defaulted;
+            env.storage()
+                .persistent()
+                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+
+            env.events().publish(
+                (symbol_short!("defaulted"),),
+                (member, group.current_round),
+            );
+        }
+
+        Ok(())
     }
 
     /// Distribute payout for current round
@@ -515,13 +669,24 @@ impl SavingsContract {
 
         let current_round = group.current_round;
 
-        // Calculate payout amount
-        let total_pool = group.contribution_amount * (group.total_members as i128);
+        // Calculate payout amount with overflow protection
+        let total_pool = group
+            .contribution_amount
+            .checked_mul(group.total_members as i128)
+            .ok_or(Error::ArithmeticOverflow)?;
         let platform_fee = (total_pool * (group.platform_fee_percent as i128)) / 10000;
-        let payout_amount = total_pool - platform_fee;
+        let payout_amount = total_pool
+            .checked_sub(platform_fee)
+            .ok_or(Error::ArithmeticOverflow)?;
 
         // Determine recipient (sequential by join_order)
         let recipient = Self::get_next_payout_recipient(&env, group_id.clone(), current_round)?;
+
+        // TODO (#672): Implement SEP-41 token transfer-out when token_address is Some
+        // For now, this contract tracks payouts internally without actual token transfers.
+        // When token_address is Some, the contract should call:
+        //   token::Client::new(&env, &token_addr).transfer(&env.current_contract_address(), &recipient, &payout_amount)
+        // This requires the contract to hold the token balance from member contributions.
 
         let payout = Payout {
             recipient: recipient.clone(),
