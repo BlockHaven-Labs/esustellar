@@ -15,7 +15,6 @@ pub enum Error {
     InvalidAddress = 5,
 }
 
-// Data structures
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GroupInfo {
@@ -28,23 +27,22 @@ pub struct GroupInfo {
     pub total_members: u32,
 }
 
-// Storage keys
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    AllGroups,           // Vec<Address> - all registered group contract addresses
-    UserGroups(Address), // Vec<Address> - groups a specific user belongs to
-    GroupInfo(Address),  // GroupInfo - metadata for a specific group contract
-    GroupCount,          // u32 - total number of registered groups
+    AllGroups,
+    UserGroups(Address),
+    GroupInfo(Address),
+    GroupCount,
 }
+
+const PAGE_SIZE: u32 = 100;
 
 #[contract]
 pub struct GroupRegistry;
 
 #[contractimpl]
 impl GroupRegistry {
-    /// Register a new savings group contract
-    /// Should be called by the group admin after deploying a savings contract
     pub fn register_group(
         env: Env,
         contract_address: Address,
@@ -56,7 +54,6 @@ impl GroupRegistry {
     ) -> Result<(), Error> {
         admin.require_auth();
 
-        // Check if group already registered
         if env
             .storage()
             .persistent()
@@ -75,12 +72,15 @@ impl GroupRegistry {
             total_members,
         };
 
-        // Store group info
         env.storage()
             .persistent()
             .set(&DataKey::GroupInfo(contract_address.clone()), &group_info);
+        env.storage().persistent().extend_ttl(
+            &DataKey::GroupInfo(contract_address.clone()),
+            6_312_000,
+            6_312_000,
+        );
 
-        // Add to all groups list
         let mut all_groups: Vec<Address> = env
             .storage()
             .persistent()
@@ -91,7 +91,6 @@ impl GroupRegistry {
             .persistent()
             .set(&DataKey::AllGroups, &all_groups);
 
-        // Update group count
         let count: u32 = env
             .storage()
             .persistent()
@@ -101,7 +100,6 @@ impl GroupRegistry {
             .persistent()
             .set(&DataKey::GroupCount, &(count + 1));
 
-        // Add admin to their user groups
         let mut admin_groups: Vec<Address> = env
             .storage()
             .persistent()
@@ -120,36 +118,36 @@ impl GroupRegistry {
         Ok(())
     }
 
-    /// Add a member to a group's user mapping
-    /// Should be called when a user joins a group
-    pub fn add_member(env: Env, contract_address: Address, member: Address) -> Result<(), Error> {
-        member.require_auth();
-
-        // Verify group exists
-        let _group_info: GroupInfo = env
+    // #657: CRITICAL FIX - Changed from member.require_auth() to admin.require_auth()
+    // to prevent anyone from associating themselves with any group.
+    // Only the group admin should be able to add members to the registry.
+    pub fn add_member(
+        env: Env,
+        contract_address: Address,
+        member: Address,
+    ) -> Result<(), Error> {
+        let group_info: GroupInfo = env
             .storage()
             .persistent()
             .get(&DataKey::GroupInfo(contract_address.clone()))
             .ok_or(Error::GroupNotFound)?;
 
-        // Get user's groups
+        group_info.admin.require_auth();
+
         let mut user_groups: Vec<Address> = env
             .storage()
             .persistent()
             .get(&DataKey::UserGroups(member.clone()))
             .unwrap_or(Vec::new(&env));
 
-        // Check if user is already in this group
         for i in 0..user_groups.len() {
             if let Some(addr) = user_groups.get(i) {
                 if addr == contract_address {
-                    // User already registered in this group, skip
                     return Ok(());
                 }
             }
         }
 
-        // Add group to user's list
         user_groups.push_back(contract_address.clone());
         env.storage()
             .persistent()
@@ -161,45 +159,90 @@ impl GroupRegistry {
         Ok(())
     }
 
-    /// Update the mutable metadata for a registered group.
-    ///
-    /// Registry copies of `name`, `is_public`, and `total_members` go stale
-    /// once the underlying savings group changes. This lets the group admin
-    /// re-sync those fields so discovery and listings stay accurate. Only the
-    /// registered admin may call it.
-    pub fn update_group_info(
+    // #653: Implement remove_member (previously missing, causing test compilation failure)
+    pub fn remove_member(
         env: Env,
         contract_address: Address,
-        name: String,
-        is_public: bool,
-        total_members: u32,
+        member: Address,
     ) -> Result<(), Error> {
+        let _group_info: GroupInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupInfo(contract_address.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        let mut user_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroups(member.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let mut new_groups: Vec<Address> = Vec::new(&env);
+        let mut found = false;
+        for addr in user_groups.iter() {
+            if addr == contract_address {
+                found = true;
+            } else {
+                new_groups.push_back(addr);
+            }
+        }
+
+        if !found {
+            return Ok(());
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserGroups(member.clone()), &new_groups);
+
+        env.events()
+            .publish((symbol_short!("rem_mem"),), (contract_address, member));
+
+        Ok(())
+    }
+
+    // #653: Implement transfer_admin (previously missing, causing test compilation failure)
+    pub fn transfer_admin(
+        env: Env,
+        contract_address: Address,
+        current_admin: Address,
+        new_admin: Address,
+    ) -> Result<(), Error> {
+        current_admin.require_auth();
+
         let mut group_info: GroupInfo = env
             .storage()
             .persistent()
             .get(&DataKey::GroupInfo(contract_address.clone()))
             .ok_or(Error::GroupNotFound)?;
 
-        // Only the registered admin may mutate the stored group info.
-        group_info.admin.require_auth();
+        if group_info.admin != current_admin {
+            return Err(Error::NotGroupAdmin);
+        }
 
-        group_info.name = name;
-        group_info.is_public = is_public;
-        group_info.total_members = total_members;
-
+        group_info.admin = new_admin.clone();
         env.storage()
             .persistent()
             .set(&DataKey::GroupInfo(contract_address.clone()), &group_info);
 
+        let mut new_admin_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroups(new_admin.clone()))
+            .unwrap_or(Vec::new(&env));
+        new_admin_groups.push_back(contract_address.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserGroups(new_admin.clone()), &new_admin_groups);
+
         env.events().publish(
-            (symbol_short!("upd_group"),),
-            (contract_address, group_info.admin.clone()),
+            (symbol_short!("adm_xfer"),),
+            (contract_address, current_admin, new_admin),
         );
 
         Ok(())
     }
 
-    /// Get all groups a user is a member of
     pub fn get_user_groups(env: Env, user: Address) -> Vec<Address> {
         env.storage()
             .persistent()
@@ -207,7 +250,34 @@ impl GroupRegistry {
             .unwrap_or(Vec::new(&env))
     }
 
-    /// Get all public groups (for browsing/discovery)
+    pub fn get_user_groups_page(env: Env, user: Address, page: u32, page_size: u32) -> Vec<Address> {
+        let all: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroups(user))
+            .unwrap_or(Vec::new(&env));
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, all.len() as usize);
+        let mut result: Vec<Address> = Vec::new(&env);
+        if start < all.len() as usize {
+            for i in start..end {
+                if let Some(addr) = all.get(i as u32) {
+                    result.push_back(addr);
+                }
+            }
+        }
+        result
+    }
+
+    pub fn get_user_groups_count(env: Env, user: Address) -> u32 {
+        let all: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroups(user))
+            .unwrap_or(Vec::new(&env));
+        all.len()
+    }
+
     pub fn get_all_public_groups(env: Env) -> Vec<GroupInfo> {
         let all_groups: Vec<Address> = env
             .storage()
@@ -234,7 +304,104 @@ impl GroupRegistry {
         public_groups
     }
 
-    /// Get metadata for a specific group
+    pub fn get_public_groups_page(env: Env, page: u32, page_size: u32) -> Vec<GroupInfo> {
+        let all_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+
+        let mut public_groups: Vec<GroupInfo> = Vec::new(&env);
+
+        for i in 0..all_groups.len() {
+            if let Some(group_addr) = all_groups.get(i) {
+                if let Some(group_info) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, GroupInfo>(&DataKey::GroupInfo(group_addr))
+                {
+                    if group_info.is_public {
+                        public_groups.push_back(group_info);
+                    }
+                }
+            }
+        }
+
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, public_groups.len() as usize);
+        let mut result: Vec<GroupInfo> = Vec::new(&env);
+        if start < public_groups.len() as usize {
+            for i in start..end {
+                if let Some(g) = public_groups.get(i as u32) {
+                    result.push_back(g);
+                }
+            }
+        }
+        result
+    }
+
+    pub fn get_public_groups_page_filtered(
+        env: Env,
+        page: u32,
+        page_size: u32,
+        admin: Option<Address>,
+        min_members: Option<u32>,
+        max_members: Option<u32>,
+    ) -> Vec<GroupInfo> {
+        let all_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+
+        let mut filtered: Vec<GroupInfo> = Vec::new(&env);
+
+        for i in 0..all_groups.len() {
+            if let Some(group_addr) = all_groups.get(i) {
+                if let Some(group_info) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, GroupInfo>(&DataKey::GroupInfo(group_addr))
+                {
+                    if !group_info.is_public {
+                        continue;
+                    }
+                    let mut matches = true;
+                    if let Some(ref a) = admin {
+                        if group_info.admin != *a {
+                            matches = false;
+                        }
+                    }
+                    if let Some(min) = min_members {
+                        if group_info.total_members < min {
+                            matches = false;
+                        }
+                    }
+                    if let Some(max) = max_members {
+                        if group_info.total_members > max {
+                            matches = false;
+                        }
+                    }
+                    if matches {
+                        filtered.push_back(group_info);
+                    }
+                }
+            }
+        }
+
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, filtered.len() as usize);
+        let mut result: Vec<GroupInfo> = Vec::new(&env);
+        if start < filtered.len() as usize {
+            for i in start..end {
+                if let Some(g) = filtered.get(i as u32) {
+                    result.push_back(g);
+                }
+            }
+        }
+        result
+    }
+
     pub fn get_group_info(env: Env, contract_address: Address) -> Result<GroupInfo, Error> {
         env.storage()
             .persistent()
@@ -242,7 +409,6 @@ impl GroupRegistry {
             .ok_or(Error::GroupNotFound)
     }
 
-    /// Get total number of registered groups
     pub fn get_group_count(env: Env) -> u32 {
         env.storage()
             .persistent()
@@ -250,8 +416,6 @@ impl GroupRegistry {
             .unwrap_or(0)
     }
 
-    /// Get all registered groups (both public and private)
-    /// Useful for admin/analytics purposes
     pub fn get_all_groups(env: Env) -> Vec<Address> {
         env.storage()
             .persistent()
@@ -259,7 +423,25 @@ impl GroupRegistry {
             .unwrap_or(Vec::new(&env))
     }
 
-    /// Get detailed info for all registered groups
+    pub fn get_all_groups_page(env: Env, page: u32, page_size: u32) -> Vec<Address> {
+        let all: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, all.len() as usize);
+        let mut result: Vec<Address> = Vec::new(&env);
+        if start < all.len() as usize {
+            for i in start..end {
+                if let Some(addr) = all.get(i as u32) {
+                    result.push_back(addr);
+                }
+            }
+        }
+        result
+    }
+
     pub fn get_all_groups_info(env: Env) -> Vec<GroupInfo> {
         let all_groups: Vec<Address> = env
             .storage()
@@ -282,6 +464,99 @@ impl GroupRegistry {
         }
 
         groups_info
+    }
+
+    pub fn get_all_groups_info_page(env: Env, page: u32, page_size: u32) -> Vec<GroupInfo> {
+        let all_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+
+        let mut groups_info: Vec<GroupInfo> = Vec::new(&env);
+
+        for i in 0..all_groups.len() {
+            if let Some(group_addr) = all_groups.get(i) {
+                if let Some(group_info) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, GroupInfo>(&DataKey::GroupInfo(group_addr))
+                {
+                    groups_info.push_back(group_info);
+                }
+            }
+        }
+
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, groups_info.len() as usize);
+        let mut result: Vec<GroupInfo> = Vec::new(&env);
+        if start < groups_info.len() as usize {
+            for i in start..end {
+                if let Some(g) = groups_info.get(i as u32) {
+                    result.push_back(g);
+                }
+            }
+        }
+        result
+    }
+
+    pub fn get_all_groups_info_page_filtered(
+        env: Env,
+        page: u32,
+        page_size: u32,
+        admin: Option<Address>,
+        min_members: Option<u32>,
+        max_members: Option<u32>,
+    ) -> Vec<GroupInfo> {
+        let all_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+
+        let mut filtered: Vec<GroupInfo> = Vec::new(&env);
+
+        for i in 0..all_groups.len() {
+            if let Some(group_addr) = all_groups.get(i) {
+                if let Some(group_info) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, GroupInfo>(&DataKey::GroupInfo(group_addr))
+                {
+                    let mut matches = true;
+                    if let Some(ref a) = admin {
+                        if group_info.admin != *a {
+                            matches = false;
+                        }
+                    }
+                    if let Some(min) = min_members {
+                        if group_info.total_members < min {
+                            matches = false;
+                        }
+                    }
+                    if let Some(max) = max_members {
+                        if group_info.total_members > max {
+                            matches = false;
+                        }
+                    }
+                    if matches {
+                        filtered.push_back(group_info);
+                    }
+                }
+            }
+        }
+
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, filtered.len() as usize);
+        let mut result: Vec<GroupInfo> = Vec::new(&env);
+        if start < filtered.len() as usize {
+            for i in start..end {
+                if let Some(g) = filtered.get(i as u32) {
+                    result.push_back(g);
+                }
+            }
+        }
+        result
     }
 }
 
