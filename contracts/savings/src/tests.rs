@@ -1,4 +1,4 @@
-use crate::{Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
+use crate::{Error, Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, String,
@@ -30,6 +30,7 @@ fn test_create_group_success() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
+        &true, &None,
     );
 
     assert_eq!(group.name, name);
@@ -57,6 +58,7 @@ fn test_create_group_low_contribution() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
+        &true, &None,
     );
 }
 
@@ -79,6 +81,7 @@ fn test_join_group() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
+        &true, &None,
     );
 
     let members = client.get_members(&group_id);
@@ -118,6 +121,7 @@ fn test_cannot_join_full_group() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -149,6 +153,7 @@ fn test_cannot_join_twice() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
+        &true, &None,
     );
 
     let member = Address::generate(&env);
@@ -175,6 +180,7 @@ fn test_contribution_flow() {
         &(env.ledger().timestamp() + 100),
         &true,
         &admin,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -223,6 +229,7 @@ fn test_payout_order() {
         &(env.ledger().timestamp() + 100),
         &true,
         &admin,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -273,6 +280,7 @@ fn test_get_round_deadline() {
         &start_time,
         &true,
         &admin,
+        &true, &None,
     );
 
     // Get round 1 deadline
@@ -309,6 +317,7 @@ fn test_get_user_groups() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &user,
+        &true, &None,
     );
 
     // User should now have 1 group
@@ -347,6 +356,7 @@ fn test_get_all_groups() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin1,
+        &true, &None,
     );
 
     // Should have 1 group
@@ -364,6 +374,7 @@ fn test_get_all_groups() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin2,
+        &true, &None,
     );
 
     // Should have 2 groups
@@ -399,6 +410,7 @@ fn test_user_joins_multiple_groups() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
+        &true, &None,
     );
 
     client.create_group(
@@ -411,6 +423,7 @@ fn test_user_joins_multiple_groups() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
+        &true, &None,
     );
 
     // User joins both groups
@@ -454,6 +467,7 @@ fn test_multiple_groups_isolated_state() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin1,
+        &true, &None,
     );
 
     client.create_group(
@@ -520,6 +534,7 @@ fn test_multiple_groups_full_lifecycle() {
         &(env.ledger().timestamp() + 100),
         &true,
         &admin1,
+        &true, &None,
     );
 
     client.create_group(
@@ -532,6 +547,7 @@ fn test_multiple_groups_full_lifecycle() {
         &(env.ledger().timestamp() + 100),
         &true,
         &admin2,
+        &true, &None,
     );
 
     // Fill both groups
@@ -613,6 +629,7 @@ fn test_create_multiple_groups_no_panic() {
             &(env.ledger().timestamp() + 86400),
             &true,
             &admin,
+            &true, &None,
         );
     }
 
@@ -624,22 +641,130 @@ fn test_create_multiple_groups_no_panic() {
 #[test]
 #[should_panic]
 fn test_create_group_max_contribution_exceeded() {
+fn test_contribute_rejected_after_completed() {
     let env = Env::default();
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
     let group_id = String::from_str(&env, "test-group-max");
     let name = String::from_str(&env, "Test Savings");
+    let group_id = String::from_str(&env, "completed-test");
+    let name = String::from_str(&env, "Completed Test");
 
     client.create_group(
         &admin,
         &group_id,
         &name,
         &2_000_000_000_000, // 2M XLM - exceeds MAX_CONTRIBUTION
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    // Complete all 3 rounds (one per member gets payout)
+    for round in 1..=3 {
+        env.ledger().with_mut(|li| {
+            li.timestamp = env.ledger().timestamp() + 604800 + 1;
+        });
+        client.contribute(&admin, &group_id);
+        client.contribute(&member2, &group_id);
+        client.contribute(&member3, &group_id);
+    }
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Completed);
+
+    // Try to contribute after completion — should fail with GroupNotActive
+    let result = client.try_contribute(&admin, &group_id);
+    assert_eq!(result, Err(Ok(Error::GroupNotActive)));
+}
+
+#[test]
+fn test_overdue_status_set_when_past_deadline() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "overdue-test");
+    let name = String::from_str(&env, "Overdue Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    let group = client.get_group(&group_id);
+
+    // Fast forward past deadline but within grace period (3 days)
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 1; // just past deadline
+    });
+
+    // Member contributes late — should be marked Overdue
+    client.contribute(&admin, &group_id);
+    let member_data = client.get_member(&admin, &group_id);
+    assert_eq!(member_data.status, MemberStatus::Overdue);
+}
+
+#[test]
+fn test_initialize_sets_admin() {
+    let env = Env::default();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    let group_id = String::from_str(&env, "test-init");
+    let name = String::from_str(&env, "Init Test");
+
+    // Should work after initialization
+    let result = client.try_create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
         &admin,
     );
+}
+    );
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_initialize_cannot_be_called_twice() {
+    let env = Env::default();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let result = client.try_initialize(&admin);
+    assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
