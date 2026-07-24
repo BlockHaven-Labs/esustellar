@@ -602,3 +602,218 @@ fn test_create_multiple_groups_no_panic() {
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
 }
+
+// ============================================================
+// Tests for #618: Admin cannot redundantly join after auto-join
+// ============================================================
+
+#[test]
+#[should_panic]
+fn test_admin_cannot_join_after_auto_join() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "admin-join-test");
+    let name = String::from_str(&env, "Test Savings");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    // Admin already auto-joined via create_group — joining again should fail
+    client.join_group(&admin, &group_id);
+}
+
+// ============================================================
+// Tests for #620: cancel_group
+// ============================================================
+
+#[test]
+fn test_cancel_group_success() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "cancel-test");
+    let name = String::from_str(&env, "Cancel Me");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    // Verify group exists
+    assert_eq!(client.get_all_groups().len(), 1);
+    assert_eq!(client.get_user_groups(&admin).len(), 1);
+
+    // Cancel it
+    client.cancel_group(&admin, &group_id);
+
+    // Group should be removed from global list and user's groups
+    assert_eq!(client.get_all_groups().len(), 0);
+    assert_eq!(client.get_user_groups(&admin).len(), 0);
+}
+
+#[test]
+#[should_panic]
+fn test_cancel_group_not_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "cancel-noauth");
+    let name = String::from_str(&env, "Cancel Me");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    let other = Address::generate(&env);
+    client.cancel_group(&other, &group_id); // Should panic — not admin
+}
+
+#[test]
+#[should_panic]
+fn test_cancel_group_not_open() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "cancel-active");
+    let name = String::from_str(&env, "Active Group");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    // Fill the group so it becomes Active
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    client.join_group(&m1, &group_id);
+    client.join_group(&m2, &group_id);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Active);
+
+    // Cannot cancel an Active group
+    client.cancel_group(&admin, &group_id); // Should panic — group not open
+}
+
+#[test]
+fn test_cancel_group_cleans_up_members_user_groups() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "cancel-member-cleanup");
+    let name = String::from_str(&env, "Cleanup Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    let member = Address::generate(&env);
+    client.join_group(&member, &group_id);
+
+    // Member has 1 group
+    assert_eq!(client.get_user_groups(&member).len(), 1);
+
+    // Cancel the group
+    client.cancel_group(&admin, &group_id);
+
+    // Member's user groups should be empty now
+    assert_eq!(client.get_user_groups(&member).len(), 0);
+    assert_eq!(client.get_user_groups(&admin).len(), 0);
+}
+
+// ============================================================
+// Test for #625: Grace period constant works correctly
+// ============================================================
+
+#[test]
+fn test_grace_period_applied() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "grace-test");
+    let name = String::from_str(&env, "Grace Period");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    client.join_group(&m1, &group_id);
+    client.join_group(&m2, &group_id);
+
+    let group = client.get_group(&group_id);
+    // Deadline for round 1
+    let deadline = group.start_timestamp + 604800; // 1 week
+
+    // Fast forward to exactly deadline + grace period (3 days)
+    // Admin contributes on time
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 1;
+    });
+    client.contribute(&admin, &group_id);
+
+    // m1 contributes within grace period (deadline + 2 days)
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 172800; // +2 days
+    });
+    client.contribute(&m1, &group_id);
+
+    // m2 tries after grace period (deadline + 4 days = 259200 + 86400 = 345600)
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 345_600; // +4 days
+    });
+    // Should fail — payment window closed (past grace period)
+    // Note: #[should_panic] not used here because we test the Result
+    // Actually soroban tests panic on Err, so we verify via the member status
+    let result = client.try_contribute(&m2, &group_id);
+    assert!(result.is_err());
+}
