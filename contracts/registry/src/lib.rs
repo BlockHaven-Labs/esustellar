@@ -92,6 +92,8 @@ impl GroupRegistry {
             .set(&DataKey::AllGroups, &all_groups);
 
         // Update group count
+        // NOTE: When implementing remove_member or unregister_group (issue #53),
+        // remember to decrement GroupCount in lockstep to maintain accuracy
         let count: u32 = env
             .storage()
             .persistent()
@@ -161,6 +163,13 @@ impl GroupRegistry {
         Ok(())
     }
 
+    /// Remove a member from a group's user mapping
+    /// Should be called when a user leaves a group
+    pub fn remove_member(env: Env, contract_address: Address, member: Address) -> Result<(), Error> {
+        member.require_auth();
+
+        // Verify group exists
+        let _group_info: GroupInfo = env
     /// Update the mutable metadata for a registered group.
     ///
     /// Registry copies of `name`, `is_public`, and `total_members` go stale
@@ -180,6 +189,36 @@ impl GroupRegistry {
             .get(&DataKey::GroupInfo(contract_address.clone()))
             .ok_or(Error::GroupNotFound)?;
 
+        // Get user's groups
+        let user_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroups(member.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        // Find and remove the group from user's list
+        let mut found = false;
+        let mut new_user_groups: Vec<Address> = Vec::new(&env);
+        for i in 0..user_groups.len() {
+            if let Some(addr) = user_groups.get(i) {
+                if addr == contract_address {
+                    found = true;
+                } else {
+                    new_user_groups.push_back(addr);
+                }
+            }
+        }
+
+        if !found {
+            return Err(Error::UserNotInGroup);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserGroups(member.clone()), &new_user_groups);
+
+        env.events()
+            .publish((symbol_short!("rem_mem"),), (contract_address, member));
         // Only the registered admin may mutate the stored group info.
         group_info.admin.require_auth();
 
@@ -232,6 +271,64 @@ impl GroupRegistry {
         }
 
         public_groups
+    }
+
+    /// Unregister a savings group contract
+    /// Should be called by the group admin to remove a group from the registry
+    pub fn unregister_group(env: Env, contract_address: Address, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+
+        // Verify group exists and get info
+        let group_info: GroupInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupInfo(contract_address.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        // Verify caller is the group admin
+        if group_info.admin != admin {
+            return Err(Error::NotGroupAdmin);
+        }
+
+        // Remove group info
+        env.storage()
+            .persistent()
+            .remove(&DataKey::GroupInfo(contract_address.clone()));
+
+        // Remove from all groups list
+        let mut all_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        let mut new_all_groups: Vec<Address> = Vec::new(&env);
+        for i in 0..all_groups.len() {
+            if let Some(addr) = all_groups.get(i) {
+                if addr != contract_address {
+                    new_all_groups.push_back(addr);
+                }
+            }
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::AllGroups, &new_all_groups);
+
+        // Decrement group count
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupCount)
+            .unwrap_or(0);
+        if count > 0 {
+            env.storage()
+                .persistent()
+                .set(&DataKey::GroupCount, &(count - 1));
+        }
+
+        env.events()
+            .publish((symbol_short!("unreg_grp"),), (contract_address, admin));
+
+        Ok(())
     }
 
     /// Get metadata for a specific group
