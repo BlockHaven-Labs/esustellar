@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Pressable, StyleSheet, ViewStyle } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
 
 interface Props {
   children: React.ReactNode;
@@ -7,8 +8,19 @@ interface Props {
   onPress?: () => void;
 }
 
-export function Card({ children, style, onPress }: Props) {
-  const content = <View style={[styles.card, style]}>{children}</View>;
+const Card = React.memo<Props>(({ children, style, onPress }) => {
+  const { colors } = useTheme();
+  const content = (
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.card, borderColor: colors.border },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
 
   if (onPress) {
     return (
@@ -19,13 +31,15 @@ export function Card({ children, style, onPress }: Props) {
   }
 
   return content;
-}
+});
+
+Card.displayName = 'Card';
+
+export { Card };
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#334155',
     borderRadius: 12,
     padding: 16,
   },

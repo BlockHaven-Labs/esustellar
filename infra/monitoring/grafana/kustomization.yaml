@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: esustellar-monitoring
+resources:
+  - grafana-deployment.yaml
+  - datasources/prometheus.yaml
+  - dashboards/dashboard-provisioning.yaml
+  - dashboards/on-chain-events.json
+  - dashboards/web-app-golden-signals.json
+configMapGenerator:
+  - name: grafana-dashboard-files
+    files:
+      - dashboards/on-chain-events.json
+      - dashboards/web-app-golden-signals.json

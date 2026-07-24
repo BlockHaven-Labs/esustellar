@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '@/hooks/use-wallet'
 import { useRegistryContract, GroupInfo } from '@/context/registryContract'
 import { useSavingsContract, MemberStatus} from '@/context/savingsContract'
+import { logger } from '@/lib/logger'
 
 
 export interface GroupDisplayData {
@@ -36,7 +37,7 @@ export function useUserGroups() {
       if (Number.isFinite(deadlineNum) && deadlineNum > 0) return deadlineNum
       return null
     } catch (e) {
-      console.warn('Failed to fetch round deadline', { groupId, currentRound, e })
+      logger.warn('Failed to fetch round deadline', { groupId, currentRound, error: e instanceof Error ? e.message : String(e) })
       return null
     }
   }
@@ -185,7 +186,7 @@ export function useUserGroups() {
             contractAddress: contractAddress
           } as GroupDisplayData
         } catch (err) {
-          console.error(`Error fetching group ${contractAddress}:`, err)
+          logger.error(`Error fetching group ${contractAddress}`, { error: err instanceof Error ? err.message : String(err) })
           return null
         }
       })
@@ -210,7 +211,7 @@ export function useUserGroups() {
 
       setGroups(sortedGroups)
     } catch (err) {
-      console.error('Error fetching user groups:', err)
+      logger.error('Error fetching user groups', { error: err instanceof Error ? err.message : String(err) })
       setError('Failed to load groups. Please try again.')
     } finally {
       setLoading(false)

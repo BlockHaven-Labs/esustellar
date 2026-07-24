@@ -4,6 +4,8 @@ import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { SectionHeader } from '../ui/SectionHeader';
 import { EmptyState } from '../ui/EmptyState';
+import { formatXLM } from '../../utils/stellar';
+import { formatDate } from '../../utils/formatDate';
 
 type Transaction = {
   contributor: string;
@@ -21,11 +23,6 @@ export function ContributionHistory({ transactions }: ContributionHistoryProps) 
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   const renderTransaction = ({ item }: { item: Transaction }) => (
     <View style={styles.transactionRow}>
       <View style={styles.contributorColumn}>
@@ -33,11 +30,13 @@ export function ContributionHistory({ transactions }: ContributionHistoryProps) 
       </View>
       
       <View style={styles.amountColumn}>
-        <Text style={styles.amountText}>{item.amount} XLM</Text>
+        <Text style={styles.amountText}>{formatXLM(item.amount)}</Text>
       </View>
       
       <View style={styles.dateColumn}>
-        <Text style={styles.dateText}>{formatDate(item.date)}</Text>
+        <Text style={styles.dateText}>
+          {formatDate(item.date, { month: 'short', day: 'numeric', year: 'numeric' })}
+        </Text>
       </View>
       
       <View style={styles.roundColumn}>
@@ -51,7 +50,8 @@ export function ContributionHistory({ transactions }: ContributionHistoryProps) 
       <View style={styles.container}>
         <SectionHeader title="Contribution History" />
         <EmptyState
-          icon="💰"
+          tone="dark"
+          illustration="transactions"
           title="No contributions yet"
           message="Contributions will appear here once members start contributing to the group."
         />
@@ -66,7 +66,7 @@ export function ContributionHistory({ transactions }: ContributionHistoryProps) 
         <FlatList
           data={transactions}
           renderItem={renderTransaction}
-          keyExtractor={(item, index) => `${item.contributor}-${item.round}-${index}`}
+          keyExtractor={(item: Transaction, index: number) => `${item.contributor}-${item.round}-${index}`}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />

@@ -1,12 +1,15 @@
-import React from 'react';
-import { SafeAreaView, ScrollView, View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { SafeAreaView, ScrollView, View, Text, Pressable, StyleSheet, I18nManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { triggerHapticFeedback } from '../../utils/haptics';
 import { Button } from '../../components/ui/Button';
 
 export default function ContributionSuccessScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ groupName?: string; amount?: string; txHash?: string }>();
   const groupName = params.groupName ?? 'Unknown Group';
+
+  useEffect(() => { triggerHapticFeedback.success(); }, []);
   const amount = params.amount ?? '0 XLM';
 
   return (
@@ -120,9 +123,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#F8FAFC',
-    textAlign: 'right',
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
     flex: 1,
-    paddingLeft: 12,
+    paddingStart: 12,
   },
   hashContainer: {
     width: '100%',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Card } from '../ui';
 import Button from '../ui/Button';
@@ -16,8 +16,8 @@ interface Props {
   onMyGroups?: () => void;
 }
 
-export function QuickActions({ onContribute, onJoinGroup, onMyGroups }: Props) {
-  const handleContribute = () => {
+const QuickActions = React.memo<Props>(({ onContribute, onJoinGroup, onMyGroups }) => {
+  const handleContribute = useCallback(() => {
     const contributeAction = onContribute ?? (() => console.log('contribute'));
 
     // Simulate contribution confirmation with success feedback
@@ -26,9 +26,17 @@ export function QuickActions({ onContribute, onJoinGroup, onMyGroups }: Props) {
     }, 1000); // Simulate transaction completion
 
     contributeAction();
-  };
+  }, [onContribute]);
 
-  const actions: Action[] = [
+  const handleJoinGroup = useCallback(() => {
+    onJoinGroup?.() ?? console.log('join-group');
+  }, [onJoinGroup]);
+
+  const handleMyGroups = useCallback(() => {
+    onMyGroups?.() ?? console.log('my-groups');
+  }, [onMyGroups]);
+
+  const actions: Action[] = useMemo(() => [
     {
       icon: '💸',
       label: 'Contribute',
@@ -37,14 +45,14 @@ export function QuickActions({ onContribute, onJoinGroup, onMyGroups }: Props) {
     {
       icon: '🤝',
       label: 'Join Group',
-      onPress: onJoinGroup ?? (() => console.log('join-group')),
+      onPress: handleJoinGroup,
     },
     {
       icon: '👥',
       label: 'My Groups',
-      onPress: onMyGroups ?? (() => console.log('my-groups')),
+      onPress: handleMyGroups,
     },
-  ];
+  ], [handleContribute, handleJoinGroup, handleMyGroups]);
 
   return (
     <Card>
@@ -65,7 +73,11 @@ export function QuickActions({ onContribute, onJoinGroup, onMyGroups }: Props) {
       </View>
     </Card>
   );
-}
+});
+
+QuickActions.displayName = 'QuickActions';
+
+export default QuickActions;
 
 const styles = StyleSheet.create({
   title: { fontSize: 13, color: '#94A3B8', marginBottom: 12 },

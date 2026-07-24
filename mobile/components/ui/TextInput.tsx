@@ -1,14 +1,15 @@
 import React from 'react';
-import { View, Text, TextInput as RNTextInput, TextInputProps, StyleSheet } from 'react-native';
+import { View, Text, TextInput as RNTextInput, TextInputProps, StyleSheet, ViewStyle } from 'react-native';
 
 interface Props extends TextInputProps {
   label?: string;
   error?: string;
+  containerStyle?: ViewStyle;
 }
 
-export function TextInput({ label, error, style, ...props }: Props) {
+export function TextInput({ label, error, style, containerStyle, ...props }: Props) {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <RNTextInput
         style={[styles.input, error ? styles.inputError : null, style]}

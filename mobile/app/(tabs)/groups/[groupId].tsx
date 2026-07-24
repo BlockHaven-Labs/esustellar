@@ -1,12 +1,14 @@
 'use client';
 
-import React from 'react';
-import { SafeAreaView, ScrollView, View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import React, { useCallback } from 'react';
+import { SafeAreaView, View, Text, Pressable, StyleSheet, Alert, FlatList, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Badge } from '../../../components/ui/Badge';
 import { MemberAvatarStack } from '../../../components/groups/MemberAvatarStack';
+import { useRefresh } from '../../../hooks/useRefresh';
+import { formatXLM } from '../../../utils/stellar';
 
 type Member = {
   address: string;
@@ -17,7 +19,7 @@ type Group = {
   id: string;
   name: string;
   status: 'Active' | 'Paused' | 'Closed' | 'Pending';
-  contribution: string;
+  contribution: number;
   frequency: string;
   memberCount: number;
   members: Member[];
@@ -30,7 +32,7 @@ const MOCK_GROUPS: Group[] = [
     id: '1',
     name: 'Solar Saver Collective',
     status: 'Active',
-    contribution: '45 XLM',
+    contribution: 45,
     frequency: 'Monthly',
     memberCount: 8,
     members: [
@@ -48,7 +50,7 @@ const MOCK_GROUPS: Group[] = [
     id: '2',
     name: 'Lunar Growth Syndicate',
     status: 'Paused',
-    contribution: '90 XLM',
+    contribution: 90,
     frequency: 'Biweekly',
     memberCount: 12,
     members: [
@@ -62,7 +64,7 @@ const MOCK_GROUPS: Group[] = [
     id: '3',
     name: 'Horizon Funding Group',
     status: 'Pending',
-    contribution: '120 XLM',
+    contribution: 120,
     frequency: 'Weekly',
     memberCount: 5,
     members: [{ address: 'GPQRZ9876', name: 'Zoe' }],
@@ -108,7 +110,7 @@ function GroupDetailHeader({ group }: { group: Group }) {
       </View>
 
       <View style={styles.amountRow}>
-        <Text style={styles.contributionAmount}>{group.contribution}</Text>
+        <Text style={styles.contributionAmount}>{formatXLM(group.contribution)}</Text>
         <Text style={styles.frequencyText}>{group.frequency}</Text>
       </View>
 
@@ -128,6 +130,10 @@ export default function GroupDetailPage() {
   const params = useLocalSearchParams<{ groupId?: string }>();
   const groupId = params.groupId ?? '';
   const group = MOCK_GROUPS.find((item) => item.id === groupId) || null;
+  const refreshGroup = useCallback(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  }, []);
+  const { refreshing, onRefresh } = useRefresh(refreshGroup);
 
   const sections: Section[] = group
     ? [{ key: 'header' }, { key: 'members' }, { key: 'overview' }, { key: 'groupId' }]
@@ -159,7 +165,7 @@ export default function GroupDetailPage() {
           <View style={styles.section}>
             <Text style={styles.sectionHeading}>Overview</Text>
             <Text style={styles.sectionText}>
-              This is the group detail screen for &quot;{group.name}&quot;. The group has a contribution amount of {group.contribution} paid {group.frequency.toLowerCase()}, and currently includes {group.memberCount} members.
+              This is the group detail screen for &quot;{group.name}&quot;. The group has a contribution amount of {formatXLM(group.contribution)} paid {group.frequency.toLowerCase()}, and currently includes {group.memberCount} members.
             </Text>
           </View>
         );
@@ -189,6 +195,14 @@ export default function GroupDetailPage() {
         keyExtractor={(item) => item.key}
         renderItem={renderItem}
         contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#0F172A"
+            colors={['#0F172A']}
+          />
+        }
       />
     </SafeAreaView>
   );
@@ -220,7 +234,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   screenTitle: {
-    marginLeft: 16,
+    marginStart: 16,
     fontSize: 18,
     fontWeight: '700',
     color: '#0F172A',
@@ -250,7 +264,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
     flex: 1,
-    marginRight: 12,
+    marginEnd: 12,
   },
   amountRow: {
     marginBottom: 8,
@@ -302,7 +316,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#64748B',
-    marginRight: 8,
+    marginEnd: 8,
   },
   inviteCodeValue: {
     fontSize: 16,

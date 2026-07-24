@@ -10,11 +10,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Users, Calendar, Coins, Clock, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useSavingsContract } from '@/context/savingsContract'
 import { useWallet } from '@/hooks/use-wallet'
-import { useJoinGroup } from '@/hooks/use-join'
+import { logger } from '@/lib/logger'
 
 interface GroupHeaderProps {
+  groupId: string
   group: {
-    groupId: string           // required — used for contract calls
     name: string
     description: string
     contributionAmount: number // in XLM (already converted from stroops)
@@ -32,11 +32,13 @@ interface GroupHeaderProps {
   onActionSuccess?: () => void  // optional callback to trigger data refetch in parent
 }
 
-export function GroupHeader({ group, onActionSuccess }: GroupHeaderProps) {
-  const { publicKey } = useWallet()
+export function GroupHeader({ groupId, group, onActionSuccess }: GroupHeaderProps) {
+  const { isConnected } = useWallet()
   const savings = useSavingsContract()
-  const { join, isLoading: isJoining, step: joinStep, error: joinError, reset: resetJoin } = useJoinGroup()
 
+  const [isJoining, setIsJoining] = useState(false)
+  const [joinError, setJoinError] = useState<string | null>(null)
+  const [joinSuccess, setJoinSuccess] = useState(false)
   const [isContributing, setIsContributing] = useState(false)
   const [contributeError, setContributeError] = useState<string | null>(null)
   const [contributeSuccess, setContributeSuccess] = useState(false)
@@ -44,25 +46,50 @@ export function GroupHeader({ group, onActionSuccess }: GroupHeaderProps) {
   const progress = (group.currentRound / group.totalMembers) * 100
 
   const handleJoin = async () => {
-    await join(group.groupId)
-    if (joinStep !== 'error') {
+    setJoinError(null)
+    setJoinSuccess(false)
+    setContributeError(null)
+    setContributeSuccess(false)
+
+    if (!isConnected) {
+      setJoinError('Connect your wallet before joining this group.')
+      return
+    }
+
+    setIsJoining(true)
+
+    try {
+      await savings.joinGroup(groupId)
+      setJoinSuccess(true)
       onActionSuccess?.()
+    } catch (err) {
+      logger.error('Join group failed', { error: err instanceof Error ? err.message : String(err) })
+      setJoinError(err instanceof Error ? err.message : 'Failed to join group. Please try again.')
+    } finally {
+      setIsJoining(false)
     }
   }
 
   const handleContribute = async () => {
-    if (!publicKey) return
     setContributeError(null)
     setContributeSuccess(false)
+    setJoinError(null)
+    setJoinSuccess(false)
+
+    if (!isConnected) {
+      setContributeError('Connect your wallet before making a contribution.')
+      return
+    }
+
     setIsContributing(true)
 
     try {
-      await savings.contribute(group.groupId)
+      await savings.contribute(groupId)
       setContributeSuccess(true)
       onActionSuccess?.()
-    } catch (err: any) {
-      console.error('Contribution failed:', err)
-      setContributeError(err.message || 'Contribution failed. Please try again.')
+    } catch (err) {
+      logger.error('Contribution failed', { error: err instanceof Error ? err.message : String(err) })
+      setContributeError(err instanceof Error ? err.message : 'Contribution failed. Please try again.')
     } finally {
       setIsContributing(false)
     }
@@ -131,7 +158,7 @@ export function GroupHeader({ group, onActionSuccess }: GroupHeaderProps) {
                 <AlertDescription className="text-xs">{joinError}</AlertDescription>
               </Alert>
             )}
-            {joinStep === 'done' && (
+            {joinSuccess && (
               <Alert className="border-green-200 bg-green-50">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-xs text-green-800">
@@ -186,13 +213,13 @@ export function GroupHeader({ group, onActionSuccess }: GroupHeaderProps) {
             ) : (
               <Button
                 className="bg-primary text-primary-foreground hover:bg-primary-dark"
-                disabled={isJoining || group.status !== 'Open' || joinStep === 'done'}
+                disabled={isJoining || group.status !== 'Open' || joinSuccess}
                 onClick={handleJoin}
               >
                 {isJoining ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {joinStep === 'joining' ? 'Joining...' : 'Registering...'}
+                    Joining...
                   </>
                 ) : (
                   'Join This Group'

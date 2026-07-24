@@ -21,7 +21,7 @@ type DisplayGroup = {
 
 function toDisplayGroup(info: GroupInfo): DisplayGroup {
   return {
-    id: info.contract_address,
+    id: info.group_id,
     name: info.name,
     // contributionAmount / frequency / currentRound / nextPayout are not
     // yet in GroupInfo. Issue #45 explicitly accepts placeholders here;

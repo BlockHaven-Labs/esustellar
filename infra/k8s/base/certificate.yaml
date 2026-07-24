@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: esustellar-web-tls
+  namespace: esustellar
+spec:
+  secretName: esustellar-web-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: esustellar.io
+  dnsNames:
+    - esustellar.io
+    - www.esustellar.io
