@@ -1,7 +1,8 @@
  #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    Vec,
 };
 
 #[contracterror]
@@ -34,6 +35,7 @@ pub enum Error {
     DataExpired = 16,
     AlreadyInitialized = 15,
     ContributionTooHigh = 16,
+    GroupIsPrivate = 18,
 }
 
 // Configuration constants
@@ -320,6 +322,11 @@ impl SavingsContract {
             return Err(Error::GroupNotAcceptingMembers);
         }
 
+        // #617: enforce private groups — only the admin may join a non-public group.
+        if !group.is_public && member != group.admin {
+            return Err(Error::GroupIsPrivate);
+        }
+
         if env.ledger().timestamp() >= group.start_timestamp {
             return Err(Error::StartDateAlreadyPassed);
         }
@@ -462,6 +469,16 @@ impl SavingsContract {
                 .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
         }
 
+        // #606: move real funds from the member into the contract's custody
+        // when the group is denominated in a SEP-41 token.
+        if let Some(token) = group.token_address.clone() {
+            token::Client::new(&env, &token).transfer(
+                &member,
+                &env.current_contract_address(),
+                &group.contribution_amount,
+            );
+        }
+
         // Record contribution
         let contribution = Contribution {
             member: member.clone(),
@@ -469,13 +486,6 @@ impl SavingsContract {
             round: current_round,
             timestamp: env.ledger().timestamp(),
         };
-
-        // TODO (#672): Implement SEP-41 token transfer-in when token_address is Some
-        // For now, this contract tracks contributions internally without actual token custody.
-        // When token_address is Some, the contract should call:
-        //   token::Client::new(&env, &token_addr).transfer(&member, &env.current_contract_address(), &amount)
-        // This requires the member to have approved this contract as a spender via the token's
-        // transfer_from method, or the contract must use require_auth() which is already called above.
 
         let mut round_contributions: Vec<Contribution> = env
             .storage()
@@ -853,11 +863,15 @@ impl SavingsContract {
         // Determine recipient (sequential by join_order)
         let recipient = Self::get_next_payout_recipient(&env, group_id.clone(), current_round)?;
 
-        // TODO (#672): Implement SEP-41 token transfer-out when token_address is Some
-        // For now, this contract tracks payouts internally without actual token transfers.
-        // When token_address is Some, the contract should call:
-        //   token::Client::new(&env, &token_addr).transfer(&env.current_contract_address(), &recipient, &payout_amount)
-        // This requires the contract to hold the token balance from member contributions.
+        // #606: pay the recipient real funds from the contract's custody
+        // when the group is denominated in a SEP-41 token.
+        if let Some(token) = group.token_address.clone() {
+            token::Client::new(&env, &token).transfer(
+                &env.current_contract_address(),
+                &recipient,
+                &payout_amount,
+            );
+        }
 
         let payout = Payout {
             recipient: recipient.clone(),
