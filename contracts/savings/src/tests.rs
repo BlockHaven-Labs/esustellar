@@ -602,3 +602,52 @@ fn test_create_multiple_groups_no_panic() {
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
 }
+// Test for issue #702: overflow panic path
+#[test]
+#[should_panic]
+fn test_overflow_panic_on_large_contribution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "test-overflow");
+    let name = String::from_str(&env, "Overflow Test");
+
+    // Use a contribution amount large enough to overflow when multiplied by total_members
+    // i128::MAX / 2 * 5 will overflow i128 when multiplied
+    let huge_amount: i128 = i128::MAX / 2;
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &huge_amount,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let member4 = Address::generate(&env);
+    let member5 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+    client.join_group(&member4, &group_id);
+    client.join_group(&member5, &group_id);
+
+    let group = client.get_group(&group_id);
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    // This should panic due to overflow in distribute_payout
+    client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
+    client.contribute(&member3, &group_id);
+    client.contribute(&member4, &group_id);
+    // The 5th contribution triggers distribute_payout which overflows
+    client.contribute(&member5, &group_id);
+}
