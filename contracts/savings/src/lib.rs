@@ -22,6 +22,8 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    GroupPaused = 15,
+    StartDateAlreadyPassed = 16,
     ArithmeticOverflow = 15,
     DataExpired = 16,
     AlreadyInitialized = 15,
@@ -253,6 +255,10 @@ impl SavingsContract {
             return Err(Error::GroupNotAcceptingMembers);
         }
 
+        if env.ledger().timestamp() >= group.start_timestamp {
+            return Err(Error::StartDateAlreadyPassed);
+        }
+
         let member_count: u32 = env
             .storage()
             .persistent()
@@ -429,6 +435,115 @@ impl SavingsContract {
         // Check if all members have paid
         if Self::all_members_paid(&env, group_id.clone(), current_round) {
             Self::distribute_payout(env, group_id)?;
+        }
+
+        Ok(())
+    }
+
+    /// Pause a group (admin only). No contributions or payouts allowed while paused.
+    pub fn pause_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::NotMember);
+        }
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        group.status = GroupStatus::Paused;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events()
+            .publish((symbol_short!("paused"),), group_id);
+
+        Ok(())
+    }
+
+    /// Resume a paused group (admin only).
+    pub fn resume_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::NotMember);
+        }
+
+        if group.status != GroupStatus::Paused {
+            return Err(Error::GroupNotActive);
+        }
+
+        group.status = GroupStatus::Active;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events()
+            .publish((symbol_short!("resumed"),), group_id);
+
+        Ok(())
+    }
+
+    /// Mark a member as defaulted. Callable by any party once the grace period has passed.
+    /// This fixes the issue where defaults were only detectable via the defaulting member's own call.
+    pub fn mark_defaulted(
+        env: Env,
+        member: Address,
+        group_id: String,
+    ) -> Result<(), Error> {
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        let mut member_data: Member = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MemberData(group_id.clone(), member.clone()))
+            .ok_or(Error::NotMember)?;
+
+        if member_data.status == MemberStatus::Defaulted
+            || member_data.status == MemberStatus::ReceivedPayout
+        {
+            return Ok(()); // Already defaulted or received payout
+        }
+
+        let deadline: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RoundDeadline(group_id.clone(), group.current_round))
+            .unwrap_or(0);
+
+        if env.ledger().timestamp() > deadline + 259_200 {
+            // Past grace period (3 days)
+            member_data.status = MemberStatus::Defaulted;
+            env.storage()
+                .persistent()
+                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+
+            env.events().publish(
+                (symbol_short!("defaulted"),),
+                (member, group.current_round),
+            );
         }
 
         Ok(())
