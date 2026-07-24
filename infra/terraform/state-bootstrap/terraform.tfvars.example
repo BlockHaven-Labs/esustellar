@@ -1,0 +1,8 @@
+aws_region         = "us-east-1"
+state_bucket_name  = "esustellar-terraform-state"
+lock_table_name    = "terraform-locks"
+tags = {
+  Environment = "production"
+  Project     = "esustellar"
+  ManagedBy   = "terraform"
+}

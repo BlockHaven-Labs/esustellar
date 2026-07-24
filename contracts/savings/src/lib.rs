@@ -67,6 +67,7 @@ pub struct SavingsGroup {
     pub is_public: bool,
     pub current_round: u32,
     pub platform_fee_percent: u32, // in basis points (100 = 1%)
+    pub token_address: Option<Address>, // SEP-41 token contract address (None = native XLM)
 }
 
 #[contracttype]
@@ -144,6 +145,7 @@ impl SavingsContract {
         frequency: Frequency,
         start_timestamp: u64,
         is_public: bool,
+        token_address: Option<Address>, // SEP-41 token address (None = native XLM)
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
 
@@ -171,10 +173,16 @@ impl SavingsContract {
             is_public,
             current_round: 0,
             platform_fee_percent: 200, // 2%
+            token_address,
         };
         
         // Store group with namespaced key
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+        
+        // TODO (#670): Add cross-contract call to registry contract
+        // When a registry contract address is configured, the savings contract should call:
+        //   registry::Client::new(&env, &registry_addr).register_group(&group_id, &admin, &contribution_amount, ...)
+        // This ensures the registry stays in sync with on-chain state automatically.
         
         // Add to global groups list
         let mut all_groups: Vec<String> = env
@@ -285,6 +293,11 @@ impl SavingsContract {
             .persistent()
             .set(&DataKey::UserGroups(member.clone()), &user_groups);
 
+        // TODO (#670): Add cross-contract call to registry contract
+        // When a registry contract address is configured, the savings contract should call:
+        //   registry::Client::new(&env, &registry_addr).add_member(&group_id, &member)
+        // This ensures the registry stays in sync with on-chain state automatically.
+
         // If group is full, change status to Active
         if new_count == group.total_members {
             let mut group: SavingsGroup = env.storage().persistent().get(&DataKey::Group(group_id.clone())).unwrap();
@@ -365,6 +378,13 @@ impl SavingsContract {
             timestamp: env.ledger().timestamp(),
         };
 
+        // TODO (#672): Implement SEP-41 token transfer-in when token_address is Some
+        // For now, this contract tracks contributions internally without actual token custody.
+        // When token_address is Some, the contract should call:
+        //   token::Client::new(&env, &token_addr).transfer(&member, &env.current_contract_address(), &amount)
+        // This requires the member to have approved this contract as a spender via the token's
+        // transfer_from method, or the contract must use require_auth() which is already called above.
+
         let mut round_contributions: Vec<Contribution> = env
             .storage()
             .persistent()
@@ -411,6 +431,12 @@ impl SavingsContract {
 
         // Determine recipient (sequential by join_order)
         let recipient = Self::get_next_payout_recipient(&env, group_id.clone(), current_round)?;
+
+        // TODO (#672): Implement SEP-41 token transfer-out when token_address is Some
+        // For now, this contract tracks payouts internally without actual token transfers.
+        // When token_address is Some, the contract should call:
+        //   token::Client::new(&env, &token_addr).transfer(&env.current_contract_address(), &recipient, &payout_amount)
+        // This requires the contract to hold the token balance from member contributions.
 
         let payout = Payout {
             recipient: recipient.clone(),

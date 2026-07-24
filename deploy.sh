@@ -108,11 +108,27 @@ cat > deployment-info.json <<EOF
 EOF
 
 echo ""
+if [ "${SKIP_SMOKE_TEST:-false}" != "true" ]; then
+  echo -e "${YELLOW}📝 Step 5: Running post-deploy smoke tests...${NC}"
+  if [ -f "$ROOT_DIR/scripts/post-deploy-smoke-test.sh" ]; then
+    bash "$ROOT_DIR/scripts/post-deploy-smoke-test.sh" \
+      --registry "$REGISTRY_CONTRACT_ID" \
+      --savings "$SAVINGS_CONTRACT_ID" \
+      --network "$NETWORK" || echo -e "${YELLOW}⚠️ Smoke tests finished with warnings or errors.${NC}"
+  fi
+fi
+
+echo ""
 echo -e "${GREEN}🎉 Deployment complete!${NC}"
 echo ""
 echo "📋 Contract IDs:"
 echo -e "  Registry: ${BLUE}${REGISTRY_CONTRACT_ID}${NC}"
 echo -e "  Savings:  ${BLUE}${SAVINGS_CONTRACT_ID}${NC}"
+echo ""
+echo "🔗 Linking contracts on-chain..."
+echo "  NOTE: Cross-contract linking requires implementing register_group/add_member"
+echo "  calls in the savings contract (see issue #65). Until then, the registry"
+echo "  must be updated manually or via off-chain client."
 echo ""
 echo "🔍 Explorers:"
 echo "  Registry: https://stellar.expert/explorer/$NETWORK/contract/$REGISTRY_CONTRACT_ID"

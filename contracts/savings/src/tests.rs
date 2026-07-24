@@ -28,7 +28,7 @@ fn test_create_group_success() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     assert_eq!(group.name, name);
@@ -54,7 +54,7 @@ fn test_create_group_low_contribution() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 }
 
@@ -75,7 +75,7 @@ fn test_join_group() {
         &3,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     let members = client.get_members(&group_id);
@@ -113,7 +113,7 @@ fn test_cannot_join_full_group() {
         &3,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -143,7 +143,7 @@ fn test_cannot_join_twice() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     let member = Address::generate(&env);
@@ -168,7 +168,7 @@ fn test_contribution_flow() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
-        &true,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -215,7 +215,7 @@ fn test_payout_order() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
-        &true,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -264,7 +264,7 @@ fn test_get_round_deadline() {
         &5,
         &Frequency::Weekly,
         &start_time,
-        &true,
+        &true, &None,
     );
 
     // Get round 1 deadline
@@ -299,7 +299,7 @@ fn test_get_user_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     // User should now have 1 group
@@ -336,7 +336,7 @@ fn test_get_all_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     // Should have 1 group
@@ -352,7 +352,7 @@ fn test_get_all_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     // Should have 2 groups
@@ -386,7 +386,7 @@ fn test_user_joins_multiple_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     client.create_group(
@@ -397,7 +397,7 @@ fn test_user_joins_multiple_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     // User joins both groups
@@ -439,7 +439,7 @@ fn test_multiple_groups_isolated_state() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 86400),
-        &true,
+        &true, &None,
     );
 
     client.create_group(
@@ -503,7 +503,7 @@ fn test_multiple_groups_full_lifecycle() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
-        &true,
+        &true, &None,
     );
 
     client.create_group(
@@ -514,7 +514,7 @@ fn test_multiple_groups_full_lifecycle() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
-        &true,
+        &true, &None,
     );
 
     // Fill both groups
@@ -594,7 +594,7 @@ fn test_create_multiple_groups_no_panic() {
             &5,
             &Frequency::Monthly,
             &(env.ledger().timestamp() + 86400),
-            &true,
+            &true, &None,
         );
     }
 
