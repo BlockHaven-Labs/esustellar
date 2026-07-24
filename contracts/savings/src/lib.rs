@@ -22,6 +22,7 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    AlreadyInitialized = 15,
 }
 
 // Data structures
@@ -112,6 +113,9 @@ pub enum DataKey {
     MemberCount(String),              // Namespaced by group_id
     AllGroups,                        // Global - Vec<String> of all group_ids
     UserGroups(Address),              // Global - Vec<String> of groups user belongs to
+    Initialized,                      // Whether the contract has been initialized
+    Admin,                            // Contract-level admin address
+    Treasury(String),                 // Per-group treasury address for platform fees
 }
 
 #[contract]
@@ -119,6 +123,17 @@ pub struct SavingsContract;
 
 #[contractimpl]
 impl SavingsContract {
+    /// One-time initialization: sets the contract-level admin.
+    /// Must be called before any other function.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        if env.storage().persistent().has(&DataKey::Initialized) {
+            return Err(Error::AlreadyInitialized);
+        }
+        env.storage().persistent().set(&DataKey::Initialized, &true);
+        env.storage().persistent().set(&DataKey::Admin, &admin);
+        Ok(())
+    }
+
     /// Initialize a new savings group
     pub fn create_group(
         env: Env,
@@ -345,6 +360,14 @@ impl SavingsContract {
                 .persistent()
                 .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
             return Err(Error::PaymentWindowClosed);
+        }
+
+        if env.ledger().timestamp() > deadline {
+            // Past deadline but within grace period
+            member_data.status = MemberStatus::Overdue;
+            env.storage()
+                .persistent()
+                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
         }
 
         // Record contribution
