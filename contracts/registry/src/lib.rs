@@ -199,6 +199,79 @@ impl GroupRegistry {
         Ok(())
     }
 
+    /// Remove a member from a group's user mapping.
+    /// Self-service: the member authorizes their own removal (mirrors add_member).
+    /// Idempotent: removing a user who isn't in the group is a no-op, not an error.
+    pub fn remove_member(
+        env: Env,
+        contract_address: Address,
+        member: Address,
+    ) -> Result<(), Error> {
+        member.require_auth();
+
+        let mut user_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroups(member.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let mut index_to_remove: Option<u32> = None;
+        for i in 0..user_groups.len() {
+            if let Some(addr) = user_groups.get(i) {
+                if addr == contract_address {
+                    index_to_remove = Some(i);
+                    break;
+                }
+            }
+        }
+
+        if let Some(i) = index_to_remove {
+            user_groups.remove(i);
+            env.storage()
+                .persistent()
+                .set(&DataKey::UserGroups(member.clone()), &user_groups);
+
+            env.events()
+                .publish((symbol_short!("rm_mem"),), (contract_address, member));
+        }
+
+        Ok(())
+    }
+
+    /// Transfer a group's admin to a new address.
+    /// Only callable by the group's current registered admin.
+    pub fn transfer_admin(
+        env: Env,
+        contract_address: Address,
+        admin: Address,
+        new_admin: Address,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut group_info: GroupInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupInfo(contract_address.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group_info.admin != admin {
+            return Err(Error::NotGroupAdmin);
+        }
+
+        group_info.admin = new_admin.clone();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::GroupInfo(contract_address.clone()), &group_info);
+
+        env.events().publish(
+            (symbol_short!("xfer_adm"),),
+            (contract_address, admin, new_admin),
+        );
+
+        Ok(())
+    }
+
     /// Get all groups a user is a member of
     pub fn get_user_groups(env: Env, user: Address) -> Vec<Address> {
         env.storage()
