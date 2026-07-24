@@ -34,6 +34,7 @@ pub enum Error {
     DataExpired = 16,
     AlreadyInitialized = 15,
     ContributionTooHigh = 16,
+    InvalidRound = 18,
 }
 
 // Configuration constants
@@ -1101,7 +1102,7 @@ impl SavingsContract {
 
         // Validate round number
         if round == 0 || round > group.total_members {
-            return Err(Error::GroupNotFound); // Using existing error, could add new error type
+            return Err(Error::InvalidRound);
         }
 
         // Try to get deadline from storage
