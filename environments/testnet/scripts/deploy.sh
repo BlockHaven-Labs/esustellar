@@ -109,6 +109,10 @@ cat > "$DEPLOYMENT_INFO" <<EOF
 EOF
 
 echo ""
+echo -e "${YELLOW}📝 Step 5: Syncing contract IDs...${NC}"
+bash "$ROOT_DIR/scripts/sync-contract-ids.sh" "$DEPLOYMENT_INFO"
+
+echo ""
 echo -e "${GREEN}🎉 Testnet deployment complete!${NC}"
 echo ""
 echo "📋 Contract IDs:"

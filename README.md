@@ -28,10 +28,15 @@ entirely on trust:
 
 EsuStellar uses the Stellar network to:
 
-- Collect group savings with low fees
-- Lock funds until payout conditions are met
-- Automatically rotate payouts
-- Provide a public, verifiable transaction history
+- Provide transparent, on-chain record-keeping for savings groups
+- Automate payout rotation based on deterministic join order
+- Enable peer accountability through public contribution tracking
+- Reduce reliance on a single trusted organizer via smart contract logic
+
+> **Note:** Real token custody (locked escrow), dispute resolution, and
+> configurable admin controls are planned for future releases. The current
+> MVP records contributions and payouts on-chain but does not yet escrow
+> funds within the contract.
 
 ---
 
@@ -77,7 +82,19 @@ esustellar/
 
 ---
 
-## 🛠 Development Status
+## 🛠 Development & Operations
+
+### Monitoring & Log Aggregation
+- **Loki & Grafana**: Centralised log aggregation is pre-configured via Docker Compose (`docker-compose.yml`) and Kubernetes (`k8s/monitoring/`).
+- **Validation**: Run `npm run validate-monitoring` to verify log aggregation configurations.
+- **Documentation**: See [docs/logging.md](file:///c:/Users/g-obiagazie/Desktop/esustellar/docs/logging.md).
+
+### Utility Scripts
+- **Post-Deploy Smoke Tests**: `npm run smoke-test` (automatically invoked after `./deploy.sh`).
+- **Export & Archive Contract Event Logs**: `npm run export-events` (exports events to `logs/contract-events.jsonl`).
+- **Deployment Guide**: See [docs/deployment.md](file:///c:/Users/g-obiagazie/Desktop/esustellar/docs/deployment.md).
+
+---
 
 ## 🤝 Contributing Guide
 
@@ -92,3 +109,4 @@ EsuStellar is open-source and beginner-friendly.
 ## 📜 License
 
 MIT License
+
