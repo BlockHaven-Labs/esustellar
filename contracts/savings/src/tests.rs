@@ -602,6 +602,10 @@ fn test_create_multiple_groups_no_panic() {
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
 }
+// Test for issue #680: duplicate group_id creation is rejected
+#[test]
+#[should_panic]
+fn test_duplicate_group_id_rejected() {
 // Test for issue #702: overflow panic path
 #[test]
 #[should_panic]
@@ -610,6 +614,48 @@ fn test_overflow_panic_on_large_contribution() {
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "duplicate-group");
+    let name = String::from_str(&env, "Test Savings");
+
+    // Create first group
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &None,
+    );
+
+    // Try to create another group with the same ID - should panic
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &None,
+    );
+}
+
+// Test for issue #679: private group rejects uninvited join_group call
+#[test]
+#[should_panic]
+fn test_private_group_rejects_uninvited_member() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "private-group");
+    let name = String::from_str(&env, "Private Savings");
+
+    // Create a private group (is_public = false)
     let group_id = String::from_str(&env, "test-overflow");
     let name = String::from_str(&env, "Overflow Test");
 
@@ -621,6 +667,39 @@ fn test_overflow_panic_on_large_contribution() {
         &admin,
         &group_id,
         &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &false, // Private group
+        &None,
+    );
+
+    // Uninvited member tries to join - should panic
+    let uninvited = Address::generate(&env);
+    client.join_group(&uninvited, &group_id);
+}
+
+// Test for issue #678: member who never calls contribute()
+#[test]
+fn test_member_never_contributes() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "non-contributor-group");
+    let name = String::from_str(&env, "Non-Contributor Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &None,
         &huge_amount,
         &5,
         &Frequency::Monthly,
@@ -630,6 +709,33 @@ fn test_overflow_panic_on_large_contribution() {
 
     let member2 = Address::generate(&env);
     let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Active);
+
+    // Fast forward time past deadline + grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 259200 + 1; // Past grace period
+    });
+
+    // Admin and member2 contribute, but member3 does not
+    client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
+
+    // Verify member3 is now defaulted
+    let member3_data = client.get_member(&member3, &group_id);
+    assert_eq!(member3_data.status, MemberStatus::Defaulted);
+
+    // Verify round is stuck (not all members paid)
+    let group = client.get_group(&group_id);
+    assert_eq!(group.current_round, 1); // Still on round 1
+
+    // Verify contributions recorded only for admin and member2
+    let contributions = client.get_round_contributions(&group_id, &1);
+    assert_eq!(contributions.len(), 2);
     let member4 = Address::generate(&env);
     let member5 = Address::generate(&env);
 
