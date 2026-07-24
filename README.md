@@ -28,10 +28,15 @@ entirely on trust:
 
 EsuStellar uses the Stellar network to:
 
-- Collect group savings with low fees
-- Lock funds until payout conditions are met
-- Automatically rotate payouts
-- Provide a public, verifiable transaction history
+- Provide transparent, on-chain record-keeping for savings groups
+- Automate payout rotation based on deterministic join order
+- Enable peer accountability through public contribution tracking
+- Reduce reliance on a single trusted organizer via smart contract logic
+
+> **Note:** Real token custody (locked escrow), dispute resolution, and
+> configurable admin controls are planned for future releases. The current
+> MVP records contributions and payouts on-chain but does not yet escrow
+> funds within the contract.
 
 ---
 
