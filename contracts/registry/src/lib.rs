@@ -65,6 +65,17 @@ impl GroupRegistry {
             return Err(Error::GroupAlreadyRegistered);
         }
 
+        // Verify contract_address is a real deployed savings contract that
+        // actually knows about group_id, and that its on-chain admin matches
+        // the admin supplied here, before trusting this registration.
+        let savings_group = esustellar_savings::SavingsContractClient::new(&env, &contract_address)
+            .try_get_group(&group_id)
+            .map_err(|_| Error::InvalidAddress)?
+            .map_err(|_| Error::InvalidAddress)?;
+        if savings_group.admin != admin {
+            return Err(Error::InvalidAddress);
+        }
+
         let group_info = GroupInfo {
             contract_address: contract_address.clone(),
             group_id: group_id.clone(),
