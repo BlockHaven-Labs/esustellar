@@ -170,6 +170,20 @@ impl GroupRegistry {
 
         // Verify group exists
         let _group_info: GroupInfo = env
+    /// Update the mutable metadata for a registered group.
+    ///
+    /// Registry copies of `name`, `is_public`, and `total_members` go stale
+    /// once the underlying savings group changes. This lets the group admin
+    /// re-sync those fields so discovery and listings stay accurate. Only the
+    /// registered admin may call it.
+    pub fn update_group_info(
+        env: Env,
+        contract_address: Address,
+        name: String,
+        is_public: bool,
+        total_members: u32,
+    ) -> Result<(), Error> {
+        let mut group_info: GroupInfo = env
             .storage()
             .persistent()
             .get(&DataKey::GroupInfo(contract_address.clone()))
@@ -205,6 +219,21 @@ impl GroupRegistry {
 
         env.events()
             .publish((symbol_short!("rem_mem"),), (contract_address, member));
+        // Only the registered admin may mutate the stored group info.
+        group_info.admin.require_auth();
+
+        group_info.name = name;
+        group_info.is_public = is_public;
+        group_info.total_members = total_members;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::GroupInfo(contract_address.clone()), &group_info);
+
+        env.events().publish(
+            (symbol_short!("upd_group"),),
+            (contract_address, group_info.admin.clone()),
+        );
 
         Ok(())
     }

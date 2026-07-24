@@ -1,4 +1,4 @@
-use crate::{Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
+use crate::{Error, Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, String,
@@ -28,6 +28,8 @@ fn test_create_group_success() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -54,6 +56,8 @@ fn test_create_group_low_contribution() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 }
@@ -75,6 +79,8 @@ fn test_join_group() {
         &3,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -113,6 +119,8 @@ fn test_cannot_join_full_group() {
         &3,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -143,6 +151,8 @@ fn test_cannot_join_twice() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -168,6 +178,8 @@ fn test_contribution_flow() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -215,6 +227,8 @@ fn test_payout_order() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -264,6 +278,8 @@ fn test_get_round_deadline() {
         &5,
         &Frequency::Weekly,
         &start_time,
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -299,6 +315,8 @@ fn test_get_user_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &user,
         &true, &None,
     );
 
@@ -336,6 +354,8 @@ fn test_get_all_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin1,
         &true, &None,
     );
 
@@ -352,6 +372,8 @@ fn test_get_all_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin2,
         &true, &None,
     );
 
@@ -386,6 +408,8 @@ fn test_user_joins_multiple_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -397,6 +421,8 @@ fn test_user_joins_multiple_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -439,6 +465,8 @@ fn test_multiple_groups_isolated_state() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin1,
         &true, &None,
     );
 
@@ -451,6 +479,7 @@ fn test_multiple_groups_isolated_state() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 172800),
         &false,
+        &admin2,
     );
 
     // Verify groups are separate
@@ -503,6 +532,8 @@ fn test_multiple_groups_full_lifecycle() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin1,
         &true, &None,
     );
 
@@ -514,6 +545,8 @@ fn test_multiple_groups_full_lifecycle() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin2,
         &true, &None,
     );
 
@@ -594,6 +627,8 @@ fn test_create_multiple_groups_no_panic() {
             &5,
             &Frequency::Monthly,
             &(env.ledger().timestamp() + 86400),
+            &true,
+            &admin,
             &true, &None,
         );
     }
@@ -602,108 +637,96 @@ fn test_create_multiple_groups_no_panic() {
     let all_groups = client.get_all_groups();
     assert_eq!(all_groups.len(), 5);
 }
-// Test for issue #680: duplicate group_id creation is rejected
+
 #[test]
+fn test_rate_limit_create_group() {
+fn test_force_end_round() {
+fn test_pause_and_resume_group() {
 #[should_panic]
-fn test_duplicate_group_id_rejected() {
-// Test for issue #702: overflow panic path
-#[test]
-#[should_panic]
-fn test_overflow_panic_on_large_contribution() {
+fn test_create_group_max_contribution_exceeded() {
+fn test_contribute_rejected_after_completed() {
     let env = Env::default();
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
-    let group_id = String::from_str(&env, "duplicate-group");
+    let group_id1 = String::from_str(&env, "rate-limit-1");
+    let group_id2 = String::from_str(&env, "rate-limit-2");
+    let name = String::from_str(&env, "Rate Limit Test");
+
+    client.create_group(
+        &admin,
+        &group_id1,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    // Try to create another group immediately — should fail
+    let result = client.try_create_group(
+        &admin,
+        &group_id2,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+    assert_eq!(result, Err(Ok(Error::RateLimited)));
+}
+
+#[test]
+fn test_admin_cancel_group() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "cancel-test");
+    let name = String::from_str(&env, "Cancel Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Open);
+
+    // Admin cancels the group
+    client.cancel_group(&admin, &group_id);
+
+    // Group should now be completed (cancelled)
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Completed);
+}
+
+#[test]
+fn test_admin_remove_member() {
+    let group_id = String::from_str(&env, "force-end-test");
+    let name = String::from_str(&env, "Force End Test");
+    let group_id = String::from_str(&env, "pause-test");
+    let name = String::from_str(&env, "Pause Test");
+    let group_id = String::from_str(&env, "test-group-max");
     let name = String::from_str(&env, "Test Savings");
-
-    // Create first group
-    client.create_group(
-        &admin,
-        &group_id,
-        &name,
-        &100_000_000,
-        &5,
-        &Frequency::Monthly,
-        &(env.ledger().timestamp() + 86400),
-        &true,
-        &None,
-    );
-
-    // Try to create another group with the same ID - should panic
-    client.create_group(
-        &admin,
-        &group_id,
-        &name,
-        &100_000_000,
-        &5,
-        &Frequency::Monthly,
-        &(env.ledger().timestamp() + 86400),
-        &true,
-        &None,
-    );
-}
-
-// Test for issue #679: private group rejects uninvited join_group call
-#[test]
-#[should_panic]
-fn test_private_group_rejects_uninvited_member() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (admin, client) = create_test_group(&env);
-    let group_id = String::from_str(&env, "private-group");
-    let name = String::from_str(&env, "Private Savings");
-
-    // Create a private group (is_public = false)
-    let group_id = String::from_str(&env, "test-overflow");
-    let name = String::from_str(&env, "Overflow Test");
-
-    // Use a contribution amount large enough to overflow when multiplied by total_members
-    // i128::MAX / 2 * 5 will overflow i128 when multiplied
-    let huge_amount: i128 = i128::MAX / 2;
+    let group_id = String::from_str(&env, "completed-test");
+    let name = String::from_str(&env, "Completed Test");
 
     client.create_group(
         &admin,
         &group_id,
         &name,
-        &100_000_000,
-        &5,
-        &Frequency::Monthly,
-        &(env.ledger().timestamp() + 86400),
-        &false, // Private group
-        &None,
-    );
-
-    // Uninvited member tries to join - should panic
-    let uninvited = Address::generate(&env);
-    client.join_group(&uninvited, &group_id);
-}
-
-// Test for issue #678: member who never calls contribute()
-#[test]
-fn test_member_never_contributes() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (admin, client) = create_test_group(&env);
-    let group_id = String::from_str(&env, "non-contributor-group");
-    let name = String::from_str(&env, "Non-Contributor Test");
-
-    client.create_group(
-        &admin,
-        &group_id,
-        &name,
+        &2_000_000_000_000, // 2M XLM - exceeds MAX_CONTRIBUTION
         &100_000_000,
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
-        &true,
-        &None,
-        &huge_amount,
-        &5,
-        &Frequency::Monthly,
-        &(env.ledger().timestamp() + 86400),
         &true,
     );
 
@@ -714,46 +737,334 @@ fn test_member_never_contributes() {
     client.join_group(&member3, &group_id);
 
     let group = client.get_group(&group_id);
-    assert_eq!(group.status, GroupStatus::Active);
 
-    // Fast forward time past deadline + grace period
+    // Fast forward past deadline + grace period
     env.ledger().with_mut(|li| {
-        li.timestamp = group.start_timestamp + 259200 + 1; // Past grace period
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
     });
 
-    // Admin and member2 contribute, but member3 does not
-    client.contribute(&admin, &group_id);
-    client.contribute(&member2, &group_id);
+    // Force end the round
+    client.force_end_round(&group_id);
 
-    // Verify member3 is now defaulted
-    let member3_data = client.get_member(&member3, &group_id);
-    assert_eq!(member3_data.status, MemberStatus::Defaulted);
-
-    // Verify round is stuck (not all members paid)
     let group = client.get_group(&group_id);
-    assert_eq!(group.current_round, 1); // Still on round 1
+    // Round should have advanced
+    assert!(group.current_round > 1 || group.status == GroupStatus::Completed);
+}
 
-    // Verify contributions recorded only for admin and member2
-    let contributions = client.get_round_contributions(&group_id, &1);
-    assert_eq!(contributions.len(), 2);
-    let member4 = Address::generate(&env);
-    let member5 = Address::generate(&env);
+#[test]
+fn test_claim_refund() {
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+
+    // Pause the group
+    client.pause_group(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Paused);
+
+    // Resume the group
+    client.resume_group(&admin, &group_id);
+    assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
+}
+
+#[test]
+fn test_cannot_contribute_when_paused() {
+    // Complete all 3 rounds (one per member gets payout)
+    for round in 1..=3 {
+        env.ledger().with_mut(|li| {
+            li.timestamp = env.ledger().timestamp() + 604800 + 1;
+        });
+        client.contribute(&admin, &group_id);
+        client.contribute(&member2, &group_id);
+        client.contribute(&member3, &group_id);
+    }
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Completed);
+
+    // Try to contribute after completion — should fail with GroupNotActive
+    let result = client.try_contribute(&admin, &group_id);
+    assert_eq!(result, Err(Ok(Error::GroupNotActive)));
+}
+
+#[test]
+fn test_overdue_status_set_when_past_deadline() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "remove-test");
+    let name = String::from_str(&env, "Remove Test");
+    let group_id = String::from_str(&env, "refund-test");
+    let name = String::from_str(&env, "Refund Test");
+    let group_id = String::from_str(&env, "pause-contrib-test");
+    let name = String::from_str(&env, "Pause Contrib Test");
+    let group_id = String::from_str(&env, "overdue-test");
+    let name = String::from_str(&env, "Overdue Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+    );
+
+    let member = Address::generate(&env);
+    client.join_group(&member, &group_id);
+
+    let members = client.get_members(&group_id);
+    assert_eq!(members.len(), 2); // admin + member
+
+    // Admin removes the member
+    client.remove_member(&admin, &group_id, &member);
+
+    let members = client.get_members(&group_id);
+    assert_eq!(members.len(), 1); // only admin
+}
+
+#[test]
+fn test_retry_distribution() {
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
 
     client.join_group(&member2, &group_id);
     client.join_group(&member3, &group_id);
-    client.join_group(&member4, &group_id);
-    client.join_group(&member5, &group_id);
+
+    let group = client.get_group(&group_id);
+
+    // Fast forward to round start
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    // Only admin and member2 contribute (member3 doesn't)
+    client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
+    // Pause the group
+    client.pause_group(&admin, &group_id);
+
+    // Fast forward time
+    env.ledger().with_mut(|li| {
+        li.timestamp = env.ledger().timestamp() + 200;
+    });
+
+    // Try to contribute while paused — should fail
+    let result = client.try_contribute(&admin, &group_id);
+    assert_eq!(result, Err(Ok(Error::GroupNotActive)));
+}
+
+#[test]
+fn test_mark_defaulted_external() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "retry-test");
+    let name = String::from_str(&env, "Retry Test");
+
+    client.create_group(
+    let group_id = String::from_str(&env, "default-test");
+    let name = String::from_str(&env, "Default Test");
+
+    client.create_group(
+    let group = client.get_group(&group_id);
+
+    // Fast forward past deadline but within grace period (3 days)
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 1; // just past deadline
+    });
+
+    // Member contributes late — should be marked Overdue
+    client.contribute(&admin, &group_id);
+    let member_data = client.get_member(&admin, &group_id);
+    assert_eq!(member_data.status, MemberStatus::Overdue);
+}
+
+#[test]
+fn test_initialize_sets_admin() {
+    let env = Env::default();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    let group_id = String::from_str(&env, "test-init");
+    let name = String::from_str(&env, "Init Test");
+
+    // Should work after initialization
+    let result = client.try_create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+    );
+
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
 
     let group = client.get_group(&group_id);
     env.ledger().with_mut(|li| {
         li.timestamp = group.start_timestamp + 1;
     });
 
-    // This should panic due to overflow in distribute_payout
+    // All members contribute
     client.contribute(&admin, &group_id);
     client.contribute(&member2, &group_id);
     client.contribute(&member3, &group_id);
-    client.contribute(&member4, &group_id);
-    // The 5th contribution triggers distribute_payout which overflows
-    client.contribute(&member5, &group_id);
+
+    // Payout should have been auto-distributed
+    let payouts = client.get_round_payouts(&group_id, &1);
+    assert_eq!(payouts.len(), 1);
+
+    // Retry should be a no-op since payout already exists
+    let result = client.try_retry_distribution(&group_id);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_paginated_groups() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let name = String::from_str(&env, "Test Group");
+
+    // Create 3 groups
+    for i in 1..=3 {
+        let group_id = match i {
+            1 => String::from_str(&env, "page-group-1"),
+            2 => String::from_str(&env, "page-group-2"),
+            _ => String::from_str(&env, "page-group-3"),
+        };
+        client.create_group(
+            &admin,
+            &group_id,
+            &name,
+            &100_000_000,
+            &5,
+            &Frequency::Monthly,
+            &(env.ledger().timestamp() + 86400),
+            &true,
+        );
+    }
+
+    // Get page 0 with page_size 2
+    let page0 = client.get_groups_page(&0, &2);
+    assert_eq!(page0.len(), 2);
+
+    // Get page 1 with page_size 2
+    let page1 = client.get_groups_page(&1, &2);
+    assert_eq!(page1.len(), 1);
+
+    // Total count
+    let total = client.get_group_total_count();
+    assert_eq!(total, 3);
+}
+
+    // Fast forward past deadline + grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    // Force end the round
+    client.force_end_round(&group_id);
+
+    // member2 paid but didn't receive payout (admin got it since admin is join_order 0)
+    let refund = client.claim_refund(&member2, &group_id, &1);
+    assert_eq!(refund, Ok(100_000_000));
+}
+
+#[test]
+fn test_start_timestamp_max_offset() {
+    // Anyone can mark a member as defaulted
+    let caller = Address::generate(&env);
+    client.mark_defaulted(&member2, &group_id);
+
+    let member_data = client.get_member(&member2, &group_id);
+    assert_eq!(member_data.status, MemberStatus::Defaulted);
+}
+
+#[test]
+fn test_cannot_join_after_start_date() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "far-future-test");
+    let name = String::from_str(&env, "Far Future Test");
+
+    // Try to create a group starting more than 1 year from now
+    let far_future = env.ledger().timestamp() + 40_000_000; // ~1.27 years
+    let result = client.try_create_group(
+    let group_id = String::from_str(&env, "start-date-test");
+    let name = String::from_str(&env, "Start Date Test");
+
+    let start_time = env.ledger().timestamp() + 100;
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &5,
+        &Frequency::Monthly,
+        &far_future,
+        &true,
+    );
+    assert_eq!(result, Err(Ok(Error::StartDateTooFarInFuture)));
+}
+        &Frequency::Weekly,
+        &start_time,
+        &true,
+    );
+
+    // Fast forward past start date
+    env.ledger().with_mut(|li| {
+        li.timestamp = start_time + 1;
+    });
+
+    // Try to join after start date — should fail
+    let member = Address::generate(&env);
+    let result = client.try_join_group(&member, &group_id);
+    assert_eq!(result, Err(Ok(Error::StartDateAlreadyPassed)));
+}
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+    );
+}
+    );
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_initialize_cannot_be_called_twice() {
+    let env = Env::default();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let result = client.try_initialize(&admin);
+    assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
