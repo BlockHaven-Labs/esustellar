@@ -17,3 +17,9 @@ This changelog follows the infra versioning strategy defined in `docs/infra-vers
 - Grafana dashboards for on-chain events and golden signals
 - Alertmanager rule for web app uptime monitoring
 - Documentation for compliance, mobile infra, and Stellar protocol upgrades
+
+## [0.2.0] - 2026-07-23
+
+### Added
+- Terraform bootstrap module (`infra/terraform/state-bootstrap/`) for S3 + DynamoDB remote state
+- Reusable backend config template (`infra/terraform/backend-config.tf`)
