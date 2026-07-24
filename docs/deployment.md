@@ -6,6 +6,20 @@
 Developer Push → GitHub Actions → Build → Deploy → Smoke Test → Log Archiving
 ```
 
+## Prerequisite: Terraform Remote State
+
+Before deploying infrastructure with Terraform, bootstrap the remote state backend:
+
+```bash
+cd infra/terraform/state-bootstrap
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your AWS region and bucket name
+terraform init
+terraform apply
+```
+
+This creates an S3 bucket (with versioning and encryption) and a DynamoDB table for state locking. All downstream Terraform configs use this remote backend automatically.
+
 ## Step-by-Step
 
 ### 1. Build Contracts
