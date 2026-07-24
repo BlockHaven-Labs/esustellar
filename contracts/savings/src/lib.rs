@@ -22,6 +22,8 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    GroupIdAlreadyExists = 15,
+    StringTooLong = 16,
 }
 
 // Data structures
@@ -131,6 +133,22 @@ impl SavingsContract {
         is_public: bool,
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
+
+        // Reject reusing an existing group_id so a second call can't overwrite
+        // an existing group's admin, members, and state.
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Group(group_id.clone()))
+        {
+            return Err(Error::GroupIdAlreadyExists);
+        }
+
+        // Bound string sizes to keep storage rent predictable.
+        const MAX_STRING_LEN: u32 = 64;
+        if group_id.len() > MAX_STRING_LEN || name.len() > MAX_STRING_LEN {
+            return Err(Error::StringTooLong);
+        }
 
         // Validations
         if contribution_amount < 10_000_000 {
