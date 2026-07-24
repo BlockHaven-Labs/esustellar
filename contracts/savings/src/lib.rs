@@ -1,7 +1,8 @@
  #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    Vec,
 };
 
 #[contracterror]
@@ -22,6 +23,9 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    GroupIsPrivate = 15,
+    NotInitialized = 16,
+    AlreadyInitialized = 17,
 }
 
 // Data structures
@@ -111,6 +115,7 @@ pub enum DataKey {
     MemberCount(String),              // Namespaced by group_id
     AllGroups,                        // Global - Vec<String> of all group_ids
     UserGroups(Address),              // Global - Vec<String> of groups user belongs to
+    Token,                            // Global - SEP-41 token used for contributions/payouts
 }
 
 #[contract]
@@ -118,6 +123,24 @@ pub struct SavingsContract;
 
 #[contractimpl]
 impl SavingsContract {
+    /// Set the SEP-41 token used for contributions and payouts (#606).
+    /// Callable once; contributions and payouts move this asset.
+    pub fn initialize(env: Env, token: Address) -> Result<(), Error> {
+        if env.storage().instance().has(&DataKey::Token) {
+            return Err(Error::AlreadyInitialized);
+        }
+        env.storage().instance().set(&DataKey::Token, &token);
+        Ok(())
+    }
+
+    /// Read the configured token address (#606).
+    fn get_token(env: &Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(Error::NotInitialized)
+    }
+
     /// Initialize a new savings group
     pub fn create_group(
         env: Env,
@@ -211,6 +234,11 @@ impl SavingsContract {
 
         if group.status != GroupStatus::Open {
             return Err(Error::GroupNotAcceptingMembers);
+        }
+
+        // #617: enforce private groups — only the admin may join a non-public group.
+        if !group.is_public && member != group.admin {
+            return Err(Error::GroupIsPrivate);
         }
 
         let member_count: u32 = env
@@ -334,6 +362,14 @@ impl SavingsContract {
             return Err(Error::PaymentWindowClosed);
         }
 
+        // #606: move real funds from the member into the contract's custody.
+        let token = Self::get_token(&env)?;
+        token::Client::new(&env, &token).transfer(
+            &member,
+            &env.current_contract_address(),
+            &group.contribution_amount,
+        );
+
         // Record contribution
         let contribution = Contribution {
             member: member.clone(),
@@ -388,6 +424,14 @@ impl SavingsContract {
 
         // Determine recipient (sequential by join_order)
         let recipient = Self::get_next_payout_recipient(&env, group_id.clone(), current_round)?;
+
+        // #606: pay the recipient real funds from the contract's custody.
+        let token = Self::get_token(&env)?;
+        token::Client::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &payout_amount,
+        );
 
         let payout = Payout {
             recipient: recipient.clone(),
