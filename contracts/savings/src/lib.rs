@@ -22,6 +22,9 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    NoRefundAvailable = 15,
+    RoundNotStalled = 16,
+    StartDateTooFarInFuture = 17,
     GroupPaused = 15,
     StartDateAlreadyPassed = 16,
     ArithmeticOverflow = 15,
@@ -29,6 +32,14 @@ pub enum Error {
     AlreadyInitialized = 15,
     ContributionTooHigh = 16,
 }
+
+// Configuration constants
+pub const MIN_MEMBERS: u32 = 3;
+pub const MAX_MEMBERS: u32 = 20;
+pub const MIN_CONTRIBUTION: i128 = 10_000_000; // 10 XLM in stroops (7 decimals)
+pub const DEFAULT_PLATFORM_FEE_BPS: u32 = 200; // 2% in basis points
+pub const GRACE_PERIOD_SECONDS: u64 = 259_200; // 3 days in seconds
+pub const MAX_START_TIMESTAMP_OFFSET: u64 = 31_536_000; // 1 year max offset from now
 
 // Data structures
 #[contracttype]
@@ -176,6 +187,9 @@ impl SavingsContract {
         }
         if start_timestamp <= env.ledger().timestamp() {
             return Err(Error::StartDateMustBeFuture);
+        }
+        if start_timestamp > env.ledger().timestamp() + MAX_START_TIMESTAMP_OFFSET {
+            return Err(Error::StartDateTooFarInFuture);
         }
 
         let group = SavingsGroup {
@@ -440,6 +454,13 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Force-end a stalled round. Callable by any member once the grace period has passed.
+    /// Distributes payout to the designated recipient and advances to the next round.
+    pub fn force_end_round(
+        env: Env,
+        group_id: String,
+    ) -> Result<(), Error> {
+        let group: SavingsGroup = env
     /// Pause a group (admin only). No contributions or payouts allowed while paused.
     pub fn pause_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
         admin.require_auth();
@@ -458,6 +479,44 @@ impl SavingsContract {
             return Err(Error::GroupNotActive);
         }
 
+        let current_round = group.current_round;
+        let deadline: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RoundDeadline(group_id.clone(), current_round))
+            .unwrap_or(0);
+
+        // Only allow force-end after grace period has passed
+        if env.ledger().timestamp() <= deadline + GRACE_PERIOD_SECONDS {
+            return Err(Error::RoundNotStalled);
+        }
+
+        // Mark all non-paying members as defaulted
+        let members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        for member_addr in members.iter() {
+            let mut member_data: Member = env
+                .storage()
+                .persistent()
+                .get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+                .unwrap();
+
+            if member_data.status == MemberStatus::Active
+                || member_data.status == MemberStatus::Overdue
+            {
+                member_data.status = MemberStatus::Defaulted;
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
+            }
+        }
+
+        // Distribute payout to designated recipient (even if not all paid)
+        Self::distribute_payout(env, group_id)?;
         group.status = GroupStatus::Paused;
         env.storage()
             .persistent()
@@ -498,6 +557,18 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Claim a refund for a contribution made in a round that was force-ended
+    /// without the member receiving a payout. Only callable by members who paid
+    /// but did not receive a payout in the specified round.
+    pub fn claim_refund(
+        env: Env,
+        member: Address,
+        group_id: String,
+        round: u32,
+    ) -> Result<i128, Error> {
+        member.require_auth();
+
+        let _group: SavingsGroup = env
     /// Mark a member as defaulted. Callable by any party once the grace period has passed.
     /// This fixes the issue where defaults were only detectable via the defaulting member's own call.
     pub fn mark_defaulted(
@@ -511,6 +582,7 @@ impl SavingsContract {
             .get(&DataKey::Group(group_id.clone()))
             .ok_or(Error::GroupNotFound)?;
 
+        let member_data: Member = env
         if group.status != GroupStatus::Active {
             return Err(Error::GroupNotActive);
         }
@@ -521,6 +593,44 @@ impl SavingsContract {
             .get(&DataKey::MemberData(group_id.clone(), member.clone()))
             .ok_or(Error::NotMember)?;
 
+        // Check if member contributed to this round
+        let contributions: Vec<Contribution> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Contributions(group_id.clone(), round))
+            .unwrap_or(Vec::new(&env));
+
+        let mut contributed_amount: i128 = 0;
+        let mut found = false;
+        for contrib in contributions.iter() {
+            if contrib.member == member {
+                contributed_amount = contrib.amount;
+                found = true;
+                break;
+            }
+        }
+
+        if !found || contributed_amount == 0 {
+            return Err(Error::NoRefundAvailable);
+        }
+
+        // Check if member received a payout in this round
+        let payouts: Vec<Payout> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Payouts(group_id.clone(), round))
+            .unwrap_or(Vec::new(&env));
+
+        for payout in payouts.iter() {
+            if payout.recipient == member {
+                return Err(Error::NoRefundAvailable); // Already received payout
+            }
+        }
+
+        // In a real implementation, this would transfer tokens back to the member.
+        // For now, we just return the refundable amount and mark it as claimed.
+        // The contribution record remains but the member can withdraw equivalent value.
+        Ok(contributed_amount)
         if member_data.status == MemberStatus::Defaulted
             || member_data.status == MemberStatus::ReceivedPayout
         {

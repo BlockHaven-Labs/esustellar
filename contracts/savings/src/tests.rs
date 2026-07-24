@@ -639,6 +639,7 @@ fn test_create_multiple_groups_no_panic() {
 }
 
 #[test]
+fn test_force_end_round() {
 fn test_pause_and_resume_group() {
 #[should_panic]
 fn test_create_group_max_contribution_exceeded() {
@@ -647,6 +648,8 @@ fn test_contribute_rejected_after_completed() {
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "force-end-test");
+    let name = String::from_str(&env, "Force End Test");
     let group_id = String::from_str(&env, "pause-test");
     let name = String::from_str(&env, "Pause Test");
     let group_id = String::from_str(&env, "test-group-max");
@@ -672,6 +675,23 @@ fn test_contribute_rejected_after_completed() {
     client.join_group(&member2, &group_id);
     client.join_group(&member3, &group_id);
 
+    let group = client.get_group(&group_id);
+
+    // Fast forward past deadline + grace period
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    // Force end the round
+    client.force_end_round(&group_id);
+
+    let group = client.get_group(&group_id);
+    // Round should have advanced
+    assert!(group.current_round > 1 || group.status == GroupStatus::Completed);
+}
+
+#[test]
+fn test_claim_refund() {
     assert_eq!(client.get_group(&group_id).status, GroupStatus::Active);
 
     // Pause the group
@@ -709,6 +729,8 @@ fn test_overdue_status_set_when_past_deadline() {
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "refund-test");
+    let name = String::from_str(&env, "Refund Test");
     let group_id = String::from_str(&env, "pause-contrib-test");
     let name = String::from_str(&env, "Pause Contrib Test");
     let group_id = String::from_str(&env, "overdue-test");
@@ -731,6 +753,16 @@ fn test_overdue_status_set_when_past_deadline() {
     client.join_group(&member2, &group_id);
     client.join_group(&member3, &group_id);
 
+    let group = client.get_group(&group_id);
+
+    // Fast forward to round start
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    // Only admin and member2 contribute (member3 doesn't)
+    client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
     // Pause the group
     client.pause_group(&admin, &group_id);
 
@@ -804,6 +836,16 @@ fn test_initialize_sets_admin() {
         li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
     });
 
+    // Force end the round
+    client.force_end_round(&group_id);
+
+    // member2 paid but didn't receive payout (admin got it since admin is join_order 0)
+    let refund = client.claim_refund(&member2, &group_id, &1);
+    assert_eq!(refund, Ok(100_000_000));
+}
+
+#[test]
+fn test_start_timestamp_max_offset() {
     // Anyone can mark a member as defaulted
     let caller = Address::generate(&env);
     client.mark_defaulted(&member2, &group_id);
@@ -818,6 +860,12 @@ fn test_cannot_join_after_start_date() {
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "far-future-test");
+    let name = String::from_str(&env, "Far Future Test");
+
+    // Try to create a group starting more than 1 year from now
+    let far_future = env.ledger().timestamp() + 40_000_000; // ~1.27 years
+    let result = client.try_create_group(
     let group_id = String::from_str(&env, "start-date-test");
     let name = String::from_str(&env, "Start Date Test");
 
@@ -828,6 +876,12 @@ fn test_cannot_join_after_start_date() {
         &name,
         &100_000_000,
         &5,
+        &Frequency::Monthly,
+        &far_future,
+        &true,
+    );
+    assert_eq!(result, Err(Ok(Error::StartDateTooFarInFuture)));
+}
         &Frequency::Weekly,
         &start_time,
         &true,
