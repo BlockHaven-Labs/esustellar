@@ -344,6 +344,10 @@ impl SavingsContract {
             env.storage()
                 .persistent()
                 .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+            env.events().publish(
+                (symbol_short!("default"),),
+                (member, group_id, current_round),
+            );
             return Err(Error::PaymentWindowClosed);
         }
 
