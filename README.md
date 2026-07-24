@@ -82,7 +82,19 @@ esustellar/
 
 ---
 
-## 🛠 Development Status
+## 🛠 Development & Operations
+
+### Monitoring & Log Aggregation
+- **Loki & Grafana**: Centralised log aggregation is pre-configured via Docker Compose (`docker-compose.yml`) and Kubernetes (`k8s/monitoring/`).
+- **Validation**: Run `npm run validate-monitoring` to verify log aggregation configurations.
+- **Documentation**: See [docs/logging.md](file:///c:/Users/g-obiagazie/Desktop/esustellar/docs/logging.md).
+
+### Utility Scripts
+- **Post-Deploy Smoke Tests**: `npm run smoke-test` (automatically invoked after `./deploy.sh`).
+- **Export & Archive Contract Event Logs**: `npm run export-events` (exports events to `logs/contract-events.jsonl`).
+- **Deployment Guide**: See [docs/deployment.md](file:///c:/Users/g-obiagazie/Desktop/esustellar/docs/deployment.md).
+
+---
 
 ## 🤝 Contributing Guide
 
@@ -97,3 +109,4 @@ EsuStellar is open-source and beginner-friendly.
 ## 📜 License
 
 MIT License
+

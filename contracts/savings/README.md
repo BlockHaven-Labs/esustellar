@@ -31,7 +31,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 2. **Add WASM target**
 ```bash
-rustup target add wasm32-unknown-unknown
+rustup target add wasm32v1-none
 ```
 
 3. **Install Stellar CLI**
@@ -95,7 +95,7 @@ fn create_group(
     frequency: Frequency,
     start_timestamp: u64,
     is_public: bool,
-) -> Result<SavingsGroup, String>
+) -> Result<SavingsGroup, Error>
 ```
 
 **Parameters:**
@@ -120,7 +120,7 @@ fn create_group(
 Join an open savings group.
 
 ```rust
-fn join_group(env: Env, member: Address) -> Result<(), String>
+fn join_group(env: Env, member: Address, group_id: String) -> Result<(), Error>
 ```
 
 **Requirements:**
@@ -137,7 +137,7 @@ fn join_group(env: Env, member: Address) -> Result<(), String>
 Make contribution for current round.
 
 ```rust
-fn contribute(env: Env, member: Address) -> Result<(), String>
+fn contribute(env: Env, member: Address, group_id: String) -> Result<(), Error>
 ```
 
 **Requirements:**
@@ -155,14 +155,14 @@ fn contribute(env: Env, member: Address) -> Result<(), String>
 
 #### `get_group`
 ```rust
-fn get_group(env: Env) -> Result<SavingsGroup, String>
+fn get_group(env: Env) -> Result<SavingsGroup, Error>
 ```
 
 Returns complete group information.
 
 #### `get_member`
 ```rust
-fn get_member(env: Env, member: Address) -> Result<Member, String>
+fn get_member(env: Env, member: Address, group_id: String) -> Result<Member, Error>
 ```
 
 Returns member details and status.
@@ -342,6 +342,7 @@ stellar contract invoke \
 3. **No dispute resolution:** Built-in mechanism not yet implemented
 4. **Grace period hardcoded:** 3 days, not configurable per group
 5. **Platform fee fixed:** 2%, not adjustable
+6. **Uneven gas costs:** The member whose contribution completes a round pays additional gas for payout distribution and round transition (see issue #701)
 
 ## 🔮 Future Enhancements
 

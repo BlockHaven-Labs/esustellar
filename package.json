@@ -12,7 +12,10 @@
     "dev": "npm run dev --workspace=apps/web",
     "build:shared": "npm run build --workspace=@esustellar/shared",
     "build": "npm run build:shared && npm run build --workspace=apps/web",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "smoke-test": "bash ./scripts/post-deploy-smoke-test.sh",
+    "export-events": "bash ./scripts/export-contract-events.sh",
+    "validate-monitoring": "bash ./scripts/validate-monitoring-config.sh"
   },
   "repository": {
     "type": "git",
