@@ -595,3 +595,38 @@ fn test_timestamps_are_monotonic_across_registrations() {
 
     assert!(t2 > t1, "Later registration must have a higher created_at timestamp");
 }
+
+#[test]
+fn test_remove_member_removes_group_from_user_groups() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+    let member = Address::generate(&env);
+
+    let group = register_group(&env, &client, "g-rem", "Removable Group", &admin, true, 5);
+
+    client.add_member(&group, &member);
+    let groups_before = client.get_user_groups(&member);
+    assert_eq!(groups_before.len(), 1);
+
+    client.remove_member(&group, &member);
+    let groups_after = client.get_user_groups(&member);
+    assert_eq!(groups_after.len(), 0);
+}
+
+#[test]
+fn test_update_group_info_updates_metadata() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+
+    let group = register_group(&env, &client, "g-upd", "Original Name", &admin, true, 5);
+
+    let new_name = String::from_str(&env, "Updated Name");
+    client.update_group_info(&group, &new_name, &false, &10);
+
+    let info = client.get_group_info(&group);
+    assert_eq!(info.name, new_name);
+    assert_eq!(info.is_public, false);
+    assert_eq!(info.total_members, 10);
+}

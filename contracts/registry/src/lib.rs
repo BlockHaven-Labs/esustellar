@@ -161,6 +161,51 @@ impl GroupRegistry {
         Ok(())
     }
 
+    /// Remove a member from a group's user mapping
+    /// Requires authorization from the member
+    pub fn remove_member(env: Env, contract_address: Address, member: Address) -> Result<(), Error> {
+        member.require_auth();
+
+        // Verify group exists
+        let _group_info: GroupInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupInfo(contract_address.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        // Get user's groups
+        let user_groups: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroups(member.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let mut found = false;
+        let mut new_user_groups: Vec<Address> = Vec::new(&env);
+        for i in 0..user_groups.len() {
+            if let Some(addr) = user_groups.get(i) {
+                if addr == contract_address {
+                    found = true;
+                } else {
+                    new_user_groups.push_back(addr);
+                }
+            }
+        }
+
+        if !found {
+            return Err(Error::UserNotInGroup);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserGroups(member.clone()), &new_user_groups);
+
+        env.events()
+            .publish((symbol_short!("rem_mem"),), (contract_address, member));
+
+        Ok(())
+    }
+
     /// Update the mutable metadata for a registered group.
     ///
     /// Registry copies of `name`, `is_public`, and `total_members` go stale
