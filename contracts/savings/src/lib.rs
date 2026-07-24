@@ -5,6 +5,10 @@ use soroban_sdk::{
     Vec,
 };
 
+/// 3 days in seconds — grace period after round deadline before a member is
+/// marked as defaulted.
+const GRACE_PERIOD_SECONDS: u64 = 259_200;
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -23,6 +27,8 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    NotAdmin = 15,
+    GroupNotOpen = 16,
     AdminOnly = 15,
     RateLimited = 16,
     NotAllPaid = 17,
@@ -350,32 +356,7 @@ impl SavingsContract {
             return Err(Error::AlreadyMember);
         }
 
-        let new_member = Member {
-            address: member.clone(),
-            join_timestamp: env.ledger().timestamp(),
-            join_order: member_count,
-            status: MemberStatus::Active,
-            total_contributed: 0,
-            has_received_payout: false,
-            payout_round: 0,
-        };
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::MemberData(group_id.clone(), member.clone()), &new_member);
-
-        let mut members: Vec<Address> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Members(group_id.clone()))
-            .unwrap_or(Vec::new(&env));
-        members.push_back(member.clone());
-        env.storage().persistent().set(&DataKey::Members(group_id.clone()), &members);
-
-        let new_count = member_count + 1;
-        env.storage()
-            .persistent()
-            .set(&DataKey::MemberCount(group_id.clone()), &new_count);
+        let new_count = Self::add_member_to_group(&env, &member, &group_id);
 
         // Add group to user's groups list
         let mut user_groups: Vec<String> = env
@@ -409,6 +390,78 @@ impl SavingsContract {
 
         env.events()
             .publish((symbol_short!("joined"),), (member, new_count));
+
+        Ok(())
+    }
+
+    /// Cancel a group that is still open. Only the admin can cancel, and only
+    /// before the group becomes active (all members joined and rounds started).
+    /// Removes the group from global and per-user tracking, but does not delete
+    /// storage entries for the group itself (they will be garbage-collected by
+    /// the ledger).
+    pub fn cancel_group(env: Env, caller: Address, group_id: String) -> Result<(), Error> {
+        caller.require_auth();
+
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if caller != group.admin {
+            return Err(Error::NotAdmin);
+        }
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotOpen);
+        }
+
+        // Remove from global groups list
+        let mut all_groups: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        let mut idx: u32 = 0;
+        while idx < all_groups.len() {
+            if all_groups.get(idx).unwrap() == group_id {
+                all_groups.remove(idx);
+                break;
+            }
+            idx += 1;
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::AllGroups, &all_groups);
+
+        // Remove group from every member's UserGroups list
+        let members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        for member_addr in members.iter() {
+            let mut user_groups: Vec<String> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::UserGroups(member_addr.clone()))
+                .unwrap_or(Vec::new(&env));
+            let mut i: u32 = 0;
+            while i < user_groups.len() {
+                if user_groups.get(i).unwrap() == group_id {
+                    user_groups.remove(i);
+                    break;
+                }
+                i += 1;
+            }
+            env.storage()
+                .persistent()
+                .set(&DataKey::UserGroups(member_addr), &user_groups);
+        }
+
+        env.events()
+            .publish((symbol_short!("cancelled"),), (caller, group_id));
 
         Ok(())
     }
@@ -960,8 +1013,14 @@ impl SavingsContract {
     }
 
     // Helper functions
-    fn add_admin_to_group(env: &Env, member: Address, group_id: String) -> Result<(), Error> {
-        // Internal helper - no auth required since called from create_group
+
+    /// Internal: create and persist a new member record, push to the members
+    /// vec, and increment the member count. Returns the new member count.
+    fn add_member_to_group(
+        env: &Env,
+        member: &Address,
+        group_id: &String,
+    ) -> u32 {
         let member_count: u32 = env
             .storage()
             .persistent()
@@ -994,6 +1053,21 @@ impl SavingsContract {
         env.storage()
             .persistent()
             .set(&DataKey::MemberCount(group_id.clone()), &new_count);
+
+        new_count
+    }
+
+    fn add_admin_to_group(env: &Env, member: Address, group_id: String) -> Result<(), Error> {
+        // Guard: admin must not already be a member of this group
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::MemberData(group_id.clone(), member.clone()))
+        {
+            return Err(Error::AlreadyMember);
+        }
+
+        let new_count = Self::add_member_to_group(env, &member, &group_id);
 
         env.events()
             .publish((symbol_short!("joined"),), (member, new_count));
