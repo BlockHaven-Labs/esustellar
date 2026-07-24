@@ -29,6 +29,8 @@ fn test_create_group_success() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+        &true, &None,
     );
 
     assert_eq!(group.name, name);
@@ -55,6 +57,8 @@ fn test_create_group_low_contribution() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+        &true, &None,
     );
 }
 
@@ -76,6 +80,8 @@ fn test_join_group() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+        &true, &None,
     );
 
     let members = client.get_members(&group_id);
@@ -114,6 +120,8 @@ fn test_cannot_join_full_group() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -144,6 +152,8 @@ fn test_cannot_join_twice() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+        &true, &None,
     );
 
     let member = Address::generate(&env);
@@ -169,6 +179,8 @@ fn test_contribution_flow() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -216,6 +228,8 @@ fn test_payout_order() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin,
+        &true, &None,
     );
 
     let member2 = Address::generate(&env);
@@ -265,6 +279,8 @@ fn test_get_round_deadline() {
         &Frequency::Weekly,
         &start_time,
         &true,
+        &admin,
+        &true, &None,
     );
 
     // Get round 1 deadline
@@ -300,6 +316,8 @@ fn test_get_user_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &user,
+        &true, &None,
     );
 
     // User should now have 1 group
@@ -337,6 +355,8 @@ fn test_get_all_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin1,
+        &true, &None,
     );
 
     // Should have 1 group
@@ -353,6 +373,8 @@ fn test_get_all_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin2,
+        &true, &None,
     );
 
     // Should have 2 groups
@@ -387,6 +409,8 @@ fn test_user_joins_multiple_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+        &true, &None,
     );
 
     client.create_group(
@@ -398,6 +422,8 @@ fn test_user_joins_multiple_groups() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+        &true, &None,
     );
 
     // User joins both groups
@@ -440,6 +466,8 @@ fn test_multiple_groups_isolated_state() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin1,
+        &true, &None,
     );
 
     client.create_group(
@@ -451,6 +479,7 @@ fn test_multiple_groups_isolated_state() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 172800),
         &false,
+        &admin2,
     );
 
     // Verify groups are separate
@@ -504,6 +533,8 @@ fn test_multiple_groups_full_lifecycle() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin1,
+        &true, &None,
     );
 
     client.create_group(
@@ -515,6 +546,8 @@ fn test_multiple_groups_full_lifecycle() {
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
+        &admin2,
+        &true, &None,
     );
 
     // Fill both groups
@@ -595,6 +628,8 @@ fn test_create_multiple_groups_no_panic() {
             &Frequency::Monthly,
             &(env.ledger().timestamp() + 86400),
             &true,
+            &admin,
+            &true, &None,
         );
     }
 
@@ -605,17 +640,25 @@ fn test_create_multiple_groups_no_panic() {
 
 #[test]
 fn test_pause_and_resume_group() {
+#[should_panic]
+fn test_create_group_max_contribution_exceeded() {
+fn test_contribute_rejected_after_completed() {
     let env = Env::default();
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
     let group_id = String::from_str(&env, "pause-test");
     let name = String::from_str(&env, "Pause Test");
+    let group_id = String::from_str(&env, "test-group-max");
+    let name = String::from_str(&env, "Test Savings");
+    let group_id = String::from_str(&env, "completed-test");
+    let name = String::from_str(&env, "Completed Test");
 
     client.create_group(
         &admin,
         &group_id,
         &name,
+        &2_000_000_000_000, // 2M XLM - exceeds MAX_CONTRIBUTION
         &100_000_000,
         &3,
         &Frequency::Weekly,
@@ -642,12 +685,34 @@ fn test_pause_and_resume_group() {
 
 #[test]
 fn test_cannot_contribute_when_paused() {
+    // Complete all 3 rounds (one per member gets payout)
+    for round in 1..=3 {
+        env.ledger().with_mut(|li| {
+            li.timestamp = env.ledger().timestamp() + 604800 + 1;
+        });
+        client.contribute(&admin, &group_id);
+        client.contribute(&member2, &group_id);
+        client.contribute(&member3, &group_id);
+    }
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Completed);
+
+    // Try to contribute after completion — should fail with GroupNotActive
+    let result = client.try_contribute(&admin, &group_id);
+    assert_eq!(result, Err(Ok(Error::GroupNotActive)));
+}
+
+#[test]
+fn test_overdue_status_set_when_past_deadline() {
     let env = Env::default();
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
     let group_id = String::from_str(&env, "pause-contrib-test");
     let name = String::from_str(&env, "Pause Contrib Test");
+    let group_id = String::from_str(&env, "overdue-test");
+    let name = String::from_str(&env, "Overdue Test");
 
     client.create_group(
         &admin,
@@ -689,6 +754,33 @@ fn test_mark_defaulted_external() {
     let name = String::from_str(&env, "Default Test");
 
     client.create_group(
+    let group = client.get_group(&group_id);
+
+    // Fast forward past deadline but within grace period (3 days)
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 1; // just past deadline
+    });
+
+    // Member contributes late — should be marked Overdue
+    client.contribute(&admin, &group_id);
+    let member_data = client.get_member(&admin, &group_id);
+    assert_eq!(member_data.status, MemberStatus::Overdue);
+}
+
+#[test]
+fn test_initialize_sets_admin() {
+    let env = Env::default();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+    let group_id = String::from_str(&env, "test-init");
+    let name = String::from_str(&env, "Init Test");
+
+    // Should work after initialization
+    let result = client.try_create_group(
         &admin,
         &group_id,
         &name,
@@ -750,4 +842,28 @@ fn test_cannot_join_after_start_date() {
     let member = Address::generate(&env);
     let result = client.try_join_group(&member, &group_id);
     assert_eq!(result, Err(Ok(Error::StartDateAlreadyPassed)));
+}
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+    );
+}
+    );
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_initialize_cannot_be_called_twice() {
+    let env = Env::default();
+
+    let contract_id = env.register(SavingsContract, ());
+    let client = SavingsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let result = client.try_initialize(&admin);
+    assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
