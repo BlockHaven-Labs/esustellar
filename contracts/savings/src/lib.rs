@@ -23,6 +23,7 @@ pub enum Error {
     RecipientNotFound = 13,
     NoRecipientFound = 14,
     AlreadyInitialized = 15,
+    ContributionTooHigh = 16,
 }
 
 // Data structures
@@ -53,6 +54,14 @@ pub enum Frequency {
     Monthly,
 }
 
+// Configuration constants
+pub const MIN_MEMBERS: u32 = 3;
+pub const MAX_MEMBERS: u32 = 20;
+pub const MIN_CONTRIBUTION: i128 = 10_000_000; // 10 XLM in stroops (7 decimals)
+pub const MAX_CONTRIBUTION: i128 = 1_000_000_000_000; // 1,000,000 XLM max per contribution
+pub const DEFAULT_PLATFORM_FEE_BPS: u32 = 200; // 2% in basis points
+pub const GRACE_PERIOD_SECONDS: u64 = 259_200; // 3 days in seconds
+
 #[contracttype]
 #[derive(Clone)]
 pub struct SavingsGroup {
@@ -67,6 +76,7 @@ pub struct SavingsGroup {
     pub is_public: bool,
     pub current_round: u32,
     pub platform_fee_percent: u32, // in basis points (100 = 1%)
+    pub treasury: Address,         // Address that receives platform fees
     pub token_address: Option<Address>, // SEP-41 token contract address (None = native XLM)
 }
 
@@ -145,16 +155,19 @@ impl SavingsContract {
         frequency: Frequency,
         start_timestamp: u64,
         is_public: bool,
+        treasury: Address,
         token_address: Option<Address>, // SEP-41 token address (None = native XLM)
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
 
         // Validations
-        if contribution_amount < 10_000_000 {
-            // 10 XLM minimum (7 decimals)
+        if contribution_amount < MIN_CONTRIBUTION {
             return Err(Error::ContributionTooLow);
         }
-        if total_members < 3 || total_members > 20 {
+        if contribution_amount > MAX_CONTRIBUTION {
+            return Err(Error::ContributionTooHigh);
+        }
+        if total_members < MIN_MEMBERS || total_members > MAX_MEMBERS {
             return Err(Error::InvalidMemberCount);
         }
         if start_timestamp <= env.ledger().timestamp() {
@@ -172,6 +185,8 @@ impl SavingsContract {
             status: GroupStatus::Open,
             is_public,
             current_round: 0,
+            platform_fee_percent: DEFAULT_PLATFORM_FEE_BPS,
+            treasury: treasury.clone(),
             platform_fee_percent: 200, // 2%
             token_address,
         };
@@ -353,7 +368,7 @@ impl SavingsContract {
             .get(&DataKey::RoundDeadline(group_id.clone(), current_round))
             .unwrap_or(0);
 
-        if env.ledger().timestamp() > deadline + 259200 {
+        if env.ledger().timestamp() > deadline + GRACE_PERIOD_SECONDS {
             // 3 days grace period
             member_data.status = MemberStatus::Defaulted;
             env.storage()

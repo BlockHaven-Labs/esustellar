@@ -28,6 +28,8 @@ fn test_create_group_success() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -54,6 +56,8 @@ fn test_create_group_low_contribution() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 }
@@ -75,6 +79,8 @@ fn test_join_group() {
         &3,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -113,6 +119,8 @@ fn test_cannot_join_full_group() {
         &3,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -143,6 +151,8 @@ fn test_cannot_join_twice() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -168,6 +178,8 @@ fn test_contribution_flow() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -215,6 +227,8 @@ fn test_payout_order() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -264,6 +278,8 @@ fn test_get_round_deadline() {
         &5,
         &Frequency::Weekly,
         &start_time,
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -299,6 +315,8 @@ fn test_get_user_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &user,
         &true, &None,
     );
 
@@ -336,6 +354,8 @@ fn test_get_all_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin1,
         &true, &None,
     );
 
@@ -352,6 +372,8 @@ fn test_get_all_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin2,
         &true, &None,
     );
 
@@ -386,6 +408,8 @@ fn test_user_joins_multiple_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -397,6 +421,8 @@ fn test_user_joins_multiple_groups() {
         &5,
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
         &true, &None,
     );
 
@@ -439,6 +465,8 @@ fn test_multiple_groups_isolated_state() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin1,
         &true, &None,
     );
 
@@ -451,6 +479,7 @@ fn test_multiple_groups_isolated_state() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 172800),
         &false,
+        &admin2,
     );
 
     // Verify groups are separate
@@ -503,6 +532,8 @@ fn test_multiple_groups_full_lifecycle() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin1,
         &true, &None,
     );
 
@@ -514,6 +545,8 @@ fn test_multiple_groups_full_lifecycle() {
         &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
+        &true,
+        &admin2,
         &true, &None,
     );
 
@@ -594,6 +627,8 @@ fn test_create_multiple_groups_no_panic() {
             &5,
             &Frequency::Monthly,
             &(env.ledger().timestamp() + 86400),
+            &true,
+            &admin,
             &true, &None,
         );
     }
@@ -604,11 +639,15 @@ fn test_create_multiple_groups_no_panic() {
 }
 
 #[test]
+#[should_panic]
+fn test_create_group_max_contribution_exceeded() {
 fn test_contribute_rejected_after_completed() {
     let env = Env::default();
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "test-group-max");
+    let name = String::from_str(&env, "Test Savings");
     let group_id = String::from_str(&env, "completed-test");
     let name = String::from_str(&env, "Completed Test");
 
@@ -616,6 +655,7 @@ fn test_contribute_rejected_after_completed() {
         &admin,
         &group_id,
         &name,
+        &2_000_000_000_000, // 2M XLM - exceeds MAX_CONTRIBUTION
         &100_000_000,
         &3,
         &Frequency::Weekly,
@@ -708,6 +748,9 @@ fn test_initialize_sets_admin() {
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
+        &admin,
+    );
+}
     );
     assert!(result.is_ok());
 }
