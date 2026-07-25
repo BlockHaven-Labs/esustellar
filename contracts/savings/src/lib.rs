@@ -42,6 +42,8 @@ pub enum Error {
     AlreadyInitialized = 15,
     ContributionTooHigh = 16,
     GroupIsPrivate = 18,
+    GroupIdAlreadyExists = 19,
+    StringTooLong = 20,
 }
 
 // Configuration constants
@@ -189,6 +191,22 @@ impl SavingsContract {
         token_address: Option<Address>, // SEP-41 token address (None = native XLM)
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
+
+        // Reject reusing an existing group_id so a second call can't overwrite
+        // an existing group's admin, members, and state.
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Group(group_id.clone()))
+        {
+            return Err(Error::GroupIdAlreadyExists);
+        }
+
+        // Bound string sizes to keep storage rent predictable.
+        const MAX_STRING_LEN: u32 = 64;
+        if group_id.len() > MAX_STRING_LEN || name.len() > MAX_STRING_LEN {
+            return Err(Error::StringTooLong);
+        }
 
         // Rate limit: max 1 group per address per 24 hours (86400 seconds)
         let last_timestamp: u64 = env
