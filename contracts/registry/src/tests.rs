@@ -147,6 +147,43 @@ fn test_register_groups_with_same_name_different_contracts_allowed() {
     assert_eq!(client.get_group_count(), 2);
 }
 
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_cannot_register_duplicate_group_id_different_contract() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+
+    let contract_a = Address::generate(&env);
+    let contract_b = Address::generate(&env);
+    let group_id = String::from_str(&env, "same-group-id");
+    let name1 = String::from_str(&env, "Group One");
+    let name2 = String::from_str(&env, "Group Two");
+
+    client.register_group(&contract_a, &group_id, &name1, &admin, &true, &5);
+    // Second registration with a different contract address but same group_id must panic.
+    client.register_group(&contract_b, &group_id, &name2, &admin, &true, &5);
+}
+
+#[test]
+fn test_can_register_group_id_after_unregister() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+
+    let contract_a = Address::generate(&env);
+    let contract_b = Address::generate(&env);
+    let group_id = String::from_str(&env, "reusable-group-id");
+    let name = String::from_str(&env, "Reusable Group");
+
+    client.register_group(&contract_a, &group_id, &name, &admin, &true, &5);
+    client.unregister_group(&contract_a, &admin);
+
+    // After unregistering contract_a, registering group_id with contract_b should succeed.
+    client.register_group(&contract_b, &group_id, &name, &admin, &true, &5);
+    assert_eq!(client.get_group_info(&contract_b).group_id, group_id);
+}
+
 // ── Membership ────────────────────────────────────────────────────────────────
 
 #[test]
