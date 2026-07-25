@@ -564,8 +564,9 @@ impl SavingsContract {
     pub fn cancel_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
         admin.require_auth();
 
+        let group_key = DataKey::Group(group_id.clone());
         let mut group: SavingsGroup = env
-            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .storage().persistent().get(&group_key)
             .ok_or(Error::GroupNotFound)?;
 
         if group.admin != admin {
@@ -576,7 +577,7 @@ impl SavingsContract {
         }
 
         group.status = GroupStatus::Completed;
-        env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+        env.storage().persistent().set(&group_key, &group);
 
         env.events().publish((symbol_short!("cancelled"),), group_id);
         Ok(())
