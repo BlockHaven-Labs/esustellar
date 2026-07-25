@@ -1,6 +1,7 @@
 import { Horizon, rpc, xdr, scValToNative } from "@stellar/stellar-sdk";
 import { SOROBAN_RPC_URL } from "@/config/walletConfig";
 import { formatDate, formatXLM, formatXLMFromStroops } from "@/lib/format";
+import { logger } from "@/lib/logger";
 
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
 const horizonServer = new Horizon.Server(HORIZON_URL);
@@ -65,8 +66,10 @@ function parseContractEvents(
 
   if (!txResult.resultMetaXdr) return events;
 
-  console.log("resultMetaXdr type:", typeof txResult.resultMetaXdr);
-  console.log("resultMetaXdr:", txResult.resultMetaXdr);
+  logger.debug("Parsed Soroban transaction metadata", {
+    resultMetaXdrType: typeof txResult.resultMetaXdr,
+    resultMetaXdr: txResult.resultMetaXdr,
+  });
 
   try {
     const meta = txResult.resultMetaXdr as xdr.TransactionMeta;
@@ -344,7 +347,9 @@ export async function fetchRecentActivity(
 
     return activities;
   } catch (error) {
-    console.error("Error fetching horizon operations:", error);
+    logger.error("Error fetching horizon operations", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }
@@ -361,7 +366,10 @@ async function parseOperation(
     // Fetch full transaction from Soroban RPC and parse events
     if (txHash) {
       const events = await getTransactionEvents(txHash);
-      console.log("Events for", txHash, events);
+      logger.debug("Parsed contract events for transaction", {
+        txHash,
+        eventCount: events.length,
+      });
 
       if (events.length > 0) {
         // Use the first recognized event from our contract

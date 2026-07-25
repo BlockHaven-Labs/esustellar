@@ -1,0 +1,325 @@
+##############################################################################
+# E2E Tests — EsuStellar Mobile
+#
+# Runs the full Detox E2E suite against the iOS simulator on every PR that
+# touches the mobile app or shared packages, and on every push to main.
+#
+# Critical flows covered:
+#   • auth.test.ts       — wallet connect / session persistence
+#   • group-creation.test.ts — group creation wizard (all 4 steps)
+#   • contribution.test.ts   — make contribution flow
+#   • payout.test.ts         — payout schedule & request payout
+#
+# Failures in any of these suites block merge via branch protection.
+##############################################################################
+
+name: E2E Tests (Mobile)
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'mobile/**'
+      - 'packages/**'
+
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'mobile/**'
+      - 'packages/**'
+
+  # Allow manual trigger from the Actions UI
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Detox configuration to run'
+        required: false
+        default: 'ios.sim.ci'
+        type: choice
+        options:
+          - ios.sim.ci
+          - android.emu.ci
+
+# Cancel in-flight runs on the same PR to save runner minutes
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Detox retries per test on CI to mitigate simulator flakiness
+  DETOX_RETRIES: 2
+  # Detox loglevel: trace | verbose | debug | info | warn | error
+  DETOX_LOGLEVEL: warn
+  # React Native Metro bundler port
+  RCT_METRO_PORT: 8081
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # iOS E2E
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-ios:
+    name: iOS E2E (${{ matrix.test-suite }})
+    runs-on: macos-14  # Apple Silicon — Xcode 15.x pre-installed
+
+    # Run the four critical suites in parallel to keep total wall time low
+    strategy:
+      fail-fast: false
+      matrix:
+        test-suite:
+          - auth
+          - group-creation
+          - contribution
+          - payout
+
+    timeout-minutes: 60
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Node / JS toolchain ───────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci
+
+      # ── iOS toolchain ─────────────────────────────────────────────────────
+      - name: Select Xcode version
+        run: sudo xcode-select --switch /Applications/Xcode_15.4.app
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      # Cache CocoaPods to avoid re-downloading on every run
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: mobile/ios/Pods
+          key: pods-${{ hashFiles('mobile/ios/Podfile.lock') }}
+          restore-keys: |
+            pods-
+
+      - name: Install CocoaPods
+        working-directory: mobile/ios
+        run: pod install --repo-update
+
+      # ── Environment config ────────────────────────────────────────────────
+      - name: Write .env.staging
+        working-directory: mobile
+        run: |
+          cat > .env.staging << 'EOF'
+          NODE_ENV=staging
+          STELLAR_NETWORK=testnet
+          SAVINGS_CONTRACT_ID=${{ secrets.TESTNET_SAVINGS_CONTRACT_ID }}
+          REGISTRY_CONTRACT_ID=${{ secrets.TESTNET_REGISTRY_CONTRACT_ID }}
+          EOF
+
+      # ── Build app binary ──────────────────────────────────────────────────
+      - name: Cache iOS build
+        uses: actions/cache@v4
+        with:
+          path: mobile/ios/build
+          key: ios-build-${{ hashFiles('mobile/ios/**', 'mobile/app/**', 'mobile/components/**') }}
+          restore-keys: |
+            ios-build-
+
+      - name: Build iOS release binary for simulator
+        working-directory: mobile
+        run: npm run e2e:build:ios
+        timeout-minutes: 30
+
+      # ── Simulator boot ────────────────────────────────────────────────────
+      - name: Boot iPhone 15 simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep "iPhone 15 (" | head -1 | grep -oE '\([A-F0-9-]{36}\)' | tr -d '()')
+          echo "Booting simulator: $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+
+      # ── Run E2E tests ─────────────────────────────────────────────────────
+      - name: Run E2E — ${{ matrix.test-suite }}
+        working-directory: mobile
+        env:
+          DETOX_RETRIES: ${{ env.DETOX_RETRIES }}
+        run: |
+          npx detox test \
+            --configuration ios.sim.ci \
+            --testNamePattern "${{ matrix.test-suite }}" \
+            --headless \
+            --record-logs failing \
+            --take-screenshots failing \
+            --loglevel ${{ env.DETOX_LOGLEVEL }} \
+            --forceExit
+        timeout-minutes: 25
+
+      # ── Artifacts ─────────────────────────────────────────────────────────
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-ios-${{ matrix.test-suite }}-${{ github.run_number }}
+          path: |
+            mobile/.artifacts/ci/
+            mobile/e2e/reports/junit.xml
+          retention-days: 7
+
+      - name: Upload JUnit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-ios-${{ matrix.test-suite }}-${{ github.run_number }}
+          path: mobile/e2e/reports/junit.xml
+          retention-days: 7
+
+      - name: Publish test summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: E2E iOS — ${{ matrix.test-suite }}
+          path: mobile/e2e/reports/junit.xml
+          reporter: jest-junit
+          fail-on-error: true
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Android E2E (runs on main-branch pushes only — slower, optional on PRs)
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-android:
+    name: Android E2E (${{ matrix.test-suite }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        test-suite:
+          - auth
+          - group-creation
+          - contribution
+          - payout
+
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Setup Java (for Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('mobile/android/**/*.gradle', 'mobile/android/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-
+
+      - name: Write .env.staging
+        working-directory: mobile
+        run: |
+          cat > .env.staging << 'EOF'
+          NODE_ENV=staging
+          STELLAR_NETWORK=testnet
+          SAVINGS_CONTRACT_ID=${{ secrets.TESTNET_SAVINGS_CONTRACT_ID }}
+          REGISTRY_CONTRACT_ID=${{ secrets.TESTNET_REGISTRY_CONTRACT_ID }}
+          EOF
+
+      - name: Enable KVM (Android emulator acceleration)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build Android release APK
+        working-directory: mobile
+        run: npm run e2e:build:android
+        timeout-minutes: 30
+
+      - name: Run E2E — ${{ matrix.test-suite }}
+        working-directory: mobile
+        env:
+          DETOX_RETRIES: ${{ env.DETOX_RETRIES }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          avd-name: Pixel_6_API_34
+          script: |
+            cd mobile && npx detox test \
+              --configuration android.emu.ci \
+              --testNamePattern "${{ matrix.test-suite }}" \
+              --headless \
+              --record-logs failing \
+              --take-screenshots failing \
+              --loglevel ${{ env.DETOX_LOGLEVEL }} \
+              --forceExit
+        timeout-minutes: 35
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-android-${{ matrix.test-suite }}-${{ github.run_number }}
+          path: |
+            mobile/.artifacts/ci/
+            mobile/e2e/reports/junit.xml
+          retention-days: 7
+
+      - name: Upload JUnit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-android-${{ matrix.test-suite }}-${{ github.run_number }}
+          path: mobile/e2e/reports/junit.xml
+          retention-days: 7
+
+      - name: Publish test summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: E2E Android — ${{ matrix.test-suite }}
+          path: mobile/e2e/reports/junit.xml
+          reporter: jest-junit
+          fail-on-error: true
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Status gate — required check for branch protection
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-status:
+    name: E2E Status Gate
+    runs-on: ubuntu-latest
+    needs: [e2e-ios]
+    if: always()
+    steps:
+      - name: Check E2E result
+        run: |
+          if [[ "${{ needs.e2e-ios.result }}" != "success" ]]; then
+            echo "::error::Critical E2E test suites failed. Merge is blocked."
+            exit 1
+          fi
+          echo "All critical E2E suites passed."

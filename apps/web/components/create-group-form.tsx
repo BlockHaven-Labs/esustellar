@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { logger } from '@/lib/logger'
 
 // Tracks which step of the two-step process we're on
 // so the user always knows what's happening
@@ -116,7 +117,7 @@ export function CreateGroupForm() {
         isPublic: !isPrivate,
       })
     } catch (err: any) {
-      console.error('Group creation failed:', err)
+      logger.error('Group creation failed', { error: err instanceof Error ? err.message : String(err) })
       setError(err.message || 'Failed to create group on-chain. Please try again.')
       setStep('error')
       return
@@ -137,7 +138,7 @@ export function CreateGroupForm() {
         totalMembers: members,
       })
     } catch (firstErr) {
-      console.warn('Registry registration failed on first attempt, retrying...', firstErr)
+      logger.warn('Registry registration failed on first attempt, retrying...', { error: firstErr instanceof Error ? firstErr.message : String(firstErr) })
 
       // One automatic retry after 2 seconds
       await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -152,7 +153,7 @@ export function CreateGroupForm() {
           totalMembers: members,
         })
       } catch (retryErr: any) {
-        console.error('Registry registration failed after retry:', retryErr)
+        logger.error('Registry registration failed after retry', { error: retryErr instanceof Error ? retryErr.message : String(retryErr) })
         // Group IS created on-chain — don't hide that from the user.
         // Show a partial success message so they know what happened.
         setError(
