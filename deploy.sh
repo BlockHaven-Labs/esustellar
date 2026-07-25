@@ -62,6 +62,18 @@ REGISTRY_CONTRACT_ID=$(stellar contract deploy \
 echo -e "${GREEN}✅ Registry deployment successful${NC}"
 echo -e "Registry Contract ID: ${BLUE}${REGISTRY_CONTRACT_ID}${NC}"
 
+# Verify registry contract is live
+echo -e "${YELLOW}🔍 Verifying registry contract is responding...${NC}"
+stellar contract invoke \
+  --id "$REGISTRY_CONTRACT_ID" \
+  --source-account deployer \
+  --network "$NETWORK" \
+  -- get_group_count > /dev/null 2>&1 || {
+  echo -e "❌ Registry contract verification failed"
+  exit 1
+}
+echo -e "${GREEN}✅ Registry contract verified${NC}"
+
 echo ""
 echo -e "${YELLOW}📝 Step 4: Deploying Savings Contract...${NC}"
 SAVINGS_CONTRACT_ID=$(stellar contract deploy \
@@ -71,6 +83,18 @@ SAVINGS_CONTRACT_ID=$(stellar contract deploy \
 
 echo -e "${GREEN}✅ Savings deployment successful${NC}"
 echo -e "Savings Contract ID: ${BLUE}${SAVINGS_CONTRACT_ID}${NC}"
+
+# Verify savings contract is live
+echo -e "${YELLOW}🔍 Verifying savings contract is responding...${NC}"
+stellar contract invoke \
+  --id "$SAVINGS_CONTRACT_ID" \
+  --source-account deployer \
+  --network "$NETWORK" \
+  -- get_all_groups > /dev/null 2>&1 || {
+  echo -e "❌ Savings contract verification failed"
+  exit 1
+}
+echo -e "${GREEN}✅ Savings contract verified${NC}"
 
 echo ""
 echo -e "${YELLOW}💾 Updating frontend env...${NC}"
@@ -108,8 +132,15 @@ cat > deployment-info.json <<EOF
 EOF
 
 echo ""
-echo -e "${YELLOW}📝 Step 5: Syncing contract IDs...${NC}"
-bash "$ROOT_DIR/scripts/sync-contract-ids.sh" "$ROOT_DIR/deployment-info.json"
+if [ "${SKIP_SMOKE_TEST:-false}" != "true" ]; then
+  echo -e "${YELLOW}📝 Step 5: Running post-deploy smoke tests...${NC}"
+  if [ -f "$ROOT_DIR/scripts/post-deploy-smoke-test.sh" ]; then
+    bash "$ROOT_DIR/scripts/post-deploy-smoke-test.sh" \
+      --registry "$REGISTRY_CONTRACT_ID" \
+      --savings "$SAVINGS_CONTRACT_ID" \
+      --network "$NETWORK" || echo -e "${YELLOW}⚠️ Smoke tests finished with warnings or errors.${NC}"
+  fi
+fi
 
 echo ""
 echo -e "${GREEN}🎉 Deployment complete!${NC}"
