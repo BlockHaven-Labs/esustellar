@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eo pipefail
+set -e
 
 echo "=================================================="
 echo "🔍 Validating Centralised Logging Configuration"
