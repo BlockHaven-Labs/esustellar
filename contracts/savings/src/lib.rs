@@ -376,6 +376,11 @@ impl SavingsContract {
 
         // If group is full, change status to Active
         if new_count == group.total_members {
+            let mut group: SavingsGroup = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Group(group_id.clone()))
+                .ok_or(Error::GroupNotFound)?;
             let mut group = group.clone();
             group.status = GroupStatus::Active;
             group.current_round = 1;
@@ -625,19 +630,19 @@ impl SavingsContract {
             .unwrap_or(Vec::new(&env));
 
         for member_addr in members.iter() {
-            let mut member_data: Member = env
+            if let Some(mut member_data) = env
                 .storage()
                 .persistent()
-                .get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
-                .unwrap();
-
-            if member_data.status == MemberStatus::Active
-                || member_data.status == MemberStatus::Overdue
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
             {
-                member_data.status = MemberStatus::Defaulted;
-                env.storage()
-                    .persistent()
-                    .set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
+                if member_data.status == MemberStatus::Active
+                    || member_data.status == MemberStatus::Overdue
+                {
+                    member_data.status = MemberStatus::Defaulted;
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
+                }
             }
         }
 
@@ -952,12 +957,22 @@ impl SavingsContract {
             .unwrap_or(Vec::new(&env));
 
         for member_addr in members.iter() {
+            if let Some(mut member_data) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+            {
+                if member_data.status == MemberStatus::PaidCurrentRound {
+                    member_data.status = MemberStatus::Active;
+                }
+                // Keep Defaulted and ReceivedPayout as is
             let mut member_data: Member = env
                 .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
                 .unwrap();
 
-            if member_data.status == MemberStatus::PaidCurrentRound {
-                member_data.status = MemberStatus::Active;
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
             }
 
             env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
@@ -1072,6 +1087,10 @@ impl SavingsContract {
         let mut best: Option<(u32, Address)> = None;
 
         for member_addr in members.iter() {
+            if let Some(member_data) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
             let member_data: Member = env
                 .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
                 .ok_or(Error::MemberDataMissing)?;
@@ -1080,16 +1099,21 @@ impl SavingsContract {
                 || member_data.status == MemberStatus::Defaulted
                 || member_data.join_order < target_order
             {
-                continue;
-            }
+                if member_data.has_received_payout
+                    || member_data.status == MemberStatus::Defaulted
+                    || member_data.join_order < target_order
+                {
+                    continue;
+                }
 
-            let is_better = match &best {
-                None => true,
-                Some((best_order, _)) => member_data.join_order < *best_order,
-            };
+                let is_better = match &best {
+                    None => true,
+                    Some((best_order, _)) => member_data.join_order < *best_order,
+                };
 
-            if is_better {
-                best = Some((member_data.join_order, member_addr.clone()));
+                if is_better {
+                    best = Some((member_data.join_order, member_addr.clone()));
+                }
             }
         }
 
