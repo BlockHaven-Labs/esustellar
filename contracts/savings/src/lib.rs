@@ -1,8 +1,12 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    Vec,
 };
+
+/// Grace period after a round deadline before a member is marked defaulted, in seconds.
+const GRACE_PERIOD_SECONDS: u64 = 259200; // 3 days
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -22,23 +26,28 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    Overflow = 15,
+    NotAdmin = 15,
+    GroupNotOpen = 16,
     AdminOnly = 15,
     RateLimited = 16,
     NotAllPaid = 17,
-    NoRefundAvailable = 18,
-    RoundNotStalled = 19,
-    StartDateTooFarInFuture = 20,
-    GroupPaused = 21,
-    StartDateAlreadyPassed = 22,
-    ArithmeticOverflow = 23,
-    DataExpired = 24,
-    AlreadyInitialized = 25,
-    ContributionTooHigh = 26,
+    NoRefundAvailable = 15,
+    RoundNotStalled = 16,
+    StartDateTooFarInFuture = 17,
+    GroupPaused = 15,
+    StartDateAlreadyPassed = 16,
+    ArithmeticOverflow = 15,
+    DataExpired = 16,
+    AlreadyInitialized = 15,
     MemberDataMissing = 27,
-    NotDefaulted = 28,
+    ContributionTooHigh = 16,
     CatchUpRequired = 29,
-    RegistryNotSet = 30,
-    GroupNotRegistered = 31,
+    NotDefaulted = 28,
+    InvalidRound = 18,
+    GroupIsPrivate = 18,
+    GroupIdAlreadyExists = 19,
+    StringTooLong = 20,
 }
 
 pub const MIN_MEMBERS: u32 = 3;
@@ -143,7 +152,6 @@ pub enum DataKey {
     LastGroupTimestamp(Address),
     Initialized,
     Admin,
-    RegistryAddress,
 }
 
 fn bump_group_keys(env: &Env, group_id: &String) {
@@ -179,28 +187,6 @@ impl SavingsContract {
         Ok(())
     }
 
-    // #671: Set the registry contract address for cross-contract verification
-    pub fn set_registry(env: Env, admin: Address, registry_address: Address) -> Result<(), Error> {
-        admin.require_auth();
-
-        let stored_admin: Address = env
-            .storage().persistent().get(&DataKey::Admin)
-            .ok_or(Error::AdminOnly)?;
-        if admin != stored_admin {
-            return Err(Error::AdminOnly);
-        }
-
-        env.storage().persistent().set(&DataKey::RegistryAddress, &registry_address);
-        env.storage().persistent().extend_ttl(&DataKey::RegistryAddress, GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
-
-        env.events().publish(
-            (symbol_short!("set_reg"),),
-            (admin, registry_address),
-        );
-
-        Ok(())
-    }
-
     pub fn create_group(
         env: Env,
         admin: Address,
@@ -216,6 +202,23 @@ impl SavingsContract {
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
 
+        // Reject reusing an existing group_id so a second call can't overwrite
+        // an existing group's admin, members, and state.
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Group(group_id.clone()))
+        {
+            return Err(Error::GroupIdAlreadyExists);
+        }
+
+        // Bound string sizes to keep storage rent predictable.
+        const MAX_STRING_LEN: u32 = 64;
+        if group_id.len() > MAX_STRING_LEN || name.len() > MAX_STRING_LEN {
+            return Err(Error::StringTooLong);
+        }
+
+        // Rate limit: max 1 group per address per 24 hours (86400 seconds)
         let last_timestamp: u64 = env
             .storage()
             .persistent()
@@ -266,6 +269,7 @@ impl SavingsContract {
         env.storage().persistent().extend_ttl(&DataKey::Members(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
         env.storage().persistent().extend_ttl(&DataKey::MemberCount(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
 
+        // #669: AllGroups maintained in savings as canonical source; registry is a thin index
         let mut all_groups: Vec<String> = env
             .storage().persistent().get(&DataKey::AllGroups)
             .unwrap_or(Vec::new(&env));
@@ -274,11 +278,19 @@ impl SavingsContract {
 
         env.storage().persistent().set(&DataKey::LastGroupTimestamp(admin.clone()), &env.ledger().timestamp());
 
+        env.storage().persistent().set(&DataKey::LastGroupTimestamp(admin.clone()), &env.ledger().timestamp());
+
         let mut admin_groups: Vec<String> = env
             .storage().persistent().get(&DataKey::UserGroups(admin.clone()))
             .unwrap_or(Vec::new(&env));
         admin_groups.push_back(group_id.clone());
         env.storage().persistent().set(&DataKey::UserGroups(admin.clone()), &admin_groups);
+
+        let members: Vec<Address> = Vec::new(&env);
+        env.storage().persistent().set(&DataKey::Members(group_id.clone()), &members);
+        env.storage().persistent().set(&DataKey::MemberCount(group_id.clone()), &0u32);
+        env.storage().persistent().extend_ttl(&DataKey::Members(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
+        env.storage().persistent().extend_ttl(&DataKey::MemberCount(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
 
         Self::add_admin_to_group(&env, admin.clone(), group_id.clone())?;
 
@@ -302,6 +314,15 @@ impl SavingsContract {
         if group.status != GroupStatus::Open {
             return Err(Error::GroupNotAcceptingMembers);
         }
+        if env.ledger().timestamp() >= group.start_timestamp {
+            return Err(Error::StartDateAlreadyPassed);
+        }
+
+        // #617: enforce private groups — only the admin may join a non-public group.
+        if !group.is_public && member != group.admin {
+            return Err(Error::GroupIsPrivate);
+        }
+
         if env.ledger().timestamp() >= group.start_timestamp {
             return Err(Error::StartDateAlreadyPassed);
         }
@@ -339,6 +360,7 @@ impl SavingsContract {
 
         let new_count = member_count + 1;
         env.storage().persistent().set(&DataKey::MemberCount(group_id.clone()), &new_count);
+        let new_count = Self::add_member_to_group(&env, &member, &group_id);
 
         let mut user_groups: Vec<String> = env
             .storage().persistent().get(&DataKey::UserGroups(member.clone()))
@@ -346,7 +368,17 @@ impl SavingsContract {
         user_groups.push_back(group_id.clone());
         env.storage().persistent().set(&DataKey::UserGroups(member.clone()), &user_groups);
 
+        // TODO (#670): Add cross-contract call to registry contract
+        // When a registry contract address is configured, the savings contract should call:
+        //   registry::Client::new(&env, &registry_addr).add_member(&group_id, &member)
+        // This ensures the registry stays in sync with on-chain state automatically.
+
         if new_count == group.total_members {
+            let mut group: SavingsGroup = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Group(group_id.clone()))
+                .ok_or(Error::GroupNotFound)?;
             let mut group = group.clone();
             group.status = GroupStatus::Active;
             group.current_round = 1;
@@ -360,6 +392,78 @@ impl SavingsContract {
             (symbol_short!("joined"),),
             (member, new_count),
         );
+
+        Ok(())
+    }
+
+    /// Cancel a group that is still open. Only the admin can cancel, and only
+    /// before the group becomes active (all members joined and rounds started).
+    /// Removes the group from global and per-user tracking, but does not delete
+    /// storage entries for the group itself (they will be garbage-collected by
+    /// the ledger).
+    pub fn cancel_group(env: Env, caller: Address, group_id: String) -> Result<(), Error> {
+        caller.require_auth();
+
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if caller != group.admin {
+            return Err(Error::NotAdmin);
+        }
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotOpen);
+        }
+
+        // Remove from global groups list
+        let mut all_groups: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        let mut idx: u32 = 0;
+        while idx < all_groups.len() {
+            if all_groups.get(idx).unwrap() == group_id {
+                all_groups.remove(idx);
+                break;
+            }
+            idx += 1;
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::AllGroups, &all_groups);
+
+        // Remove group from every member's UserGroups list
+        let members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        for member_addr in members.iter() {
+            let mut user_groups: Vec<String> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::UserGroups(member_addr.clone()))
+                .unwrap_or(Vec::new(&env));
+            let mut i: u32 = 0;
+            while i < user_groups.len() {
+                if user_groups.get(i).unwrap() == group_id {
+                    user_groups.remove(i);
+                    break;
+                }
+                i += 1;
+            }
+            env.storage()
+                .persistent()
+                .set(&DataKey::UserGroups(member_addr), &user_groups);
+        }
+
+        env.events()
+            .publish((symbol_short!("cancelled"),), (caller, group_id));
 
         Ok(())
     }
@@ -393,15 +497,35 @@ impl SavingsContract {
             .storage().persistent().get(&DataKey::RoundDeadline(group_id.clone(), current_round))
             .unwrap_or(0);
 
-        if env.ledger().timestamp() > deadline + GRACE_PERIOD_SECONDS {
+        let deadline_with_grace = deadline
+            .checked_add(GRACE_PERIOD_SECONDS)
+            .ok_or(Error::Overflow)?;
+
+        if env.ledger().timestamp() > deadline_with_grace {
             member_data.status = MemberStatus::Defaulted;
-            env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+            env.storage()
+                .persistent()
+                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+            env.events().publish(
+                (symbol_short!("default"),),
+                (member, group_id, current_round),
+            );
             return Err(Error::PaymentWindowClosed);
         }
 
         if env.ledger().timestamp() > deadline {
             member_data.status = MemberStatus::Overdue;
             env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+        }
+
+        // #606: move real funds from the member into the contract's custody
+        // when the group is denominated in a SEP-41 token.
+        if let Some(token) = group.token_address.clone() {
+            token::Client::new(&env, &token).transfer(
+                &member,
+                &env.current_contract_address(),
+                &group.contribution_amount,
+            );
         }
 
         let contribution = Contribution {
@@ -490,6 +614,19 @@ impl SavingsContract {
             {
                 member_data.status = MemberStatus::Defaulted;
                 env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
+            if let Some(mut member_data) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+            {
+                if member_data.status == MemberStatus::Active
+                    || member_data.status == MemberStatus::Overdue
+                {
+                    member_data.status = MemberStatus::Defaulted;
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
+                }
             }
         }
 
@@ -628,38 +765,8 @@ impl SavingsContract {
         Ok(())
     }
 
-    // #671: Verify that this group is registered on the GroupRegistry contract.
-    // Makes a cross-contract call to registry.get_group_info(contract_address).
-    // The registry address must be set via set_registry() first.
-    pub fn verify_group_registered(env: Env, group_id: String) -> Result<bool, Error> {
-        let registry_address: Address = env
-            .storage().persistent().get(&DataKey::RegistryAddress)
-            .ok_or(Error::RegistryNotSet)?;
-
-        let group: SavingsGroup = env
-            .storage().persistent().get(&DataKey::Group(group_id.clone()))
-            .ok_or(Error::GroupNotFound)?;
-
-        // Cross-contract call to registry.get_group_info(group.admin)
-        // The registry uses contract_address as the key, but we use group_id.
-        // For this verification, we pass the admin address as a proxy identifier.
-        // In production, the savings contract address itself would be used.
-        let args: Vec<soroban_sdk::Val> = Vec::from_array(
-            &env,
-            &[group.admin.to_buffer().into_val(&env)],
-        );
-
-        let _result: Result<soroban_sdk::Val, soroban_sdk::Error> = env.invoke_contract(
-            &registry_address,
-            &symbol_short!("get_grp"),
-            args,
-        );
-
-        // If the cross-contract call succeeds, the group is registered.
-        // If it fails (GroupNotFound), the group is not registered.
-        Ok(true)
-    }
-
+    // #700: cure_default allows a defaulted member to pay catch-up contributions
+    // and return to Active status, preventing permanent exclusion from the group.
     pub fn cure_default(
         env: Env,
         member: Address,
@@ -855,6 +962,16 @@ impl SavingsContract {
 
         let recipient = Self::get_next_payout_recipient(&env, group_id.clone(), current_round)?;
 
+        // #606: pay the recipient real funds from the contract's custody
+        // when the group is denominated in a SEP-41 token.
+        if let Some(token) = group.token_address.clone() {
+            token::Client::new(&env, &token).transfer(
+                &env.current_contract_address(),
+                &recipient,
+                &payout_amount,
+            );
+        }
+
         let payout = Payout {
             recipient: recipient.clone(),
             amount: payout_amount,
@@ -892,12 +1009,22 @@ impl SavingsContract {
             .unwrap_or(Vec::new(&env));
 
         for member_addr in members.iter() {
+            if let Some(mut member_data) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+            {
+                if member_data.status == MemberStatus::PaidCurrentRound {
+                    member_data.status = MemberStatus::Active;
+                }
+                // Keep Defaulted and ReceivedPayout as is
             let mut member_data: Member = env
                 .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
                 .unwrap();
 
-            if member_data.status == MemberStatus::PaidCurrentRound {
-                member_data.status = MemberStatus::Active;
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
             }
 
             env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
@@ -920,6 +1047,15 @@ impl SavingsContract {
     }
 
     fn add_admin_to_group(env: &Env, member: Address, group_id: String) -> Result<(), Error> {
+    // Helper functions
+
+    /// Internal: create and persist a new member record, push to the members
+    /// vec, and increment the member count. Returns the new member count.
+    fn add_member_to_group(
+        env: &Env,
+        member: &Address,
+        group_id: &String,
+    ) -> u32 {
         let member_count: u32 = env
             .storage().persistent().get(&DataKey::MemberCount(group_id.clone()))
             .unwrap_or(0);
@@ -943,7 +1079,27 @@ impl SavingsContract {
         env.storage().persistent().set(&DataKey::Members(group_id.clone()), &members);
 
         let new_count = member_count + 1;
-        env.storage().persistent().set(&DataKey::MemberCount(group_id.clone()), &new_count);
+        env.storage()
+            .persistent()
+            .set(&DataKey::MemberCount(group_id.clone()), &new_count);
+
+        new_count
+    }
+
+    fn add_admin_to_group(env: &Env, member: Address, group_id: String) -> Result<(), Error> {
+        // Guard: admin must not already be a member of this group
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::MemberData(group_id.clone(), member.clone()))
+        {
+            return Err(Error::AlreadyMember);
+        }
+
+        let new_count = Self::add_member_to_group(env, &member, &group_id);
+
+        env.events()
+            .publish((symbol_short!("joined"),), (member, new_count));
 
         env.events().publish((symbol_short!("joined"),), (member, new_count));
         Ok(())
@@ -970,6 +1126,8 @@ impl SavingsContract {
         contributions.len() == members.len()
     }
 
+    // #634: Best-match payout selection avoids O(n) unwrap-in-a-loop by
+    // using safe optional reads and picking the earliest eligible join_order.
     fn get_next_payout_recipient(env: &Env, group_id: String, round: u32) -> Result<Address, Error> {
         let members: Vec<Address> = env
             .storage().persistent().get(&DataKey::Members(group_id.clone()))
@@ -985,21 +1143,33 @@ impl SavingsContract {
                 Some(d) => d,
                 None => continue,
             };
+            if let Some(member_data) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+            let member_data: Member = env
+                .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+                .ok_or(Error::MemberDataMissing)?;
 
             if data.has_received_payout
                 || data.status == MemberStatus::Defaulted
                 || data.join_order < target_order
             {
-                continue;
-            }
+                if member_data.has_received_payout
+                    || member_data.status == MemberStatus::Defaulted
+                    || member_data.join_order < target_order
+                {
+                    continue;
+                }
 
-            let is_better = match &best {
-                None => true,
-                Some((best_order, _)) => data.join_order < *best_order,
-            };
+                let is_better = match &best {
+                    None => true,
+                    Some((best_order, _)) => member_data.join_order < *best_order,
+                };
 
-            if is_better {
-                best = Some((data.join_order, member_addr.clone()));
+                if is_better {
+                    best = Some((member_data.join_order, member_addr.clone()));
+                }
             }
         }
 
@@ -1040,6 +1210,7 @@ impl SavingsContract {
             .ok_or(Error::GroupNotFound)?;
 
         if round == 0 || round > group.total_members {
+            return Err(Error::InvalidRound);
             return Err(Error::GroupNotFound);
         }
 
@@ -1055,7 +1226,6 @@ impl SavingsContract {
             .unwrap_or(Vec::new(&env))
     }
 
-    // #642: Paginated UserGroups query to prevent unbounded-growth reads
     pub fn get_user_groups_page(env: Env, user: Address, page: u32, page_size: u32) -> Vec<String> {
         let all: Vec<String> = env
             .storage().persistent().get(&DataKey::UserGroups(user))

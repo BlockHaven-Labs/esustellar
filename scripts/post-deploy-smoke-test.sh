@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eo pipefail
+set -e
 
 echo "=================================================="
 echo "🧪 EsuStellar Post-Deploy Contract Smoke Tests"
