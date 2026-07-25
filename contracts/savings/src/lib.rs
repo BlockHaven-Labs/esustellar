@@ -528,7 +528,6 @@ impl SavingsContract {
             );
         }
 
-        // Record contribution
         let contribution = Contribution {
             member: member.clone(),
             amount: group.contribution_amount,
