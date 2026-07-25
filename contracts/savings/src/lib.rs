@@ -5,9 +5,8 @@ use soroban_sdk::{
     Vec,
 };
 
-/// 3 days in seconds — grace period after round deadline before a member is
-/// marked as defaulted.
-const GRACE_PERIOD_SECONDS: u64 = 259_200;
+/// Grace period after a round deadline before a member is marked defaulted, in seconds.
+const GRACE_PERIOD_SECONDS: u64 = 259200; // 3 days
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -27,6 +26,7 @@ pub enum Error {
     PaymentWindowClosed = 12,
     RecipientNotFound = 13,
     NoRecipientFound = 14,
+    Overflow = 15,
     NotAdmin = 15,
     GroupNotOpen = 16,
     AdminOnly = 15,
@@ -519,8 +519,11 @@ impl SavingsContract {
             .get(&DataKey::RoundDeadline(group_id.clone(), current_round))
             .unwrap_or(0);
 
-        if env.ledger().timestamp() > deadline + GRACE_PERIOD_SECONDS {
-            // 3 days grace period
+        let deadline_with_grace = deadline
+            .checked_add(GRACE_PERIOD_SECONDS)
+            .ok_or(Error::Overflow)?;
+
+        if env.ledger().timestamp() > deadline_with_grace {
             member_data.status = MemberStatus::Defaulted;
             env.storage()
                 .persistent()
