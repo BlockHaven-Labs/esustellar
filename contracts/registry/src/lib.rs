@@ -30,6 +30,11 @@ pub struct GroupInfo {
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
+    AllGroups,                 // Vec<Address> - all registered group contract addresses
+    UserGroups(Address),       // Vec<Address> - groups a specific user belongs to
+    GroupInfo(Address),        // GroupInfo - metadata for a specific group contract
+    GroupCount,                // u32 - total number of registered groups
+    RegisteredGroupId(String), // Address - registered group_id index mapping to contract_address
     AllGroups,
     UserGroups(Address),
     GroupInfo(Address),
@@ -54,10 +59,15 @@ impl GroupRegistry {
     ) -> Result<(), Error> {
         admin.require_auth();
 
+        // Check if group contract address or group_id is already registered
         if env
             .storage()
             .persistent()
             .has(&DataKey::GroupInfo(contract_address.clone()))
+            || env
+                .storage()
+                .persistent()
+                .has(&DataKey::RegisteredGroupId(group_id.clone()))
         {
             return Err(Error::GroupAlreadyRegistered);
         }
@@ -72,6 +82,13 @@ impl GroupRegistry {
             total_members,
         };
 
+        // Store group info and index group_id
+        env.storage()
+            .persistent()
+            .set(&DataKey::GroupInfo(contract_address.clone()), &group_info);
+        env.storage()
+            .persistent()
+            .set(&DataKey::RegisteredGroupId(group_id.clone()), &contract_address);
         env.storage()
             .persistent()
             .set(&DataKey::GroupInfo(contract_address.clone()), &group_info);
@@ -421,10 +438,13 @@ impl GroupRegistry {
             return Err(Error::NotGroupAdmin);
         }
 
-        // Remove group info
+        // Remove group info and group_id index
         env.storage()
             .persistent()
             .remove(&DataKey::GroupInfo(contract_address.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RegisteredGroupId(group_info.group_id.clone()));
 
         // Remove from all groups list
         let mut all_groups: Vec<Address> = env
