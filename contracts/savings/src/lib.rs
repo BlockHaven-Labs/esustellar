@@ -41,6 +41,7 @@ pub enum Error {
     DataExpired = 16,
     AlreadyInitialized = 15,
     ContributionTooHigh = 16,
+    InvalidRound = 18,
     GroupIsPrivate = 18,
     GroupIdAlreadyExists = 19,
     StringTooLong = 20,
@@ -1154,6 +1155,7 @@ impl SavingsContract {
             .ok_or(Error::GroupNotFound)?;
 
         if round == 0 || round > group.total_members {
+            return Err(Error::InvalidRound);
             return Err(Error::GroupNotFound);
         }
 
