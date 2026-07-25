@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+esustellar-savings = { path = "../savings" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
