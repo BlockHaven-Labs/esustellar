@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-NETWORK="testnet"
+NETWORK="${NETWORK:-testnet}"
 ROOT_DIR="$(pwd)"
 REGISTRY_DIR="contracts/registry"
 SAVINGS_DIR="contracts/savings"
@@ -23,6 +23,16 @@ command -v stellar >/dev/null 2>&1 || {
   echo "❌ Stellar CLI not found"
   exit 1
 }
+
+# Safety: confirm non-testnet deploys
+if [ "$NETWORK" != "testnet" ]; then
+  echo -e "${YELLOW}⚠️  Deploying to ${NETWORK} — this is NOT testnet.${NC}"
+  read -rp "Type the network name to confirm: " confirm
+  if [ "$confirm" != "$NETWORK" ]; then
+    echo "Aborted."
+    exit 1
+  fi
+fi
 
 echo ""
 echo -e "${YELLOW}📝 Step 1: Building contracts...${NC}"
