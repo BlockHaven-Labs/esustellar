@@ -4,15 +4,19 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
 
+// #697: Contract version for schema migration tracking.
+pub const CONTRACT_VERSION: &str = "0.1.0";
+
+// #696: Registry error codes start at 100 to avoid overlap with savings contract codes.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum Error {
-    GroupAlreadyRegistered = 1,
-    GroupNotFound = 2,
-    NotGroupAdmin = 3,
-    UserNotInGroup = 4,
-    InvalidAddress = 5,
+    GroupAlreadyRegistered = 100,
+    GroupNotFound = 101,
+    NotGroupAdmin = 102,
+    UserNotInGroup = 103,
+    InvalidAddress = 104,
 }
 
 #[contracttype]

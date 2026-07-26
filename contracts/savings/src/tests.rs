@@ -1185,9 +1185,6 @@ fn test_cannot_join_after_start_date() {
         &admin,
     );
 }
-    );
-    assert!(result.is_ok());
-}
 
 #[test]
 fn test_initialize_cannot_be_called_twice() {
@@ -1201,4 +1198,17 @@ fn test_initialize_cannot_be_called_twice() {
 
     let result = client.try_initialize(&admin);
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
+}
+
+// #698: Regression guard for symbol_short! at the 9-character Soroban limit.
+// "round_end" is exactly 9 characters. If a future rename exceeds the limit,
+// this test catches it at compile time.
+#[test]
+fn test_round_end_event_symbol_boundary() {
+    use soroban_sdk::symbol_short;
+
+    let sym = symbol_short!("round_end");
+    // Verify the symbol is exactly "round_end" — if symbol_short! ever
+    // changes behavior for the 9-char boundary, this test will fail.
+    assert_eq!(format!("{}", sym), "round_end");
 }
