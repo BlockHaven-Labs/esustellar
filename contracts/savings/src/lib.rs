@@ -502,14 +502,11 @@ impl SavingsContract {
             .ok_or(Error::Overflow)?;
 
         if env.ledger().timestamp() > deadline_with_grace {
-            member_data.status = MemberStatus::Defaulted;
-            env.storage()
-                .persistent()
-                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
-            env.events().publish(
-                (symbol_short!("default"),),
-                (member, group_id, current_round),
-            );
+            // #736/#737: Do NOT write Defaulted status here and return Err in the same
+            // invocation — Soroban reverts ALL persistent storage writes in a call frame
+            // when the function returns Result::Err, so the set() above would be silently
+            // discarded (write-then-revert). Callers must use mark_defaulted() in a
+            // separate, successful transaction to persist the Defaulted state.
             return Err(Error::PaymentWindowClosed);
         }
 
