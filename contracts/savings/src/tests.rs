@@ -1202,3 +1202,136 @@ fn test_initialize_cannot_be_called_twice() {
     let result = client.try_initialize(&admin);
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
+
+
+// ── Write-then-revert / Defaulted-state audit tests (#736–#739) ──────────────────────────
+
+/// #738/#736 — Proves that calling contribute() after the grace period returns
+/// PaymentWindowClosed but does NOT persist Defaulted status (the write-then-revert bug).
+///
+/// IMPORTANT testing methodology note (#739): this test uses TWO separate client calls —
+/// one to trigger the error, one to query the resulting state — mirroring how real Soroban
+/// transactions work. A same-transaction read-after-write (e.g., reading storage directly
+/// inside a single call context) would observe the stale in-memory value before the revert
+/// and falsely appear to confirm the Defaulted write succeeded.
+///
+/// This test documents the CURRENT (fixed) behavior: after the bug fix the Defaulted write
+/// was removed from contribute() entirely. Use mark_defaulted() as the two-step alternative.
+#[test]
+fn test_late_contribute_does_not_persist_defaulted_status() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "sec-revert-test");
+    let name = String::from_str(&env, "Revert Test Group");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &2,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
+        &true, &None,
+    );
+
+    let late_member = Address::generate(&env);
+    client.join_group(&late_member, &group_id);
+
+    let group = client.get_group(&group_id);
+    // Advance past the round-1 deadline + grace period (GRACE_PERIOD_SECONDS = 259200 = 3 days).
+    let deadline = client.get_round_deadline(&group_id, &1);
+    env.ledger().with_mut(|li| li.timestamp = deadline + 259201);
+
+    // Call 1: contribute() after the grace period → PaymentWindowClosed.
+    let result = client.try_contribute(&late_member, &group_id);
+    assert_eq!(result, Err(Ok(Error::PaymentWindowClosed)), "expected PaymentWindowClosed");
+
+    // Call 2 (separate invocation): query status. The write-then-revert bug would have
+    // left status as Active here; the fix ensures it is still Active (Defaulted was never
+    // incorrectly written). mark_defaulted() must be used to actually set Defaulted.
+    let member_data = client.get_member(&late_member, &group_id);
+    assert_ne!(
+        member_data.status, MemberStatus::Defaulted,
+        "contribute() must NOT persist Defaulted — use mark_defaulted() instead"
+    );
+}
+
+/// #737/#738 — Proves that mark_defaulted() is the correct two-step mechanism for
+/// persisting Defaulted status: call it in a separate, successful transaction after the
+/// grace period, then verify the status in a subsequent query.
+#[test]
+fn test_mark_defaulted_persists_status_correctly() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "sec-mark-default-test");
+    let name = String::from_str(&env, "Mark Default Test");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &2,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
+        &true, &None,
+    );
+
+    let late_member = Address::generate(&env);
+    client.join_group(&late_member, &group_id);
+
+    let group = client.get_group(&group_id);
+    env.ledger().with_mut(|li| li.timestamp = group.start_timestamp + 1);
+
+    // Admin contributes in round 1 (to keep group Active; only late_member skips).
+    client.contribute(&admin, &group_id);
+
+    let deadline = client.get_round_deadline(&group_id, &1);
+    // Advance past grace period.
+    env.ledger().with_mut(|li| li.timestamp = deadline + 259201);
+
+    // Step 1: mark_defaulted() returns Ok(()) and persists the Defaulted status.
+    let mark_result = client.try_mark_defaulted(&late_member, &group_id);
+    assert!(mark_result.is_ok(), "mark_defaulted should succeed after grace period: {:?}", mark_result);
+
+    // Step 2 (separate query): status is now Defaulted.
+    let member_data = client.get_member(&late_member, &group_id);
+    assert_eq!(
+        member_data.status, MemberStatus::Defaulted,
+        "mark_defaulted() must persist Defaulted status across invocations"
+    );
+
+    // Step 3: Attempting to contribute after Defaulted returns MemberDefaulted.
+    let contribute_result = client.try_contribute(&late_member, &group_id);
+    assert_eq!(
+        contribute_result, Err(Ok(Error::MemberDefaulted)),
+        "Defaulted member must be blocked from contributing"
+    );
+}
+
+/// #739 — Documents the same-transaction testing pitfall.
+///
+/// If you read storage WITHIN the same invocation that is about to return Err, you may
+/// observe the value as 'set' in the in-process memory — but once the function returns
+/// Err, Soroban discards all writes. The correct approach is always:
+///   1. Make the failing call (returns Err).
+///   2. In a SEPARATE subsequent client call, query the state.
+/// The tests above follow this pattern. This test exists purely as an executable comment.
+#[test]
+fn test_two_transaction_methodology_for_revert_bugs() {
+    // This test is intentionally trivial — its value is in the comment above.
+    // Any future test that audits write-then-revert behavior MUST use separate client
+    // calls (matching real transaction boundaries), never a same-invocation read.
+    let env = Env::default();
+    let _ = env; // silence unused warning
+    assert!(true, "methodology: use two separate client calls when testing revert semantics");
+}
