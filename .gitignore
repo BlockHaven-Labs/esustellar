@@ -44,3 +44,4 @@ infra/terraform/**/*.tfvars
 # personal note for maintainer
 # DO NOT EDIT!!!
 personalContributorNote.md
+test_snapshots/
