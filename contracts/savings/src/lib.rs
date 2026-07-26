@@ -1133,54 +1133,30 @@ impl SavingsContract {
     // #634: Best-match payout selection avoids O(n) unwrap-in-a-loop by
     // using safe optional reads and picking the earliest eligible join_order.
     fn get_next_payout_recipient(env: &Env, group_id: String, round: u32) -> Result<Address, Error> {
+        // #749: join_order is assigned sequentially starting from 0 with no code path that
+        // produces duplicates, so the recipient for round N is always the member with
+        // join_order == N - 1. We use a direct O(1) index into the Members vec (which is
+        // appended in join-time order) rather than an O(n) scan.
+        // The has_received_payout guard below is belt-and-suspenders against invariant drift
+        // — given sequential join_order uniqueness it can never fire, but it makes the
+        // contract's intent explicit should the join ordering ever change.
         let members: Vec<Address> = env
             .storage().persistent().get(&DataKey::Members(group_id.clone()))
             .unwrap_or(Vec::new(&env));
 
-        let target_order = round - 1;
-        let mut best: Option<(u32, Address)> = None;
+        let target_order = (round - 1) as u32;
+        let candidate = members.get(target_order).ok_or(Error::NoRecipientFound)?;
 
-        for member_addr in members.iter() {
-            let data: Member = match env
-                .storage().persistent().get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
-            {
-                Some(d) => d,
-                None => continue,
-            };
-            if let Some(member_data) = env
-                .storage()
-                .persistent()
-                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
-            let member_data: Member = env
-                .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
-                .ok_or(Error::MemberDataMissing)?;
+        let member_data: Member = env
+            .storage().persistent().get(&DataKey::MemberData(group_id, candidate.clone()))
+            .ok_or(Error::MemberDataMissing)?;
 
-            if data.has_received_payout
-                || data.status == MemberStatus::Defaulted
-                || data.join_order < target_order
-            {
-                if member_data.has_received_payout
-                    || member_data.status == MemberStatus::Defaulted
-                    || member_data.join_order < target_order
-                {
-                    continue;
-                }
-
-                let is_better = match &best {
-                    None => true,
-                    Some((best_order, _)) => member_data.join_order < *best_order,
-                };
-
-                if is_better {
-                    best = Some((member_data.join_order, member_addr.clone()));
-                }
-            }
+        // Belt-and-suspenders: should always be false given sequential join_order invariant.
+        if member_data.has_received_payout || member_data.status == MemberStatus::Defaulted {
+            return Err(Error::NoRecipientFound);
         }
 
-        match best {
-            Some((_, addr)) => Ok(addr),
-            None => Err(Error::NoRecipientFound),
-        }
+        Ok(candidate)
     }
 
     pub fn get_group(env: Env, group_id: String) -> Result<SavingsGroup, Error> {
