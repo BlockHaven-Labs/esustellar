@@ -10,13 +10,18 @@ contracts/
 │   ├── src/
 │   │   ├── lib.rs        # Main contract logic
 │   │   └── tests.rs      # Comprehensive tests
-│   └── Cargo.toml        # Dependencies
+│   ├── test_snapshots/   # Insta test snapshots
+│   ├── Cargo.toml        # Dependencies
+│   ├── Makefile          # Build utilities
+│   ├── .gitignore        # Git exclusions
+│   └── README.md         # This file
 ├── registry/             # Group registry & discovery contract
 │   ├── src/
 │   │   ├── lib.rs        # Registry logic
 │   │   └── tests.rs      # Registry tests
+│   ├── test_snapshots/   # Insta test snapshots
 │   └── Cargo.toml        # Dependencies
-├── README.md             # This file
+├── README.md             # Contracts overview
 └── Dockerfile            # Reproducible WASM builds
 ```
 
