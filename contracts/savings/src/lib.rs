@@ -501,15 +501,15 @@ impl SavingsContract {
             .checked_add(GRACE_PERIOD_SECONDS)
             .ok_or(Error::Overflow)?;
 
+        // AUDIT FIX (#740, #741): The original code wrote MemberStatus::Defaulted to
+        // persistent storage and then returned Err(Error::PaymentWindowClosed). In
+        // Soroban, returning Err causes the host to revert *all* storage writes made
+        // within the same invocation, so that write was silently discarded and
+        // MemberStatus::Defaulted was never actually set in production. The orphaned
+        // write has been removed; late-contribution callers now get PaymentWindowClosed
+        // and the separate mark_defaulted() admin function is responsible for
+        // transitioning the member to Defaulted status.
         if env.ledger().timestamp() > deadline_with_grace {
-            member_data.status = MemberStatus::Defaulted;
-            env.storage()
-                .persistent()
-                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
-            env.events().publish(
-                (symbol_short!("default"),),
-                (member, group_id, current_round),
-            );
             return Err(Error::PaymentWindowClosed);
         }
 
@@ -1278,3 +1278,4 @@ impl SavingsContract {
 
 #[cfg(test)]
 mod tests;
+
