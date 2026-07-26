@@ -187,6 +187,30 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Creates a new savings group with the specified parameters.
+    ///
+    /// # Preconditions
+    /// - Caller must be the admin and authorize the transaction.
+    /// - `group_id` must be unique and not already in use.
+    /// - `contribution_amount` must be between `MIN_CONTRIBUTION` and `MAX_CONTRIBUTION`.
+    /// - `total_members` must be between `MIN_MEMBERS` and `MAX_MEMBERS`.
+    /// - `start_timestamp` must be in the future and within `MAX_START_TIMESTAMP_OFFSET` seconds.
+    /// - Admin must not have created another group within the last 24 hours (rate limit).
+    /// - `group_id` and `name` must not exceed 64 characters.
+    ///
+    /// # Errors
+    /// - `Error::GroupIdAlreadyExists` if `group_id` is already taken.
+    /// - `Error::StringTooLong` if `group_id` or `name` exceeds 64 characters.
+    /// - `Error::RateLimited` if admin created a group in the last 24 hours.
+    /// - `Error::ContributionTooLow` / `Error::ContributionTooHigh` if amount is out of bounds.
+    /// - `Error::InvalidMemberCount` if `total_members` is outside the allowed range.
+    /// - `Error::StartDateMustBeFuture` / `Error::StartDateTooFarInFuture` for invalid timestamps.
+    ///
+    /// # Behavior
+    /// - Initializes the group in `Open` status with zero members.
+    /// - Adds the admin as the first member.
+    /// - Registers the group in the global groups list and the admin's user groups.
+    /// - Publishes a `created` event.
     pub fn create_group(
         env: Env,
         admin: Address,
@@ -302,6 +326,30 @@ impl SavingsContract {
         Ok(group)
     }
 
+    /// Joins an open savings group as a member.
+    ///
+    /// # Preconditions
+    /// - Caller must authorize the transaction.
+    /// - The group must exist and be in `Open` status.
+    /// - The group's start timestamp must not have passed yet.
+    /// - If the group is private, only the admin may join.
+    /// - The member must not already be part of the group.
+    /// - The group must not be full.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::GroupNotAcceptingMembers` if the group is not in `Open` status.
+    /// - `Error::StartDateAlreadyPassed` if the current time is past the start timestamp.
+    /// - `Error::GroupIsPrivate` if a non-admin tries to join a private group.
+    /// - `Error::GroupIsFull` if the group has reached its maximum member count.
+    /// - `Error::AlreadyMember` if the member is already part of the group.
+    ///
+    /// # Behavior
+    /// - Adds the member to the group with `Active` status.
+    /// - Increments the member count.
+    /// - If the group reaches full capacity, transitions to `Active` status and initializes round 1.
+    /// - Registers the group in the member's user groups list.
+    /// - Publishes a `joined` event.
     pub fn join_group(env: Env, member: Address, group_id: String) -> Result<(), Error> {
         member.require_auth();
 
@@ -468,6 +516,31 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Contributes the required amount for the current round of an active group.
+    ///
+    /// # Preconditions
+    /// - Caller must authorize the transaction.
+    /// - The group must exist and be in `Active` status.
+    /// - The caller must be a member of the group.
+    /// - The member must not have already paid for the current round.
+    /// - The member must not be in `Defaulted` status.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::GroupNotActive` if the group is not active.
+    /// - `Error::NotMember` if the caller is not a member of the group.
+    /// - `Error::MemberDefaulted` if the member has defaulted.
+    /// - `Error::AlreadyPaidThisRound` if the member already paid for this round.
+    /// - `Error::PaymentWindowClosed` if the current time is past the grace period after the deadline.
+    /// - `Error::ArithmeticOverflow` if the contribution amount causes an overflow.
+    ///
+    /// # Behavior
+    /// - Transfers tokens from the member to the contract if a token address is set.
+    /// - Records the contribution and updates the member's status to `PaidCurrentRound`.
+    /// - If the member pays after the deadline but within the grace period, status becomes `Overdue`.
+    /// - If the grace period has passed, the member is marked as `Defaulted`.
+    /// - If all members have paid, triggers payout distribution.
+    /// - Publishes a `contrib` event.
     pub fn contribute(env: Env, member: Address, group_id: String) -> Result<(), Error> {
         member.require_auth();
 
@@ -561,6 +634,20 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Cancels an open savings group and marks it as completed.
+    ///
+    /// # Preconditions
+    /// - Caller must be the admin and authorize the transaction.
+    /// - The group must exist and be in `Open` status.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::AdminOnly` if the caller is not the group admin.
+    /// - `Error::GroupNotAcceptingMembers` if the group is not in `Open` status.
+    ///
+    /// # Behavior
+    /// - Sets the group status to `Completed`.
+    /// - Publishes a `cancelled` event.
     pub fn cancel_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
         admin.require_auth();
 
@@ -583,6 +670,22 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Forcefully ends the current round when the group has stalled past the grace period.
+    ///
+    /// # Preconditions
+    /// - The group must exist and be in `Active` status.
+    /// - The current time must be past the deadline plus the grace period (3 days).
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::GroupNotActive` if the group is not active.
+    /// - `Error::RoundNotStalled` if the grace period has not yet elapsed.
+    ///
+    /// # Behavior
+    /// - Marks all members with `Active` or `Overdue` status as `Defaulted`.
+    /// - Distributes the payout to the eligible recipient.
+    /// - Pauses the group after distributing the payout.
+    /// - Publishes a `paused` event.
     pub fn force_end_round(env: Env, group_id: String) -> Result<(), Error> {
         let mut group: SavingsGroup = env
             .storage().persistent().get(&DataKey::Group(group_id.clone()))
@@ -640,6 +743,20 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Pauses an active savings group.
+    ///
+    /// # Preconditions
+    /// - Caller must be the admin and authorize the transaction.
+    /// - The group must exist and be in `Active` status.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::AdminOnly` if the caller is not the group admin.
+    /// - `Error::GroupNotActive` if the group is not active.
+    ///
+    /// # Behavior
+    /// - Sets the group status to `Paused`.
+    /// - Publishes a `paused` event.
     pub fn pause_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
         admin.require_auth();
 
@@ -661,6 +778,20 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Resumes a paused savings group.
+    ///
+    /// # Preconditions
+    /// - Caller must be the admin and authorize the transaction.
+    /// - The group must exist and be in `Paused` status.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::AdminOnly` if the caller is not the group admin.
+    /// - `Error::GroupNotActive` if the group is not paused.
+    ///
+    /// # Behavior
+    /// - Sets the group status back to `Active`.
+    /// - Publishes a `resumed` event.
     pub fn resume_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
         admin.require_auth();
 
@@ -682,6 +813,25 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Removes a member from an open savings group.
+    ///
+    /// # Preconditions
+    /// - Caller must be the admin and authorize the transaction.
+    /// - The group must exist and be in `Open` status.
+    /// - The member must be part of the group and have zero contributions.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::AdminOnly` if the caller is not the group admin.
+    /// - `Error::GroupNotAcceptingMembers` if the group is not in `Open` status.
+    /// - `Error::NotMember` if the specified member is not part of the group.
+    /// - `Error::MemberDefaulted` if the member has already made contributions.
+    ///
+    /// # Behavior
+    /// - Removes the member's data from storage.
+    /// - Removes the member from the group's members list.
+    /// - Decrements the member count.
+    /// - Publishes a `removed` event.
     pub fn remove_member(
         env: Env,
         admin: Address,
@@ -734,6 +884,20 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Transfers admin rights of a savings group to a new address.
+    ///
+    /// # Preconditions
+    /// - Caller must be the current admin and authorize the transaction.
+    /// - The group must exist.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::AdminOnly` if the caller is not the current group admin.
+    ///
+    /// # Behavior
+    /// - Updates the group's admin to the new address.
+    /// - Adds the group to the new admin's user groups list.
+    /// - Publishes an `adm_xfer` event.
     pub fn transfer_admin(
         env: Env,
         group_id: String,
@@ -766,8 +930,26 @@ impl SavingsContract {
         Ok(())
     }
 
-    // #700: cure_default allows a defaulted member to pay catch-up contributions
-    // and return to Active status, preventing permanent exclusion from the group.
+    /// Allows a defaulted member to pay catch-up contributions and return to active status.
+    ///
+    /// # Preconditions
+    /// - Caller must authorize the transaction.
+    /// - The group must exist and be in `Active` status.
+    /// - The caller must be a member of the group with `Defaulted` status.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::GroupNotActive` if the group is not active.
+    /// - `Error::NotMember` if the caller is not a member of the group.
+    /// - `Error::NotDefaulted` if the member is not in `Defaulted` status.
+    /// - `Error::CatchUpRequired` if there are no missed rounds to catch up on.
+    /// - `Error::ArithmeticOverflow` if the catch-up amount causes an overflow.
+    ///
+    /// # Behavior
+    /// - Calculates the number of missed rounds since the last paid round.
+    /// - Computes the catch-up amount as `contribution_amount * missed_rounds`.
+    /// - Updates the member's total contributions and sets status back to `Active`.
+    /// - Publishes a `cured` event with the catch-up amount and missed rounds.
     pub fn cure_default(
         env: Env,
         member: Address,
@@ -829,6 +1011,20 @@ impl SavingsContract {
         Ok(())
     }
 
+    /// Retries payout distribution for the current round if all members have paid.
+    ///
+    /// # Preconditions
+    /// - The group must exist and be in `Active` status.
+    /// - All members must have contributed for the current round.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::GroupNotActive` if the group is not active.
+    /// - `Error::NotAllPaid` if not all members have contributed.
+    ///
+    /// # Behavior
+    /// - If payouts have already been distributed for the current round, returns early.
+    /// - Otherwise, triggers the payout distribution for the current round.
     pub fn retry_distribution(env: Env, group_id: String) -> Result<(), Error> {
         let group: SavingsGroup = env
             .storage().persistent().get(&DataKey::Group(group_id.clone()))
@@ -862,6 +1058,21 @@ impl SavingsContract {
         Self::distribute_payout(env, group_id)
     }
 
+    /// Claims a refund for a member who contributed but did not receive a payout in a round.
+    ///
+    /// # Preconditions
+    /// - Caller must authorize the transaction.
+    /// - The group and member must exist.
+    /// - The member must have contributed for the specified round.
+    /// - The member must not have received a payout for that round.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::NotMember` if the caller is not a member of the group.
+    /// - `Error::NoRefundAvailable` if the member did not contribute or already received a payout.
+    ///
+    /// # Behavior
+    /// - Returns the contributed amount if the member is eligible for a refund.
     pub fn claim_refund(
         env: Env,
         member: Address,
@@ -909,6 +1120,22 @@ impl SavingsContract {
         Ok(contributed_amount)
     }
 
+    /// Marks a member as defaulted if the grace period for the current round has elapsed.
+    ///
+    /// # Preconditions
+    /// - The group must exist and be in `Active` status.
+    /// - The member must be part of the group.
+    /// - The current time must be past the deadline plus the grace period.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::NotMember` if the member is not part of the group.
+    /// - `Error::GroupNotActive` if the group is not active.
+    ///
+    /// # Behavior
+    /// - If the member is already defaulted or has received a payout, returns early.
+    /// - Sets the member's status to `Defaulted` if the grace period has elapsed.
+    /// - Publishes a `defaulted` event with the member and current round.
     pub fn mark_defaulted(env: Env, member: Address, group_id: String) -> Result<(), Error> {
         let group: SavingsGroup = env
             .storage().persistent().get(&DataKey::Group(group_id.clone()))
@@ -1180,31 +1407,50 @@ impl SavingsContract {
         }
     }
 
+    /// Retrieves a savings group by its ID.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
     pub fn get_group(env: Env, group_id: String) -> Result<SavingsGroup, Error> {
         env.storage().persistent().get(&DataKey::Group(group_id))
             .ok_or(Error::GroupNotFound)
     }
 
+    /// Retrieves a member's data from a specific group.
+    ///
+    /// # Errors
+    /// - `Error::NotMember` if the member is not part of the group.
     pub fn get_member(env: Env, member: Address, group_id: String) -> Result<Member, Error> {
         env.storage().persistent().get(&DataKey::MemberData(group_id, member))
             .ok_or(Error::NotMember)
     }
 
+    /// Returns the list of all member addresses in a group.
     pub fn get_members(env: Env, group_id: String) -> Vec<Address> {
         env.storage().persistent().get(&DataKey::Members(group_id))
             .unwrap_or(Vec::new(&env))
     }
 
+    /// Returns all contributions made for a specific round of a group.
     pub fn get_round_contributions(env: Env, group_id: String, round: u32) -> Vec<Contribution> {
         env.storage().persistent().get(&DataKey::Contributions(group_id, round))
             .unwrap_or(Vec::new(&env))
     }
 
+    /// Returns all payouts distributed for a specific round of a group.
     pub fn get_round_payouts(env: Env, group_id: String, round: u32) -> Vec<Payout> {
         env.storage().persistent().get(&DataKey::Payouts(group_id, round))
             .unwrap_or(Vec::new(&env))
     }
 
+    /// Returns the deadline timestamp for a specific round of a group.
+    ///
+    /// # Errors
+    /// - `Error::GroupNotFound` if the group does not exist.
+    /// - `Error::InvalidRound` if the round is 0 or exceeds the total number of members.
+    ///
+    /// # Behavior
+    /// - Returns the stored deadline if available, otherwise calculates it based on the group's frequency.
     pub fn get_round_deadline(env: Env, group_id: String, round: u32) -> Result<u64, Error> {
         let group: SavingsGroup = env
             .storage().persistent().get(&DataKey::Group(group_id.clone()))
@@ -1222,11 +1468,20 @@ impl SavingsContract {
         Ok(Self::calculate_deadline(&env, &group, round))
     }
 
+    /// Returns all group IDs that a user is a member of.
     pub fn get_user_groups(env: Env, user: Address) -> Vec<String> {
         env.storage().persistent().get(&DataKey::UserGroups(user))
             .unwrap_or(Vec::new(&env))
     }
 
+    /// Returns a paginated list of group IDs that a user is a member of.
+    ///
+    /// # Arguments
+    /// - `page` - Zero-indexed page number.
+    /// - `page_size` - Number of items per page.
+    ///
+    /// # Behavior
+    /// - Returns an empty vector if the page is out of bounds.
     pub fn get_user_groups_page(env: Env, user: Address, page: u32, page_size: u32) -> Vec<String> {
         let all: Vec<String> = env
             .storage().persistent().get(&DataKey::UserGroups(user))
@@ -1244,11 +1499,20 @@ impl SavingsContract {
         result
     }
 
+    /// Returns all group IDs registered in the contract.
     pub fn get_all_groups(env: Env) -> Vec<String> {
         env.storage().persistent().get(&DataKey::AllGroups)
             .unwrap_or(Vec::new(&env))
     }
 
+    /// Returns a paginated list of all group IDs registered in the contract.
+    ///
+    /// # Arguments
+    /// - `page` - Zero-indexed page number.
+    /// - `page_size` - Number of items per page.
+    ///
+    /// # Behavior
+    /// - Returns an empty vector if the page is out of bounds.
     pub fn get_groups_page(env: Env, page: u32, page_size: u32) -> Vec<String> {
         let all_groups: Vec<String> = env
             .storage().persistent().get(&DataKey::AllGroups)
@@ -1268,6 +1532,7 @@ impl SavingsContract {
         result
     }
 
+    /// Returns the total number of groups registered in the contract.
     pub fn get_group_total_count(env: Env) -> u32 {
         let all_groups: Vec<String> = env
             .storage().persistent().get(&DataKey::AllGroups)
