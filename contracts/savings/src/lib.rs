@@ -994,9 +994,10 @@ impl SavingsContract {
         recipient_data.status = MemberStatus::ReceivedPayout;
         env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), recipient.clone()), &recipient_data);
 
+        // #752: include group_id so the activity feed can attribute this payout
         env.events().publish(
             (symbol_short!("payout"),),
-            (recipient, payout_amount, current_round),
+            (group_id.clone(), recipient, payout_amount, current_round),
         );
 
         Self::end_round(env, group_id, group)?;
@@ -1041,8 +1042,12 @@ impl SavingsContract {
 
         env.storage().persistent().set(&DataKey::Group(group_id), &group);
 
-        env.events()
-            .publish((symbol_short!("round_end"),), group.current_round - 1);
+        // #753: add group_id and wrap round number in a tuple for consistent shape
+        let ended_round = if group.current_round > 0 { group.current_round - 1 } else { 0 };
+        env.events().publish(
+            (symbol_short!("round_end"),),
+            (group_id.clone(), ended_round),
+        );
 
         Ok(())
     }
@@ -1278,3 +1283,4 @@ impl SavingsContract {
 
 #[cfg(test)]
 mod tests;
+
