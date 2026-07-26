@@ -80,7 +80,7 @@ impl GroupRegistry {
             .map_err(|_| Error::InvalidAddress)?
             .map_err(|_| Error::InvalidAddress)?;
         if savings_group.admin != admin {
-            return Err(Error::InvalidAddress);
+            return Err(Error::NotGroupAdmin);
         }
 
         let group_info = GroupInfo {
@@ -256,51 +256,33 @@ impl GroupRegistry {
     pub fn update_group_info(
         env: Env,
         contract_address: Address,
-        member: Address,
+        admin: Address,
+        name: String,
+        is_public: bool,
+        total_members: u32,
     ) -> Result<(), Error> {
-        let _group_info: GroupInfo = env
+        admin.require_auth();
+
+        let mut group_info: GroupInfo = env
             .storage()
             .persistent()
             .get(&DataKey::GroupInfo(contract_address.clone()))
             .ok_or(Error::GroupNotFound)?;
 
-        // Get user's groups
-        let user_groups: Vec<Address> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserGroups(member.clone()))
-            .unwrap_or(Vec::new(&env));
-
-        let mut new_groups: Vec<Address> = Vec::new(&env);
-        let mut found = false;
-        for addr in user_groups.iter() {
-            if addr == contract_address {
-                found = true;
-            } else {
-                new_groups.push_back(addr);
-        // Find and remove the group from user's list
-        let mut found = false;
-        let mut new_user_groups: Vec<Address> = Vec::new(&env);
-        for i in 0..user_groups.len() {
-            if let Some(addr) = user_groups.get(i) {
-                if addr == contract_address {
-                    found = true;
-                } else {
-                    new_user_groups.push_back(addr);
-                }
-            }
+        if group_info.admin != admin {
+            return Err(Error::NotGroupAdmin);
         }
 
-        if !found {
-            return Err(Error::UserNotInGroup);
-        }
+        group_info.name = name;
+        group_info.is_public = is_public;
+        group_info.total_members = total_members;
 
         env.storage()
             .persistent()
-            .set(&DataKey::UserGroups(member.clone()), &new_groups);
+            .set(&DataKey::GroupInfo(contract_address.clone()), &group_info);
 
         env.events()
-            .publish((symbol_short!("rem_mem"),), (contract_address, member));
+            .publish((symbol_short!("upd_info"),), (contract_address, admin));
 
         Ok(())
     }
