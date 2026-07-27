@@ -1,0 +1,15 @@
+{
+  "screen": "GroupDetailScreen",
+  "props": {
+    "group": {
+      "id": "g1",
+      "name": "Family Savings",
+      "contributionAmount": 100,
+      "maxMembers": 8
+    },
+    "myContributions": 3,
+    "nextPayout": "2025-08-01"
+  },
+  "hash": "55ebc94d637989e5",
+  "capturedAt": "2026-06-25T20:34:53.476Z"
+}

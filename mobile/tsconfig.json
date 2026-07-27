@@ -1,5 +1,5 @@
 {
-  "extends": "./node_modules/expo/tsconfig.base.json",
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
@@ -11,6 +11,8 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "moduleResolution": "node"
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "ignoreDeprecations": "6.0"
   }
 }

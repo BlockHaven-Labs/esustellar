@@ -4,7 +4,7 @@ import {
   setAutoLockTimeout,
   DEFAULT_TIMEOUT,
   AUTO_LOCK_OPTIONS,
-} from '../../hooks/useAutoLock';
+} from '@/hooks/useAutoLock';
 
 describe('useAutoLock helpers', () => {
   beforeEach(() => AsyncStorage.clear());

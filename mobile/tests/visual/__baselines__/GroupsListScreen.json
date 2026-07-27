@@ -1,0 +1,20 @@
+{
+  "screen": "GroupsListScreen",
+  "props": {
+    "groups": [
+      {
+        "id": "g1",
+        "name": "Family Savings",
+        "members": 4
+      },
+      {
+        "id": "g2",
+        "name": "Investment Club",
+        "members": 6
+      }
+    ],
+    "isLoading": false
+  },
+  "hash": "ba293e3af38a9e6c",
+  "capturedAt": "2026-06-25T20:34:53.475Z"
+}

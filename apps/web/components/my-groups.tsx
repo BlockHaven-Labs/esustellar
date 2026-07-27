@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Plus, ArrowRight, RefreshCw } from "lucide-react";
 import { useUserGroups } from "@/hooks/useUserGroups";
 import { useWallet } from "@/hooks/use-wallet";
+import { formatDate } from "@/lib/format";
 
 export function MyGroups() {
   const { groups, loading, error, refetch } = useUserGroups();
@@ -171,7 +172,7 @@ export function MyGroups() {
                 {typeof group.roundDeadlineTimestamp === "number" &&
                 group.roundDeadlineTimestamp > 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    Next payment due: {new Date(group.roundDeadlineTimestamp * 1000).toLocaleDateString()}
+                    Next payment due: {formatDate(group.roundDeadlineTimestamp * 1000, { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 ) : null}
                 <div className="flex items-center gap-2 pt-1">

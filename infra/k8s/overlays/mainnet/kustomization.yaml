@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: esustellar
+resources:
+  - ../../base
+images:
+  - name: blockhaven/esustellar-web
+    newTag: mainnet-latest
+replicas:
+  - name: esustellar-web
+    count: 3
+patches:
+  - target:
+      kind: Deployment
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: NEXT_PUBLIC_NETWORK
+            value: public
+          - name: STELLAR_NETWORK
+            value: public

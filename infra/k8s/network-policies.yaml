@@ -1,0 +1,89 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: esustellar
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: esustellar
+spec:
+  podSelector:
+    matchLabels:
+      app: esustellar-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+      ports:
+        - port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring
+  namespace: esustellar
+spec:
+  podSelector:
+    matchLabels:
+      app: esustellar-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: esustellar-monitoring
+      ports:
+        - port: 9464
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: esustellar
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-only-api-egress
+  namespace: esustellar
+spec:
+  podSelector:
+    matchLabels:
+      app: esustellar-web
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 443
+        - port: 80
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: esustellar-monitoring

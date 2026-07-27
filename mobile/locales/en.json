@@ -1,0 +1,159 @@
+{
+  "common": {
+    "appName": "EsuStellar",
+    "back": "Back",
+    "enable": "Enable",
+    "disable": "Disable",
+    "loading": "Loading...",
+    "unavailable": "Unavailable"
+  },
+  "tabs": {
+    "home": "Home",
+    "groups": "Groups",
+    "notifications": "Notifications",
+    "profile": "Profile"
+  },
+  "home": {
+    "goodMorning": "Good morning",
+    "goodAfternoon": "Good afternoon",
+    "goodEvening": "Good evening",
+    "defaultUser": "EsuStellar User",
+    "totalBalance": "Total Balance",
+    "quickActions": "Quick Actions",
+    "balanceValue": "— XLM",
+    "notifications": "Notifications"
+  },
+  "onboarding": {
+    "skip": "Skip",
+    "next": "Next",
+    "getStarted": "Get Started",
+    "stayInformed": "Stay informed",
+    "notificationBody": "Get reminders for due dates, payouts, and group updates so you never miss an important moment.",
+    "allowNotifications": "Allow Notifications",
+    "skipForNow": "Skip for now",
+    "slides": {
+      "welcome": {
+        "eyebrow": "Welcome",
+        "title": "Save with people you trust",
+        "description": "Bring your community savings circle on-chain without losing the familiar group experience."
+      },
+      "transparent": {
+        "eyebrow": "Transparent",
+        "title": "Track every contribution clearly",
+        "description": "Stay on top of payouts, due dates, and group progress with simple updates in one place."
+      },
+      "secure": {
+        "eyebrow": "Secure",
+        "title": "Start with confidence",
+        "description": "Connect your Stellar wallet, manage your security options, and receive helpful reminders when it matters."
+      }
+    }
+  },
+  "settings": {
+    "title": "Security Settings",
+    "walletAddress": "Wallet Address",
+    "copyWalletAddress": "Copy wallet address",
+    "copyToast": "Wallet address copied to clipboard",
+    "copyFailed": "Failed to copy wallet address",
+    "biometricAuthentication": "Biometric Authentication",
+    "supported": "Supported",
+    "enableBiometrics": "Enable biometrics",
+    "useToSignIn": "Use {{supportedLabel}} to sign in",
+    "checkingDeviceCapabilities": "Checking device capabilities…",
+    "biometricsNotSupported": "Biometrics not supported on this device",
+    "setUpPinFallback": "Set a PIN below as a fallback when biometrics are unavailable.",
+    "noBiometricsEnrolled": "No biometrics enrolled",
+    "setupBiometricsHelper": "Please set up fingerprint or face recognition in your device settings, then return here to enable it.",
+    "about": "About",
+    "version": "Version",
+    "build": "Build",
+    "pinFallback": "PIN Fallback",
+    "pinDescription": "Set a 4-6 digit PIN as a fallback when biometrics are unavailable.",
+    "setUpPin": "Set up PIN",
+    "enterPin": "Enter your PIN",
+    "confirmYourPin": "Confirm your PIN",
+    "pinDigits": "4-6 digits",
+    "reenterPin": "Re-enter PIN",
+    "cancel": "Cancel",
+    "next": "Next",
+    "confirm": "Confirm",
+    "pinSet": "PIN is set",
+    "pinFallbackInfo": "Used as fallback when biometrics fail",
+    "change": "Change",
+    "remove": "Remove",
+    "pinMustDigits": "PIN must be 4-6 digits",
+    "pinsDoNotMatch": "PINs do not match",
+    "biometricsEnabled": "Biometric authentication enabled",
+    "biometricsDisabled": "Biometric authentication disabled",
+    "biometricFailed": "Biometric verification failed",
+    "failedToSavePin": "Failed to save PIN",
+    "pinRemoved": "PIN removed",
+    "language": "Language",
+    "languageLabel": "Choose your app language",
+    "languageChangeSuccess": "Language updated.",
+    "haptics": "Haptics",
+    "hapticsDescription": "Use subtle vibration feedback for important interactions and status changes."
+  },
+  "groups": {
+    "title": "Groups",
+    "searchPlaceholder": "Search groups...",
+    "filters": {
+      "all": "All",
+      "joined": "Joined",
+      "open": "Open"
+    },
+    "errors": {
+      "fetchFailed": "Failed to fetch groups. Please check your connection and try again."
+    },
+    "emptyTitle": "No groups to show",
+    "emptyMessage": "Try another filter to see matching groups.",
+    "memberCount_one": "{{count}} member",
+    "memberCount_other": "{{count}} members"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "Trigger a local notification to verify foreground banners and tap navigation.",
+    "scheduleGroupDetail": "Schedule Group Detail Notification",
+    "scheduleFallback": "Schedule Fallback Notification",
+    "markAllAsRead": "Mark all as read",
+    "categories": {
+      "all": "All",
+      "payments": "Payments",
+      "members": "Members",
+      "updates": "Updates",
+      "groups": "Groups"
+    },
+    "contributionDueTitle": "Contribution due",
+    "contributionDueBody": "Tap to open the group detail screen.",
+    "unknownDestinationTitle": "Unknown destination",
+    "unknownDestinationBody": "Tap to test the home-screen fallback route.",
+    "scheduledTitle": "Notification scheduled",
+    "scheduledBody": "A test notification will appear in 2 seconds.",
+    "fallbackScheduledTitle": "Fallback notification scheduled",
+    "fallbackScheduledBody": "A test notification with an unknown route will appear in 2 seconds.",
+    "unableToScheduleTitle": "Unable to schedule notification",
+    "unableToScheduleBody": "Please try again."
+  },
+  "profile": {
+    "editProfile": "Edit Profile",
+    "settings": "Settings",
+    "disconnectWallet": "Disconnect Wallet"
+  },
+  "notificationSettings": {
+    "loading": "Loading settings...",
+    "title": "Notification Settings",
+    "description": "Choose which push notifications you want to receive",
+    "contributionRemindersTitle": "Contribution Reminders",
+    "contributionRemindersDescription": "Get notified when your contributions are due",
+    "payoutReceivedTitle": "Payout Received",
+    "payoutReceivedDescription": "Notifications when you receive payouts",
+    "newMemberJoinedTitle": "New Member Joined",
+    "newMemberJoinedDescription": "When new members join your groups",
+    "groupStatusChangesTitle": "Group Status Changes",
+    "groupStatusChangesDescription": "Updates when group status changes"
+  },
+  "lock": {
+    "tapToUnlock": "Tap to unlock",
+    "biometricPrompt": "Unlock {{appName}}"
+  }
+}

@@ -15,6 +15,7 @@ import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 
 import Button from '../../components/ui/Button';
+import WalletSwitcher from '../../components/wallet/WalletSwitcher';
 
 import {
   biometricService,
@@ -32,16 +33,29 @@ import {
 } from '../../services/security/securityPreferences';
 
 import {
-  changeLanguage,
+  getAutoLockTimeout,
+  setAutoLockTimeout as persistAutoLockTimeout,
+  AUTO_LOCK_OPTIONS,
+} from '../../hooks/useAutoLock';
+
+import {
   getLanguage,
   languageOptions,
   loadLanguage,
 } from '../../constants/i18n';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuthStore } from '../../store/authStore';
+import { getActiveWallet, WalletEntry } from '../../services/wallet/multiWallet';
+import * as Clipboard from 'expo-clipboard';
+import ExperimentalFeatures from '../../components/ExperimentalFeatures';
+import {
+  loadHapticsPreference,
+  setHapticsEnabled as persistHapticsEnabled,
+  triggerHapticFeedback,
+} from '../../services/haptics';
+import { getJSEngine } from '../../utils/hermes';
 
 const BIOMETRIC_LOCK_KEY = 'biometricLockEnabled';
-const WALLET_ADDRESS =
-  'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -61,12 +75,17 @@ export default function SettingsScreen() {
     });
 
   const [biometricEnabledLocal, setBiometricEnabledLocal] = useState(false);
+  const [autoLockTimeout, setAutoLockTimeout] = useState(300);
 
   const [pinSet, setPinSet] = useState(false);
   const [pinLockoutRemainingMs, setPinLockoutRemainingMs] = useState(0);
+  const [activeWallet, setActiveWallet] = useState<WalletEntry | null>(null);
+  const [walletSwitcherVisible, setWalletSwitcherVisible] = useState(false);
 
   const [language, setLanguage] = useState(getLanguage());
+  const [hapticsEnabled, setHapticsEnabledState] = useState(true);
   const [authenticating, setAuthenticating] = useState(false);
+  const setWallet = useAuthStore((state) => state.setWallet);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -76,14 +95,25 @@ export default function SettingsScreen() {
     let active = true;
 
     void (async () => {
-      const [cap, prefs, pinStatus, storedLang, storedToggle] =
-        await Promise.all([
-          biometricService.getCapability(),
-          getSecurityPreferences(),
-          pinService.getStatus(),
-          loadLanguage(),
-          AsyncStorage.getItem(BIOMETRIC_LOCK_KEY),
-        ]);
+      const [
+        cap,
+        prefs,
+        pinStatus,
+        storedLang,
+        storedToggle,
+        storedHaptics,
+        activeWalletEntry,
+        storedAutoLock,
+      ] = await Promise.all([
+        biometricService.getCapability(),
+        getSecurityPreferences(),
+        pinService.getStatus(),
+        loadLanguage(),
+        AsyncStorage.getItem(BIOMETRIC_LOCK_KEY),
+        loadHapticsPreference(),
+        getActiveWallet(),
+        getAutoLockTimeout(),
+      ]);
 
       if (!active) return;
 
@@ -93,22 +123,37 @@ export default function SettingsScreen() {
       setPinLockoutRemainingMs(pinStatus.remainingLockoutMs);
       setLanguage(storedLang);
       setBiometricEnabledLocal(storedToggle === 'true');
+      setHapticsEnabledState(storedHaptics);
+      setAutoLockTimeout(storedAutoLock);
+      setActiveWallet(activeWalletEntry);
+
+      if (activeWalletEntry) {
+        setWallet({
+          publicKey: activeWalletEntry.publicKey,
+          walletType: 'multiWallet',
+        });
+      }
+
       setLoading(false);
     })();
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [setWallet]);
 
   useFocusEffect(loadSecurityState);
 
   // ── Labels ─────────────────────────────────────────
 
+  const truncateKey = (key: string) => {
+    return `${key.slice(0, 6)}...${key.slice(-4)}`;
+  };
+
   const supportedLabel = useMemo(() => {
     if (
       biometricCap.supportedTypes.length === 0 ||
-      biometricCap.supportedTypes.includes(BiometricType.NONE)
+      biometricCap.supportedTypes.some((type) => type === BiometricType.NONE)
     ) {
       return 'Unavailable';
     }
@@ -133,6 +178,7 @@ export default function SettingsScreen() {
 
   const handleBiometricToggle = async () => {
     if (biometricCap.status !== SecurityStatus.AVAILABLE) {
+      void triggerHapticFeedback.warning();
       Alert.alert('Unavailable', 'Set up biometrics first.');
       return;
     }
@@ -148,6 +194,7 @@ export default function SettingsScreen() {
     setAuthenticating(false);
 
     if (!result.success) {
+      void triggerHapticFeedback.error();
       setMessage(result.error ?? 'Failed');
       return;
     }
@@ -156,6 +203,7 @@ export default function SettingsScreen() {
       biometricEnabled: !securityPreferences.biometricEnabled,
     });
 
+    void triggerHapticFeedback.success();
     setSecurityPreferences(next);
   };
 
@@ -163,12 +211,30 @@ export default function SettingsScreen() {
 
   const handleLocalToggle = async (value: boolean) => {
     if (value) {
+      if (biometricCap.status !== SecurityStatus.AVAILABLE) {
+        Alert.alert('Unavailable', 'Set up biometrics first.');
+        return;
+      }
+
       const result = await biometricService.authenticate('Enable lock');
-      if (!result.success) return;
+      if (!result.success) {
+        void triggerHapticFeedback.error();
+        return;
+      }
     }
 
     setBiometricEnabledLocal(value);
     await AsyncStorage.setItem(BIOMETRIC_LOCK_KEY, value ? 'true' : 'false');
+    void triggerHapticFeedback.selection();
+  };
+
+  const handleHapticsToggle = async (value: boolean) => {
+    await persistHapticsEnabled(value);
+    setHapticsEnabledState(value);
+
+    if (value) {
+      void triggerHapticFeedback.selection();
+    }
   };
 
   // ── PIN ───────────────────────────────────────────
@@ -183,6 +249,7 @@ export default function SettingsScreen() {
           await pinService.removePin();
           const next = await saveSecurityPreferences({ pinEnabled: false });
 
+          void triggerHapticFeedback.success();
           setSecurityPreferences(next);
           setPinSet(false);
         },
@@ -193,10 +260,18 @@ export default function SettingsScreen() {
   // ── Wallet copy ───────────────────────────────────
 
   const handleCopy = async () => {
+    if (!activeWallet?.publicKey) {
+      void triggerHapticFeedback.error();
+      setMessage('No active wallet available');
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(WALLET_ADDRESS);
+      await Clipboard.setStringAsync(activeWallet.publicKey);
+      void triggerHapticFeedback.success();
       setMessage('Copied');
     } catch {
+      void triggerHapticFeedback.error();
       setMessage('Failed to copy');
     }
   };
@@ -225,10 +300,32 @@ export default function SettingsScreen() {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <Text style={[styles.valueText, { color: colors.text }]}>
-            {WALLET_ADDRESS}
-          </Text>
-          <Button onPress={handleCopy}>Copy</Button>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Wallet</Text>
+          {activeWallet ? (
+            <>
+              <Text style={[styles.valueText, { color: colors.text }]}>
+                {activeWallet.label}
+              </Text>
+              <Text style={[styles.helperText, { color: colors.subtext }]}> 
+                {truncateKey(activeWallet.publicKey)}
+              </Text>
+            </>
+          ) : (
+            <Text style={[styles.helperText, { color: colors.subtext }]}>No active wallet selected.</Text>
+          )}
+
+          <View style={styles.walletActions}>
+            <Button onPress={() => setWalletSwitcherVisible(true)}>
+              Manage wallets
+            </Button>
+            <Button variant="outline" onPress={() => router.push('/wallet/add')}>
+              Add wallet
+            </Button>
+          </View>
+
+          <Button onPress={handleCopy} disabled={!activeWallet}>
+            Copy address
+          </Button>
         </View>
 
         {/* Language */}
@@ -239,22 +336,30 @@ export default function SettingsScreen() {
           ]}
         >
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Language
+            {t('settings.language')}
           </Text>
-          {languageOptions.map((opt) => (
-            <Button
-              key={opt.value}
-              onPress={async () => {
-                await changeLanguage(opt.value);
-                setLanguage(opt.value);
-              }}
-            >
-              {opt.label}
-            </Button>
-          ))}
+          <Button onPress={() => router.push('/settings/language')}>
+            {languageOptions.find((o) => o.value === language)?.label ??
+              language.toUpperCase()}
+          </Button>
+        </View>
+
+        {/* Notifications */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Notifications
+          </Text>
           <Text style={[styles.helperText, { color: colors.subtext }]}>
-            Current: {language.toUpperCase()}
+            Configure quiet hours and Do Not Disturb.
           </Text>
+          <Button onPress={() => router.push('/settings/notifications')}>
+            Notification Settings
+          </Button>
         </View>
 
         {/* Appearance */}
@@ -301,6 +406,22 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
+        {/* Haptics */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            {t('settings.haptics')}
+          </Text>
+          <Text style={[styles.helperText, { color: colors.subtext }]}>
+            {t('settings.hapticsDescription')}
+          </Text>
+          <Switch value={hapticsEnabled} onValueChange={handleHapticsToggle} />
+        </View>
+
         {/* Biometrics */}
         <View
           style={[
@@ -320,7 +441,7 @@ export default function SettingsScreen() {
           </Button>
         </View>
 
-        {/* Simple Lock Toggle */}
+        {/* Biometric Lock */}
         <View
           style={[
             styles.section,
@@ -328,11 +449,15 @@ export default function SettingsScreen() {
           ]}
         >
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Biometric Lock
+            Use Biometric Lock
+          </Text>
+          <Text style={[styles.helperText, { color: colors.subtext }]}>
+            Protect the app when it returns from the background.
           </Text>
           <Switch
             value={biometricEnabledLocal}
             onValueChange={handleLocalToggle}
+            disabled={biometricCap.status !== SecurityStatus.AVAILABLE}
           />
         </View>
 
@@ -367,7 +492,96 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        <WalletSwitcher
+          visible={walletSwitcherVisible}
+          onClose={() => setWalletSwitcherVisible(false)}
+          onWalletChanged={(wallet) => {
+            setActiveWallet(wallet);
+            setWallet({ publicKey: wallet.publicKey, walletType: 'multiWallet' });
+          }}
+          onAddWallet={() => {
+            setWalletSwitcherVisible(false);
+            router.push('/wallet/add');
+          }}
+        />
+
+        {/* Wallet Recovery */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Wallet Recovery
+          </Text>
+          <Text style={[styles.helperText, { color: colors.subtext }]}>
+            Review backup instructions and recovery safety checks.
+          </Text>
+          <Button onPress={() => router.push('/wallet/recovery')}>
+            Open Recovery Options
+          </Button>
+        </View>
+
+        <ExperimentalFeatures />
+
+        {/* Auto-lock */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Auto-lock after
+          </Text>
+          <View style={styles.row}>
+            {AUTO_LOCK_OPTIONS.map((option) => {
+              const selected = autoLockTimeout === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={async () => {
+                    setAutoLockTimeout(option.value);
+                    await persistAutoLockTimeout(option.value);
+                    void triggerHapticFeedback.selection();
+                  }}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor: selected ? colors.accent : 'transparent',
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: selected ? '#FFFFFF' : colors.text }}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         {/* About */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Legal
+          </Text>
+          <Button onPress={() => router.push('/legal/terms')}>
+            Terms of Service
+          </Button>
+          <Button onPress={() => router.push('/legal/privacy')}>
+            Privacy Policy
+          </Button>
+        </View>
+
+        {/* Version */}
         <View
           style={[
             styles.section,
@@ -376,6 +590,9 @@ export default function SettingsScreen() {
         >
           <Text style={[styles.helperText, { color: colors.subtext }]}>
             Version: {Constants.expoConfig?.version}
+          </Text>
+          <Text style={[styles.helperText, { color: colors.subtext }]}>
+            JS Engine: {getJSEngine()}
           </Text>
         </View>
 
@@ -416,6 +633,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 8,
+  },
+  walletActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
   },
   pill: {
     borderWidth: 1,

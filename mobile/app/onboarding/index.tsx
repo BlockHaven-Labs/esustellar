@@ -15,6 +15,8 @@ import {
   registerForPushNotificationsAsync,
 } from '../../services/notifications/notificationService';
 
+import PaginationDots from '../../components/onboarding/PaginationDots';
+
 const ONBOARDING_KEY = 'onboardingComplete';
 
 const SLIDES = [
@@ -119,17 +121,7 @@ export default function OnboardingScreen() {
         <Text style={styles.description}>{slide.description}</Text>
       </View>
 
-      <View style={styles.progressRow}>
-        {SLIDES.map((_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.progressDot,
-              index === currentStep ? styles.progressDotActive : null,
-            ]}
-          />
-        ))}
-      </View>
+      <PaginationDots total={SLIDES.length} current={currentStep} />
 
       <Pressable
         accessibilityRole="button"
@@ -141,10 +133,50 @@ export default function OnboardingScreen() {
           {isLastStep ? 'Get Started' : 'Next'}
         </Text>
       </Pressable>
+      
+      {isLastStep && (
+      <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/wallet/recovery')}
+          style={styles.secondaryButton}
+        >
+          <Text style={styles.secondaryButtonText}>Recover existing wallet</Text>
+        </Pressable>
+      )}
+
+      {isLastStep && (
+        <Pressable
+          accessibilityRole="link"
+          onPress={() => router.push('/onboarding/how-it-works')}
+          style={styles.howItWorksLink}
+          testID="onboarding-how-it-works"
+        >
+          <Text style={styles.howItWorksText}>See how it works first</Text>
+        </Pressable>
+      )}
+
+      {isLastStep && (
+        <View style={styles.legalLinks}>
+          <Text style={styles.legalText}>By continuing, you agree to our </Text>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.push('/legal/terms')}
+          >
+            <Text style={styles.legalLink}>Terms of Service</Text>
+          </Pressable>
+          <Text style={styles.legalText}> and </Text>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.push('/legal/privacy')}
+          >
+            <Text style={styles.legalLink}>Privacy Policy</Text>
+          </Pressable>
+        </View>
+      )}
 
       <Modal
         animationType="slide"
-        onRequestClose={() => setShowNotificationPrompt(false)}
+        onRequestClose={handleSkipNotifications}
         transparent
         visible={showNotificationPrompt}
       >
@@ -160,6 +192,7 @@ export default function OnboardingScreen() {
               accessibilityRole="button"
               disabled={submitting}
               onPress={handleAllowNotifications}
+              testID="notifications-allow"
               style={[
                 styles.primaryButton,
                 submitting ? styles.buttonDisabled : null,
@@ -172,6 +205,7 @@ export default function OnboardingScreen() {
               accessibilityRole="button"
               disabled={submitting}
               onPress={handleSkipNotifications}
+              testID="notifications-skip"
               style={styles.secondaryButton}
             >
               <Text style={styles.secondaryButtonText}>Skip for now</Text>
@@ -268,6 +302,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  legalLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  legalText: {
+    color: '#64748B',
+    fontSize: 13,
+  },
+  legalLink: {
+    color: '#818CF8',
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
   modalBackdrop: {
     backgroundColor: 'rgba(15, 23, 42, 0.72)',
     flex: 1,
@@ -293,5 +343,16 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
+  },
+  howItWorksLink: {
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  howItWorksText: {
+    color: '#818CF8',
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

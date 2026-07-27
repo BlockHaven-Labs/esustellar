@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-NETWORK="testnet"
+NETWORK="${NETWORK:-testnet}"
 ROOT_DIR="$(pwd)"
 REGISTRY_DIR="contracts/registry"
 SAVINGS_DIR="contracts/savings"
@@ -23,6 +23,16 @@ command -v stellar >/dev/null 2>&1 || {
   echo "❌ Stellar CLI not found"
   exit 1
 }
+
+# Safety: confirm non-testnet deploys
+if [ "$NETWORK" != "testnet" ]; then
+  echo -e "${YELLOW}⚠️  Deploying to ${NETWORK} — this is NOT testnet.${NC}"
+  read -rp "Type the network name to confirm: " confirm
+  if [ "$confirm" != "$NETWORK" ]; then
+    echo "Aborted."
+    exit 1
+  fi
+fi
 
 echo ""
 echo -e "${YELLOW}📝 Step 1: Building contracts...${NC}"
@@ -62,6 +72,18 @@ REGISTRY_CONTRACT_ID=$(stellar contract deploy \
 echo -e "${GREEN}✅ Registry deployment successful${NC}"
 echo -e "Registry Contract ID: ${BLUE}${REGISTRY_CONTRACT_ID}${NC}"
 
+# Verify registry contract is live
+echo -e "${YELLOW}🔍 Verifying registry contract is responding...${NC}"
+stellar contract invoke \
+  --id "$REGISTRY_CONTRACT_ID" \
+  --source-account deployer \
+  --network "$NETWORK" \
+  -- get_group_count > /dev/null 2>&1 || {
+  echo -e "❌ Registry contract verification failed"
+  exit 1
+}
+echo -e "${GREEN}✅ Registry contract verified${NC}"
+
 echo ""
 echo -e "${YELLOW}📝 Step 4: Deploying Savings Contract...${NC}"
 SAVINGS_CONTRACT_ID=$(stellar contract deploy \
@@ -71,6 +93,18 @@ SAVINGS_CONTRACT_ID=$(stellar contract deploy \
 
 echo -e "${GREEN}✅ Savings deployment successful${NC}"
 echo -e "Savings Contract ID: ${BLUE}${SAVINGS_CONTRACT_ID}${NC}"
+
+# Verify savings contract is live
+echo -e "${YELLOW}🔍 Verifying savings contract is responding...${NC}"
+stellar contract invoke \
+  --id "$SAVINGS_CONTRACT_ID" \
+  --source-account deployer \
+  --network "$NETWORK" \
+  -- get_all_groups > /dev/null 2>&1 || {
+  echo -e "❌ Savings contract verification failed"
+  exit 1
+}
+echo -e "${GREEN}✅ Savings contract verified${NC}"
 
 echo ""
 echo -e "${YELLOW}💾 Updating frontend env...${NC}"
@@ -108,11 +142,27 @@ cat > deployment-info.json <<EOF
 EOF
 
 echo ""
+if [ "${SKIP_SMOKE_TEST:-false}" != "true" ]; then
+  echo -e "${YELLOW}📝 Step 5: Running post-deploy smoke tests...${NC}"
+  if [ -f "$ROOT_DIR/scripts/post-deploy-smoke-test.sh" ]; then
+    bash "$ROOT_DIR/scripts/post-deploy-smoke-test.sh" \
+      --registry "$REGISTRY_CONTRACT_ID" \
+      --savings "$SAVINGS_CONTRACT_ID" \
+      --network "$NETWORK" || echo -e "${YELLOW}⚠️ Smoke tests finished with warnings or errors.${NC}"
+  fi
+fi
+
+echo ""
 echo -e "${GREEN}🎉 Deployment complete!${NC}"
 echo ""
 echo "📋 Contract IDs:"
 echo -e "  Registry: ${BLUE}${REGISTRY_CONTRACT_ID}${NC}"
 echo -e "  Savings:  ${BLUE}${SAVINGS_CONTRACT_ID}${NC}"
+echo ""
+echo "🔗 Linking contracts on-chain..."
+echo "  NOTE: Cross-contract linking requires implementing register_group/add_member"
+echo "  calls in the savings contract (see issue #65). Until then, the registry"
+echo "  must be updated manually or via off-chain client."
 echo ""
 echo "🔍 Explorers:"
 echo "  Registry: https://stellar.expert/explorer/$NETWORK/contract/$REGISTRY_CONTRACT_ID"

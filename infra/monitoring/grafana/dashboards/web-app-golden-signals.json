@@ -1,0 +1,27 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "Web App — Golden Signals",
+  "uid": "web-app-golden-signals",
+  "panels": [
+    {
+      "title": "Request Rate",
+      "type": "graph",
+      "targets": [{ "expr": "rate(http_requests_total[5m])", "legendFormat": "rate" }]
+    },
+    {
+      "title": "Error Rate",
+      "type": "graph",
+      "targets": [{ "expr": "rate(http_requests_total{status=~\"5..\"}[5m])", "legendFormat": "errors" }]
+    },
+    {
+      "title": "Latency (p50/p95/p99)",
+      "type": "graph",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))", "legendFormat": "p99" }
+      ]
+    }
+  ]
+}

@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { TransactionItem, TransactionType } from '../../components/transactions/TransactionItem';
+import { EmptyState } from '../../components/ui';
+import { useRefresh } from '../../hooks/useRefresh';
 
 type TabKey = 'All' | 'Contributions' | 'Payouts';
 
@@ -84,7 +86,6 @@ const getItemLayout = (_: unknown, index: number) => ({
 export default function TransactionHistoryScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('All');
-  const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(MOCK_TRANSACTIONS);
 
   const counts = useMemo<Record<TabKey, number>>(
@@ -101,13 +102,12 @@ export default function TransactionHistoryScreen() {
     return typeFilter ? data.filter((t) => t.type === typeFilter) : data;
   }, [activeTab, data]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
+  const refreshTransactions = useCallback(async () => {
     // Replace with real fetch
     await new Promise((r) => setTimeout(r, 800));
     setData([...MOCK_TRANSACTIONS]);
-    setRefreshing(false);
   }, []);
+  const { refreshing, onRefresh } = useRefresh(refreshTransactions);
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<Transaction>) => (
@@ -143,9 +143,12 @@ export default function TransactionHistoryScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No {activeTab.toLowerCase()} to show.</Text>
-          </View>
+          <EmptyState
+            tone="dark"
+            illustration="transactions"
+            title={activeTab === 'All' ? 'No transactions yet' : `No ${activeTab.toLowerCase()} yet`}
+            message="Transactions will appear here once you have activity."
+          />
         }
       />
     </SafeAreaView>
@@ -164,7 +167,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#1E293B' },
   backBtnText: { color: '#F8FAFC', fontWeight: '600', fontSize: 14 },
-  title: { marginLeft: 14, fontSize: 18, fontWeight: '800', color: '#F8FAFC' },
+  title: { marginStart: 14, fontSize: 18, fontWeight: '800', color: '#F8FAFC' },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: '#0F172A',
@@ -191,6 +194,4 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366F1',
   },
   list: { paddingHorizontal: 16, paddingTop: 8 },
-  empty: { marginTop: 48, alignItems: 'center' },
-  emptyText: { color: '#64748B', fontSize: 15 },
 });

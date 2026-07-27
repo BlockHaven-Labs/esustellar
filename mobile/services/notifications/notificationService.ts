@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { SilentNotificationType } from './silent';
+import { isInDndWindow } from './dndService';
 
 export const NOTIFICATION_PROMPT_HANDLED_KEY =
   'esustellar.notifications.promptHandled';
@@ -62,12 +64,22 @@ export async function registerForPushNotificationsAsync(): Promise<{
   }
 }
 
+/**
+ * Schedule a local notification, unless the user's Do Not Disturb quiet
+ * window is currently active — in that case the call is silently skipped
+ * and `null` is returned.
+ */
 export async function scheduleLocalNotification(options?: {
   title?: string;
   body?: string;
   data?: Record<string, unknown>;
   seconds?: number;
-}): Promise<string> {
+}): Promise<string | null> {
+  // Respect Do Not Disturb quiet hours
+  if (await isInDndWindow()) {
+    return null;
+  }
+
   return Notifications.scheduleNotificationAsync({
     content: {
       title: options?.title ?? 'EsuStellar update',
@@ -80,3 +92,29 @@ export async function scheduleLocalNotification(options?: {
     } as Notifications.TimeIntervalTriggerInput,
   });
 }
+
+/**
+ * Schedule a silent notification for background data sync
+ * @param syncType The type of data to sync (groups, transactions, notifications, or all)
+ * @param additionalData Optional additional data to include in the notification
+ */
+export async function scheduleSilentNotification(
+  syncType: SilentNotificationType,
+  additionalData?: Record<string, unknown>
+): Promise<string> {
+  return Notifications.scheduleNotificationAsync({
+    content: {
+      title: '',
+      body: '',
+      data: {
+        silent: true,
+        syncType,
+        ...additionalData,
+      },
+    },
+    trigger: {
+      seconds: 1,
+    } as Notifications.TimeIntervalTriggerInput,
+  });
+}
+

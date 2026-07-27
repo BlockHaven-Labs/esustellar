@@ -3,6 +3,8 @@
  * Handles REST API calls for group-related operations
  */
 
+import { logger } from '../logger';
+
 export interface Group {
   id: string;
   name: string;
@@ -37,7 +39,7 @@ class GroupsApiService {
    */
   async getUserGroups(userAddress: string): Promise<ApiResponse<Group[]>> {
     try {
-      console.log(`Fetching groups for user: ${userAddress}`);
+      logger.debug('GroupsApi', 'Fetching user groups');
       
       // Mock API call - replace with actual implementation
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -76,7 +78,7 @@ class GroupsApiService {
         data: mockGroups,
       };
     } catch (error) {
-      console.error('Failed to fetch user groups:', error);
+      logger.error('GroupsApi', 'Failed to fetch user groups', error);
       return {
         success: false,
         error: 'Failed to fetch groups',
@@ -89,7 +91,7 @@ class GroupsApiService {
    */
   async getGroupById(groupId: string): Promise<ApiResponse<Group>> {
     try {
-      console.log(`Fetching group details for: ${groupId}`);
+      logger.debug('GroupsApi', 'Fetching group details', { groupId });
       
       // Mock API call - replace with actual implementation
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -113,7 +115,7 @@ class GroupsApiService {
         data: mockGroup,
       };
     } catch (error) {
-      console.error('Failed to fetch group details:', error);
+      logger.error('GroupsApi', 'Failed to fetch group details', error);
       return {
         success: false,
         error: 'Failed to fetch group details',
@@ -126,7 +128,7 @@ class GroupsApiService {
    */
   async joinGroupWithCode(inviteCode: string, userAddress: string): Promise<ApiResponse<any>> {
     try {
-      console.log(`Joining group with invite code: ${inviteCode}`);
+      logger.info('GroupsApi', `Joining group with invite code: ${inviteCode}`);
       
       // Validate invite code format
       if (!inviteCode || inviteCode.length < 6) {
@@ -157,7 +159,7 @@ class GroupsApiService {
         message: 'Successfully joined the group',
       };
     } catch (error) {
-      console.error('Failed to join group:', error);
+      logger.error('GroupsApi', 'Failed to join group', error as Error);
       return {
         success: false,
         error: 'Failed to join group',
@@ -170,7 +172,7 @@ class GroupsApiService {
    */
   async generateInviteCode(groupId: string, creatorAddress: string): Promise<ApiResponse<string>> {
     try {
-      console.log(`Generating invite code for group: ${groupId}`);
+      logger.info('GroupsApi', `Generating invite code for group: ${groupId}`);
       
       // Mock API call - replace with actual implementation
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -183,7 +185,7 @@ class GroupsApiService {
         message: 'Invite code generated successfully',
       };
     } catch (error) {
-      console.error('Failed to generate invite code:', error);
+      logger.error('GroupsApi', 'Failed to generate invite code', error as Error);
       return {
         success: false,
         error: 'Failed to generate invite code',
@@ -196,7 +198,7 @@ class GroupsApiService {
    */
   async validateInviteCode(inviteCode: string): Promise<ApiResponse<any>> {
     try {
-      console.log(`Validating invite code: ${inviteCode}`);
+      logger.info('GroupsApi', `Validating invite code: ${inviteCode}`);
       
       // Mock API call - replace with actual implementation
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -227,10 +229,48 @@ class GroupsApiService {
         },
       };
     } catch (error) {
-      console.error('Failed to validate invite code:', error);
+      logger.error('GroupsApi', 'Failed to validate invite code', error as Error);
       return {
         success: false,
         error: 'Failed to validate invite code',
+      };
+    }
+  }
+
+  /**
+   * Create a new group
+   */
+  async createGroup(groupData: Partial<Group>, creatorAddress: string): Promise<ApiResponse<Group>> {
+    try {
+      logger.info('GroupsApi', `Creating group: ${groupData.name}`);
+      
+      // Mock API call - replace with actual implementation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const newGroup: Group = {
+        id: 'group_' + Date.now(),
+        name: groupData.name || 'New Group',
+        description: groupData.description || '',
+        contractAddress: '0x' + Math.random().toString(16).substr(2, 40),
+        contributionAmount: groupData.contributionAmount || 0,
+        payoutFrequency: groupData.payoutFrequency || 'monthly',
+        maxMembers: groupData.maxMembers || 10,
+        currentMembers: 1,
+        createdAt: new Date().toISOString(),
+        creatorAddress,
+        isActive: true,
+      };
+
+      return {
+        success: true,
+        data: newGroup,
+        message: 'Group created successfully',
+      };
+    } catch (error) {
+      logger.error('GroupsApi', 'Failed to create group', error as Error);
+      return {
+        success: false,
+        error: 'Failed to create group',
       };
     }
   }
@@ -240,7 +280,7 @@ class GroupsApiService {
    */
   async leaveGroup(groupId: string, userAddress: string): Promise<ApiResponse<any>> {
     try {
-      console.log(`Leaving group: ${groupId}`);
+      logger.info('GroupsApi', `Leaving group: ${groupId}`);
       
       // Mock API call - replace with actual implementation
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -255,7 +295,7 @@ class GroupsApiService {
         message: 'Successfully left the group',
       };
     } catch (error) {
-      console.error('Failed to leave group:', error);
+      logger.error('GroupsApi', 'Failed to leave group', error as Error);
       return {
         success: false,
         error: 'Failed to leave group',
@@ -272,7 +312,7 @@ class GroupsApiService {
     settings: Partial<Group>
   ): Promise<ApiResponse<Group>> {
     try {
-      console.log(`Updating group settings for: ${groupId}`);
+      logger.info('GroupsApi', `Updating group settings for: ${groupId}`);
       
       // Mock API call - replace with actual implementation
       await new Promise(resolve => setTimeout(resolve, 1200));
@@ -297,7 +337,7 @@ class GroupsApiService {
         message: 'Group settings updated successfully',
       };
     } catch (error) {
-      console.error('Failed to update group settings:', error);
+      logger.error('GroupsApi', 'Failed to update group settings', error as Error);
       return {
         success: false,
         error: 'Failed to update group settings',
@@ -306,11 +346,70 @@ class GroupsApiService {
   }
 
   /**
+   * Submit a contribution to a group
+   */
+  async contribute(
+    groupId: string,
+    userAddress: string,
+    amount: number,
+  ): Promise<ApiResponse<{ txHash: string; groupId: string; amount: number; timestamp: string }>> {
+    try {
+      logger.debug('GroupsApi', 'Submitting contribution', { groupId, amount });
+
+      // Mock API call — replace with Stellar transaction submission
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
+      return {
+        success: true,
+        data: {
+          txHash: 'mock_tx_' + Date.now(),
+          groupId,
+          amount,
+          timestamp: new Date().toISOString(),
+        },
+        message: 'Contribution submitted successfully',
+      };
+    } catch (error) {
+      logger.error('GroupsApi', 'Failed to submit contribution', error);
+      return { success: false, error: 'Failed to submit contribution' };
+    }
+  }
+
+  /**
+   * Request a payout from a group
+   */
+  async requestPayout(
+    groupId: string,
+    userAddress: string,
+  ): Promise<ApiResponse<{ txHash: string; groupId: string; amount: number; timestamp: string }>> {
+    try {
+      logger.debug('GroupsApi', 'Requesting payout', { groupId });
+
+      // Mock API call — replace with Stellar payout transaction
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
+      return {
+        success: true,
+        data: {
+          txHash: 'mock_payout_tx_' + Date.now(),
+          groupId,
+          amount: 0, // Server determines actual payout amount
+          timestamp: new Date().toISOString(),
+        },
+        message: 'Payout requested successfully',
+      };
+    } catch (error) {
+      logger.error('GroupsApi', 'Failed to request payout', error);
+      return { success: false, error: 'Failed to request payout' };
+    }
+  }
+
+  /**
    * Search for public groups
    */
   async searchPublicGroups(query: string): Promise<ApiResponse<Group[]>> {
     try {
-      console.log(`Searching public groups with query: ${query}`);
+      logger.info('GroupsApi', `Searching public groups with query: ${query}`);
       
       // Mock API call - replace with actual implementation
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -336,7 +435,7 @@ class GroupsApiService {
         data: mockGroups,
       };
     } catch (error) {
-      console.error('Failed to search public groups:', error);
+      logger.error('GroupsApi', 'Failed to search public groups', error as Error);
       return {
         success: false,
         error: 'Failed to search groups',

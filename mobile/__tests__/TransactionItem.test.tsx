@@ -1,6 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
-import { TransactionItem } from '../../components/transactions/TransactionItem';
+import { TransactionItem } from '@/components/transactions/TransactionItem';
 
 const BASE = {
   description: 'Monthly contribution',

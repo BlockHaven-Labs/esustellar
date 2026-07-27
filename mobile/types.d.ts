@@ -1,6 +1,13 @@
 declare module 'react' {
   export function useState<T>(initial: T): [T, (value: T) => void];
   export function useEffect(effect: () => void | (() => void), deps?: any[]): void;
+
+  export function useMemo<T>(factory: () => T, deps?: any[]): T;
+
+  export function memo<P extends {}>(
+    component: React.ComponentType<P>,
+    arePropsEqual?: (prevProps: Readonly<P>, nextProps: Readonly<P>) => boolean
+  ): React.MemoExoticComponent<React.ComponentType<P>>;
 }
 
 declare module 'react-native' {

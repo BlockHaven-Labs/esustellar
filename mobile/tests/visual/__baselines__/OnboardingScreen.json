@@ -1,0 +1,10 @@
+{
+  "screen": "OnboardingScreen",
+  "props": {
+    "step": 1,
+    "totalSteps": 3,
+    "title": "Welcome to EsuStellar"
+  },
+  "hash": "03473de301b154fb",
+  "capturedAt": "2026-06-25T20:34:53.477Z"
+}

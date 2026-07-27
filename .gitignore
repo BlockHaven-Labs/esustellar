@@ -13,6 +13,9 @@ out/
 .env.local
 .env.*.local
 
+# Docker secrets
+secrets/
+
 # Soroban / Rust
 target/
 .soroban/
@@ -25,7 +28,6 @@ Thumbs.db
 # Editors
 .vscode/
 .idea/
-.github/
 
 
 # Logs
@@ -33,6 +35,16 @@ frd.md
 logs/
 *.log
 
+# Terraform
+infra/terraform/**/.terraform/
+infra/terraform/**/terraform.tfstate*
+infra/terraform/**/*.tfvars
+*.terraform.lock.hcl
+
 # personal note for maintainer
 # DO NOT EDIT!!!
 personalContributorNote.md
+
+# Deployment artifacts
+deployment-info.json
+test_snapshots/

@@ -53,6 +53,12 @@ export default function ProfileScreenContent() {
           </Button>
         </View>
 
+        <View style={styles.section}>
+          <Button variant="outline" size="lg" onPress={() => router.push('/referrals')}>
+            Referrals & rewards
+          </Button>
+        </View>
+
         {/* Settings Rows */}
         <View style={styles.section}>
           <Pressable
