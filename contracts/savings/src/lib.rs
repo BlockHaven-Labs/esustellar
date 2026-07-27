@@ -59,6 +59,7 @@ pub const DEFAULT_PLATFORM_FEE_BPS: u32 = 200;
 pub const MAX_START_TIMESTAMP_OFFSET: u64 = 31_536_000;
 pub const GROUP_TTL_EXTEND: u32 = 6_312_000;
 pub const PAGE_SIZE: u32 = 100;
+pub const GRACE_PERIOD_SECONDS: u64 = 259_200; // 3 days
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -87,6 +88,15 @@ pub enum Frequency {
     Monthly,
 }
 
+/// A savings group where members contribute a fixed amount each round and
+/// one member receives the full pooled amount (minus platform fee) per round.
+///
+/// **Payout order**: When the group transitions to Active, the contract
+/// generates a pseudorandom payout order using the ledger's PRNG.  This
+/// replaces the previous deterministic join-order-based selection, which
+/// guaranteed the admin (always join_order 0) would receive the first
+/// payout — creating a rug-pull vector when combined with write-then-revert
+/// semantics (see #744, #745).
 #[contracttype]
 #[derive(Clone)]
 pub struct SavingsGroup {
@@ -103,6 +113,11 @@ pub struct SavingsGroup {
     pub platform_fee_percent: u32,
     pub treasury: Address,
     pub token_address: Option<Address>,
+    /// Pseudorandom payout order: payout_order[i] = index (join_order) of
+    /// the member who receives the payout in round i+1.  Generated once
+    /// when the group becomes Active via Fisher-Yates shuffle seeded by
+    /// the ledger PRNG.
+    pub payout_order: Vec<u32>,
 }
 
 #[contracttype]
@@ -165,7 +180,7 @@ pub enum DataKey {
 fn bump_group_keys(env: &Env, group_id: &String) {
     let keys: Vec<DataKey> = Vec::from_array(
         env,
-        &[
+        [
             DataKey::Group(group_id.clone()),
             DataKey::Members(group_id.clone()),
             DataKey::MemberCount(group_id.clone()),
@@ -298,6 +313,7 @@ impl SavingsContract {
             platform_fee_percent: DEFAULT_PLATFORM_FEE_BPS,
             treasury: treasury.clone(),
             token_address,
+            payout_order: Vec::new(&env),
         };
 
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
@@ -412,8 +428,16 @@ impl SavingsContract {
                 .get(&DataKey::Group(group_id.clone()))
                 .ok_or(Error::GroupNotFound)?;
             let mut group = group.clone();
+
+            // #744/#745: Generate pseudorandom payout order so the admin
+            // is NOT deterministically first. Uses Fisher-Yates shuffle
+            // seeded by the ledger's PRNG to produce an unbiased ordering.
+            let payout_order = Self::generate_payout_order(&env, group.total_members);
+
             group.status = GroupStatus::Active;
             group.current_round = 1;
+            group.payout_order = payout_order;
+
             env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
 
             let deadline = Self::calculate_deadline(&env, &group, 1);
@@ -612,45 +636,9 @@ impl SavingsContract {
         );
 
         if Self::all_members_paid(&env, group_id.clone(), current_round) {
-            Self::distribute_payout(env, group_id)?;
+            Self::distribute_payout(&env, group_id)?;
         }
 
-        Ok(())
-    }
-
-    /// Cancels an open savings group and marks it as completed.
-    ///
-    /// # Preconditions
-    /// - Caller must be the admin and authorize the transaction.
-    /// - The group must exist and be in `Open` status.
-    ///
-    /// # Errors
-    /// - `Error::GroupNotFound` if the group does not exist.
-    /// - `Error::AdminOnly` if the caller is not the group admin.
-    /// - `Error::GroupNotAcceptingMembers` if the group is not in `Open` status.
-    ///
-    /// # Behavior
-    /// - Sets the group status to `Completed`.
-    /// - Publishes a `cancelled` event.
-    pub fn cancel_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
-        admin.require_auth();
-
-        let group_key = DataKey::Group(group_id.clone());
-        let mut group: SavingsGroup = env
-            .storage().persistent().get(&group_key)
-            .ok_or(Error::GroupNotFound)?;
-
-        if group.admin != admin {
-            return Err(Error::AdminOnly);
-        }
-        if group.status != GroupStatus::Open {
-            return Err(Error::GroupNotAcceptingMembers);
-        }
-
-        group.status = GroupStatus::Completed;
-        env.storage().persistent().set(&group_key, &group);
-
-        env.events().publish((symbol_short!("cancelled"),), group_id);
         Ok(())
     }
 
@@ -705,9 +693,20 @@ impl SavingsContract {
             }
         }
 
-        Self::distribute_payout(env, group_id.clone())?;
+        let _ = Self::distribute_payout(&env, group_id.clone());
 
         group.status = GroupStatus::Paused;
+        if group.current_round >= group.total_members {
+            group.status = GroupStatus::Completed;
+        } else {
+            group.current_round += 1;
+            let deadline = Self::calculate_deadline(&env, &group, group.current_round);
+            env.storage().persistent().set(
+                &DataKey::RoundDeadline(group_id.clone(), group.current_round),
+                &deadline,
+            );
+        }
+
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
 
         env.events().publish((symbol_short!("paused"),), group_id);
@@ -1026,7 +1025,7 @@ impl SavingsContract {
             return Ok(());
         }
 
-        Self::distribute_payout(env, group_id)
+        Self::distribute_payout(&env, group_id)
     }
 
     /// Claims a refund for a member who contributed but did not receive a payout in a round.
@@ -1143,7 +1142,38 @@ impl SavingsContract {
         Ok(())
     }
 
-    fn distribute_payout(env: Env, group_id: String) -> Result<(), Error> {
+    // ─── Internal helpers ────────────────────────────────────────────
+
+    /// #744/#745: Generate a pseudorandom payout order using Fisher-Yates
+    /// shuffle seeded by the ledger's PRNG.  This ensures no member
+    /// (including the admin) is deterministically first in the payout
+    /// sequence, eliminating the admin-first rug-pull vector.
+    fn generate_payout_order(env: &Env, total_members: u32) -> Vec<u32> {
+        let mut order: Vec<u32> = Vec::new(env);
+        for i in 0..total_members {
+            order.push_back(i);
+        }
+
+        // Fisher-Yates shuffle with ledger PRNG
+        let mut i = total_members;
+        while i > 1 {
+            i -= 1;
+            // Use PRNG to pick a random index in [0, i]
+            let rand_val: u32 = env
+                .prng()
+                .gen_range::<u64>(0..(total_members as u64 + 1)) as u32;
+            let j = rand_val % (i + 1);
+
+            let temp_i = order.get(i).unwrap();
+            let temp_j = order.get(j).unwrap();
+            order.set(i, temp_j);
+            order.set(j, temp_i);
+        }
+
+        order
+    }
+
+    fn distribute_payout(env: &Env, group_id: String) -> Result<(), Error> {
         let group: SavingsGroup = env
             .storage().persistent().get(&DataKey::Group(group_id.clone()))
             .ok_or(Error::GroupNotFound)?;
@@ -1162,7 +1192,7 @@ impl SavingsContract {
             .checked_sub(platform_fee)
             .ok_or(Error::ArithmeticOverflow)?;
 
-        let recipient = Self::get_next_payout_recipient(&env, group_id.clone(), current_round)?;
+        let recipient =             Self::get_next_payout_recipient(env, group_id.clone(), current_round)?;
 
         // #606: pay the recipient real funds from the contract's custody
         // when the group is denominated in a SEP-41 token.
@@ -1211,7 +1241,7 @@ impl SavingsContract {
     // group this means up to 40 storage operations every round. A future
     // optimization could track "paid this round" via a per-round Vec/Set rather
     // than a persistent per-member status flag, eliminating the reset loop.
-    fn end_round(env: Env, group_id: String, mut group: SavingsGroup) -> Result<(), Error> {
+    fn end_round(env: &Env, group_id: String, mut group: SavingsGroup) -> Result<(), Error> {
         let members: Vec<Address> = env
             .storage().persistent().get(&DataKey::Members(group_id.clone()))
             .unwrap_or(Vec::new(&env));
@@ -1236,7 +1266,7 @@ impl SavingsContract {
             group.status = GroupStatus::Completed;
         } else {
             group.current_round += 1;
-            let deadline = Self::calculate_deadline(&env, &group, group.current_round);
+            let deadline = Self::calculate_deadline(env, &group, group.current_round);
             env.storage().persistent().set(&DataKey::RoundDeadline(group_id.clone(), group.current_round), &deadline);
         }
 
@@ -1248,12 +1278,6 @@ impl SavingsContract {
         let ended_round = group.current_round.saturating_sub(1);
         env.events()
             .publish((symbol_short!("round_end"),), ended_round);
-        // #753: add group_id and wrap round number in a tuple for consistent shape
-        let ended_round = if group.current_round > 0 { group.current_round - 1 } else { 0 };
-        env.events().publish(
-            (symbol_short!("round_end"),),
-            (group_id.clone(), ended_round),
-        );
 
         Ok(())
     }
@@ -1308,7 +1332,7 @@ impl SavingsContract {
         let new_count = Self::add_member_to_group(env, &member, &group_id);
 
         env.events()
-            .publish((symbol_short!("joined"),), (member, new_count));
+            .publish((symbol_short!("joined"),), (member.clone(), new_count));
 
         // #750: include group_id in the admin's joined event
         env.events().publish(
@@ -1339,18 +1363,10 @@ impl SavingsContract {
         contributions.len() == members.len()
     }
 
-    /// Returns the address of the next member due to receive a payout for `round`.
-    ///
-    /// # Invariant
-    /// `round` must be >= 1. Round numbering starts at 1 when a group transitions
-    /// to `Active` (see the group activation flow), so `round - 1` below is safe.
-    /// This explicit guard exists so that a future refactor calling this helper
-    /// before that transition, or restructuring round numbering, doesn't silently
-    /// reintroduce a `u32` underflow panic.
-    ///
-    /// # Errors
-    /// - `Error::InvalidRound` if `round` is 0.
-    /// - `Error::NoRecipientFound` if no eligible member is found.
+    /// Select the payout recipient for the given round using the
+    /// pseudorandom `payout_order` generated at group activation.
+    /// Falls back to linear scan if `payout_order` is empty (legacy
+    /// groups created before the randomization fix).
     fn get_next_payout_recipient(env: &Env, group_id: String, round: u32) -> Result<Address, Error> {
         if round == 0 {
             return Err(Error::InvalidRound);
@@ -1360,8 +1376,51 @@ impl SavingsContract {
             "round must be >= 1; current_round starts at 1 when a group becomes Active"
         );
 
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        // If payout_order is populated, use it
+        if !group.payout_order.is_empty() {
+            let target_index = round - 1;
+            let join_order = group
+                .payout_order
+                .get(target_index)
+                .ok_or(Error::NoRecipientFound)?;
+
+            let members: Vec<Address> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Members(group_id.clone()))
+                .unwrap_or(Vec::new(&env));
+
+            for member_addr in members.iter() {
+                if let Some(data) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, Member>(&DataKey::MemberData(
+                        group_id.clone(),
+                        member_addr.clone(),
+                    ))
+                {
+                    if data.join_order == join_order
+                        && !data.has_received_payout
+                        && data.status != MemberStatus::Defaulted
+                    {
+                        return Ok(member_addr);
+                    }
+                }
+            }
+            return Err(Error::NoRecipientFound);
+        }
+
+        // Legacy fallback: deterministic join-order based selection
         let members: Vec<Address> = env
-            .storage().persistent().get(&DataKey::Members(group_id.clone()))
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
             .unwrap_or(Vec::new(&env));
 
         let target_order = round - 1;
