@@ -10,13 +10,18 @@ contracts/
 │   ├── src/
 │   │   ├── lib.rs        # Main contract logic
 │   │   └── tests.rs      # Comprehensive tests
-│   └── Cargo.toml        # Dependencies
+│   ├── test_snapshots/   # Insta test snapshots
+│   ├── Cargo.toml        # Dependencies
+│   ├── Makefile          # Build utilities
+│   ├── .gitignore        # Git exclusions
+│   └── README.md         # This file
 ├── registry/             # Group registry & discovery contract
 │   ├── src/
 │   │   ├── lib.rs        # Registry logic
 │   │   └── tests.rs      # Registry tests
+│   ├── test_snapshots/   # Insta test snapshots
 │   └── Cargo.toml        # Dependencies
-├── README.md             # This file
+├── README.md             # Contracts overview
 └── Dockerfile            # Reproducible WASM builds
 ```
 
@@ -395,3 +400,41 @@ stellar keys fund deployer --network testnet
 **Contract Version:** 0.1.0  
 **Soroban SDK:** 21.7.13  
 **Network:** Testnet (MVP)
+## Payout Order Guarantee - Important for Prospective Members
+
+> **The group creator always receives the first payout.** This is a structural property
+> of the current design and is documented here for full transparency (#746).
+
+### How payout order works
+
+Payout order is determined by `join_order`, assigned sequentially at join time:
+
+- `join_order 0` (group creator / admin): receives payout in **Round 1**
+- `join_order 1` (first joiner): receives payout in **Round 2**
+- `join_order 2` (second joiner): receives payout in **Round 3**
+- and so on...
+
+There is currently **no rotation scheme, no escrow delay, and no bonding requirement** on
+the admin's payout.
+
+### Known risk: admin default after round-1 payout (#744, #745)
+
+Because the admin receives the first payout automatically and there is no forced-default
+mechanism, a malicious group creator can:
+
+1. Create a group and attract members.
+2. Allow all members to contribute in Round 1 — the admin payout triggers automatically.
+3. Never call `contribute()` again.
+4. The group is permanently stuck: `all_members_paid()` never returns true for Round 2+,
+   so `distribute_payout()` is never called and remaining members cannot receive their payouts.
+
+**Current status:** This is an acknowledged critical finding (#744). A forced-default /
+emergency-exit mechanism and admin bonding requirement are planned as future mitigations.
+Until that fix lands, **only join groups whose creator you personally trust.**
+
+### Planned mitigations (#745)
+
+- **Admin bonding**: admin posts a stake forfeited to the group on default
+- **Forced-default governance**: any member can trigger a forced-default after a missed deadline
+- **Rotating priority**: elect or randomize payout order rather than using join_order
+

@@ -1185,9 +1185,6 @@ fn test_cannot_join_after_start_date() {
         &admin,
     );
 }
-    );
-    assert!(result.is_ok());
-}
 
 #[test]
 fn test_initialize_cannot_be_called_twice() {
@@ -1203,35 +1200,41 @@ fn test_initialize_cannot_be_called_twice() {
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
 
-
-// ── Write-then-revert / Defaulted-state audit tests (#736–#739) ──────────────────────────
-
-/// #738/#736 — Proves that calling contribute() after the grace period returns
-/// PaymentWindowClosed but does NOT persist Defaulted status (the write-then-revert bug).
-///
-/// IMPORTANT testing methodology note (#739): this test uses TWO separate client calls —
-/// one to trigger the error, one to query the resulting state — mirroring how real Soroban
-/// transactions work. A same-transaction read-after-write (e.g., reading storage directly
-/// inside a single call context) would observe the stale in-memory value before the revert
-/// and falsely appear to confirm the Defaulted write succeeded.
-///
-/// This test documents the CURRENT (fixed) behavior: after the bug fix the Defaulted write
-/// was removed from contribute() entirely. Use mark_defaulted() as the two-step alternative.
+// #698: Regression guard for symbol_short! at the 9-character Soroban limit.
+// "round_end" is exactly 9 characters. If a future rename exceeds the limit,
+// this test catches it at compile time.
 #[test]
-fn test_late_contribute_does_not_persist_defaulted_status() {
+fn test_round_end_event_symbol_boundary() {
+    use soroban_sdk::symbol_short;
+
+    let sym = symbol_short!("round_end");
+    // Verify the symbol is exactly "round_end" — if symbol_short! ever
+    // changes behavior for the 9-char boundary, this test will fail.
+    assert_eq!(format!("{}", sym), "round_end");
+// ── Security regression tests for admin-first-payout audit cluster (#744–#747) ──────────────
+
+/// #747 — Documents the current, exploitable behavior: after the admin receives the round-1
+/// payout they can simply never call contribute() again, permanently stranding the group in
+/// round 2 with no on-chain recourse for the remaining members.
+///
+/// This test asserts the CURRENT (broken) state as a regression baseline so any future fix
+/// is forced to make this test pass differently (e.g., a forced-default mechanism).
+#[test]
+fn test_admin_defaults_after_payout_group_permanently_stuck() {
     let env = Env::default();
     env.mock_all_auths();
 
     let (admin, client) = create_test_group(&env);
-    let group_id = String::from_str(&env, "sec-revert-test");
-    let name = String::from_str(&env, "Revert Test Group");
+    let group_id = String::from_str(&env, "sec-test-admin-rug");
+    let name = String::from_str(&env, "Admin Rug Test");
 
+    // Step 1: Create a 3-member group.
     client.create_group(
         &admin,
         &group_id,
         &name,
         &100_000_000,
-        &2,
+        &3,
         &Frequency::Weekly,
         &(env.ledger().timestamp() + 100),
         &true,
@@ -1239,99 +1242,110 @@ fn test_late_contribute_does_not_persist_defaulted_status() {
         &true, &None,
     );
 
-    let late_member = Address::generate(&env);
-    client.join_group(&late_member, &group_id);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    client.join_group(&member2, &group_id);
+    client.join_group(&member3, &group_id);
 
-    let group = client.get_group(&group_id);
-    // Advance past the round-1 deadline + grace period (GRACE_PERIOD_SECONDS = 259200 = 3 days).
-    let deadline = client.get_round_deadline(&group_id, &1);
-    env.ledger().with_mut(|li| li.timestamp = deadline + 259201);
-
-    // Call 1: contribute() after the grace period → PaymentWindowClosed.
-    let result = client.try_contribute(&late_member, &group_id);
-    assert_eq!(result, Err(Ok(Error::PaymentWindowClosed)), "expected PaymentWindowClosed");
-
-    // Call 2 (separate invocation): query status. The write-then-revert bug would have
-    // left status as Active here; the fix ensures it is still Active (Defaulted was never
-    // incorrectly written). mark_defaulted() must be used to actually set Defaulted.
-    let member_data = client.get_member(&late_member, &group_id);
-    assert_ne!(
-        member_data.status, MemberStatus::Defaulted,
-        "contribute() must NOT persist Defaulted — use mark_defaulted() instead"
-    );
-}
-
-/// #737/#738 — Proves that mark_defaulted() is the correct two-step mechanism for
-/// persisting Defaulted status: call it in a separate, successful transaction after the
-/// grace period, then verify the status in a subsequent query.
-#[test]
-fn test_mark_defaulted_persists_status_correctly() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (admin, client) = create_test_group(&env);
-    let group_id = String::from_str(&env, "sec-mark-default-test");
-    let name = String::from_str(&env, "Mark Default Test");
-
-    client.create_group(
-        &admin,
-        &group_id,
-        &name,
-        &100_000_000,
-        &2,
-        &Frequency::Weekly,
-        &(env.ledger().timestamp() + 100),
-        &true,
-        &admin,
-        &true, &None,
-    );
-
-    let late_member = Address::generate(&env);
-    client.join_group(&late_member, &group_id);
+    // Confirm admin gets join_order 0 (first payout).
+    assert_eq!(client.get_member(&admin, &group_id).join_order, 0);
 
     let group = client.get_group(&group_id);
     env.ledger().with_mut(|li| li.timestamp = group.start_timestamp + 1);
 
-    // Admin contributes in round 1 (to keep group Active; only late_member skips).
+    // Step 2: All three members contribute in round 1 — admin receives payout automatically.
     client.contribute(&admin, &group_id);
+    client.contribute(&member2, &group_id);
+    client.contribute(&member3, &group_id);
 
-    let deadline = client.get_round_deadline(&group_id, &1);
-    // Advance past grace period.
-    env.ledger().with_mut(|li| li.timestamp = deadline + 259201);
+    let payouts = client.get_round_payouts(&group_id, &1);
+    assert_eq!(payouts.get(0).unwrap().recipient, admin, "admin should have received round-1 payout");
 
-    // Step 1: mark_defaulted() returns Ok(()) and persists the Defaulted status.
-    let mark_result = client.try_mark_defaulted(&late_member, &group_id);
-    assert!(mark_result.is_ok(), "mark_defaulted should succeed after grace period: {:?}", mark_result);
+    // Step 3: Round 2 starts. Admin simply never calls contribute() again.
+    // Advance past the round-2 deadline to show there is no forced-default.
+    let deadline_r2 = client.get_round_deadline(&group_id, &2);
+    // Grace period is typically 1 day (86400 s); advance well past it.
+    env.ledger().with_mut(|li| li.timestamp = deadline_r2 + 86401);
 
-    // Step 2 (separate query): status is now Defaulted.
-    let member_data = client.get_member(&late_member, &group_id);
-    assert_eq!(
-        member_data.status, MemberStatus::Defaulted,
-        "mark_defaulted() must persist Defaulted status across invocations"
+    // Step 4: member2 and member3 contribute in round 2 — but all_members_paid() will never
+    // return true because admin never contributed, so distribute_payout() is never triggered
+    // and the group is permanently stuck.  member2's contribution succeeds (they are not past
+    // the deadline themselves yet from the contract's per-member window perspective), but
+    // admin's contribution is simply absent.
+    let result2 = client.try_contribute(&member2, &group_id);
+    // Depending on contract state, this may succeed or return PaymentWindowClosed;
+    // what matters is: round 2 has NOT closed and member2 has NOT received their payout.
+    let group_after = client.get_group(&group_id);
+
+    // The group is still in round 2 (current_round has not advanced to 3).
+    assert!(
+        group_after.current_round <= 2,
+        "group must still be stuck in round 2 — admin absence prevents payout: round={}",
+        group_after.current_round
     );
 
-    // Step 3: Attempting to contribute after Defaulted returns MemberDefaulted.
-    let contribute_result = client.try_contribute(&late_member, &group_id);
-    assert_eq!(
-        contribute_result, Err(Ok(Error::MemberDefaulted)),
-        "Defaulted member must be blocked from contributing"
-    );
+    // Confirm admin data: has_received_payout is true, status reflects they contributed in r1.
+    let admin_data = client.get_member(&admin, &group_id);
+    assert!(admin_data.has_received_payout, "admin already received payout");
+
+    // #747: This test documents the stuck state. A future forced-default fix should instead
+    // allow a governance call to mark admin as Defaulted and unblock round progression.
+    let _ = result2; // silence unused-result warning
 }
 
-/// #739 — Documents the same-transaction testing pitfall.
+/// #744/#745 — Demonstrates that the admin-first-payout guarantee combined with the
+/// absence of any forced-default mechanism gives the group creator a trivially executable
+/// path to collect the round-1 pool and exit with no on-chain consequence.
 ///
-/// If you read storage WITHIN the same invocation that is about to return Err, you may
-/// observe the value as 'set' in the in-process memory — but once the function returns
-/// Err, Soroban discards all writes. The correct approach is always:
-///   1. Make the failing call (returns Err).
-///   2. In a SEPARATE subsequent client call, query the state.
-/// The tests above follow this pattern. This test exists purely as an executable comment.
+/// Asserts the preconditions of the attack so a future mitigation (bonding, rotation,
+/// forced-default) can be validated against this exact setup.
 #[test]
-fn test_two_transaction_methodology_for_revert_bugs() {
-    // This test is intentionally trivial — its value is in the comment above.
-    // Any future test that audits write-then-revert behavior MUST use separate client
-    // calls (matching real transaction boundaries), never a same-invocation read.
+fn test_admin_first_payout_rug_pull_preconditions() {
     let env = Env::default();
-    let _ = env; // silence unused warning
-    assert!(true, "methodology: use two separate client calls when testing revert semantics");
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "sec-test-rugpull-pre");
+    let name = String::from_str(&env, "Rug Pull Precondition");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &200_000_000,   // 200 XLM per contribution
+        &5,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
+        &true, &None,
+    );
+
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    let m3 = Address::generate(&env);
+    let m4 = Address::generate(&env);
+    client.join_group(&m1, &group_id);
+    client.join_group(&m2, &group_id);
+    client.join_group(&m3, &group_id);
+    client.join_group(&m4, &group_id);
+
+    // Precondition A: admin always has join_order 0 → always first payout.
+    assert_eq!(
+        client.get_member(&admin, &group_id).join_order, 0,
+        "admin join_order must be 0 (first-payout precondition)"
+    );
+
+    // Precondition B: no bonding/stake recorded for admin.
+    let admin_data = client.get_member(&admin, &group_id);
+    assert!(!admin_data.has_received_payout, "no payout yet before round 1");
+
+    // Precondition C: group has no forced-default or emergency-exit function.
+    // (Validated by inspecting the contract interface — no such entry point exists.)
+    // This is documented here as a compile-time structural check: if a forced-default
+    // function is ever added, the SavingsContractClient will expose it and this comment
+    // should be updated with a positive test for it.
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Open);
 }

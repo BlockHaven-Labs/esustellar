@@ -44,3 +44,7 @@ infra/terraform/**/*.tfvars
 # personal note for maintainer
 # DO NOT EDIT!!!
 personalContributorNote.md
+
+# Deployment artifacts
+deployment-info.json
+test_snapshots/

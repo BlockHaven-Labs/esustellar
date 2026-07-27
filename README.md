@@ -61,6 +61,48 @@ EsuStellar uses the Stellar network to:
 
 ---
 
+## 🔄 Contract Architecture
+
+EsuStellar uses two Soroban smart contracts that work together:
+
+### Savings Contract (`contracts/savings/`)
+
+The core contract that manages savings group lifecycle:
+
+1. **`create_group`** — Admin creates a new group with contribution amount,
+   member count, frequency, and start date
+2. **`join_group`** — Members join an open group. When the group is full,
+   it transitions to Active and round 1 begins
+3. **`contribute`** — Members contribute their fixed amount each round.
+   When all members have contributed, payout is triggered automatically
+4. **`distribute_payout`** (internal) — Rotates payout to the next
+   eligible member based on join order. Advances to the next round
+
+### Registry Contract (`contracts/registry/`)
+
+A discovery/index layer for on-chain group metadata:
+
+1. **`register_group`** — After creating a savings group, the admin
+   registers it in the registry for frontend discovery
+2. **`add_member`** — Tracks which users belong to which groups
+3. **`update_group_info`** — Re-syncs metadata when group state changes
+
+### Expected Call Sequence
+
+```
+1. Admin → savings::create_group(group_id, ...)
+2. Members → savings::join_group(group_id) [repeat until full]
+3. Admin → registry::register_group(contract_address, group_id, ...)
+4. Members → savings::contribute(group_id) [each round]
+5. Auto   → savings::distribute_payout (triggered when all paid)
+6. Repeat steps 4-5 for each round
+```
+
+> **Note:** Registration is optional but recommended for frontend
+> discovery. The savings contract operates independently of the registry.
+
+---
+
 ## 📂 Repository Structure
 
 ```
