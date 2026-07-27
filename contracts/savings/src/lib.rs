@@ -1339,21 +1339,32 @@ impl SavingsContract {
         contributions.len() == members.len()
     }
 
-    // #634: Best-match payout selection avoids O(n) unwrap-in-a-loop by
-    // using safe optional reads and picking the earliest eligible join_order.
+    /// Returns the address of the next member due to receive a payout for `round`.
+    ///
+    /// # Invariant
+    /// `round` must be >= 1. Round numbering starts at 1 when a group transitions
+    /// to `Active` (see the group activation flow), so `round - 1` below is safe.
+    /// This explicit guard exists so that a future refactor calling this helper
+    /// before that transition, or restructuring round numbering, doesn't silently
+    /// reintroduce a `u32` underflow panic.
+    ///
+    /// # Errors
+    /// - `Error::InvalidRound` if `round` is 0.
+    /// - `Error::NoRecipientFound` if no eligible member is found.
     fn get_next_payout_recipient(env: &Env, group_id: String, round: u32) -> Result<Address, Error> {
-        // #749: join_order is assigned sequentially starting from 0 with no code path that
-        // produces duplicates, so the recipient for round N is always the member with
-        // join_order == N - 1. We use a direct O(1) index into the Members vec (which is
-        // appended in join-time order) rather than an O(n) scan.
-        // The has_received_payout guard below is belt-and-suspenders against invariant drift
-        // — given sequential join_order uniqueness it can never fire, but it makes the
-        // contract's intent explicit should the join ordering ever change.
+        if round == 0 {
+            return Err(Error::InvalidRound);
+        }
+        debug_assert!(
+            round >= 1,
+            "round must be >= 1; current_round starts at 1 when a group becomes Active"
+        );
+
         let members: Vec<Address> = env
             .storage().persistent().get(&DataKey::Members(group_id.clone()))
             .unwrap_or(Vec::new(&env));
 
-        let target_order = round.saturating_sub(1);
+        let target_order = round - 1;
         let mut best: Option<(u32, Address)> = None;
 
         for member_addr in members.iter() {
@@ -1373,11 +1384,6 @@ impl SavingsContract {
 
             let is_better = match &best {
                 None => true,
-                Some((best_order, _)) => data.join_order < *best_order,
-            };
-
-            if is_better {
-                best = Some((data.join_order, member_addr.clone()));
                 Some((best_order, _)) => member_data.join_order < *best_order,
             };
 
