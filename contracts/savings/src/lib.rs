@@ -5,9 +5,7 @@ use soroban_sdk::{
     Vec,
 };
 
-/// Grace period after a round deadline before a member is marked defaulted, in seconds.
-const GRACE_PERIOD_SECONDS: u64 = 259200; // 3 days
-
+// #696: Error codes are unique per-contract. Savings contract codes start at 1.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -49,6 +47,9 @@ pub enum Error {
     GroupIdAlreadyExists = 35,
     StringTooLong = 36,
 }
+
+// #697: Contract version for schema migration tracking.
+pub const CONTRACT_VERSION: &str = "0.1.0";
 
 pub const MIN_MEMBERS: u32 = 3;
 pub const MAX_MEMBERS: u32 = 20;
@@ -191,6 +192,14 @@ impl SavingsContract {
         }
         env.storage().persistent().set(&DataKey::Initialized, &true);
         env.storage().persistent().set(&DataKey::Admin, &admin);
+
+        // #697: Emit contract version on initialization for schema migration tracking.
+        let version = String::from_str(&env, CONTRACT_VERSION);
+        env.events().publish(
+            (symbol_short!("version"),),
+            (version,),
+        );
+
         Ok(())
     }
 
@@ -1350,6 +1359,11 @@ impl SavingsContract {
 
             let is_better = match &best {
                 None => true,
+                Some((best_order, _)) => data.join_order < *best_order,
+            };
+
+            if is_better {
+                best = Some((data.join_order, member_addr.clone()));
                 Some((best_order, _)) => member_data.join_order < *best_order,
             };
 
