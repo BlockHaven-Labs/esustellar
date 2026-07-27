@@ -608,7 +608,7 @@ impl SavingsContract {
 
         env.events().publish(
             (symbol_short!("contrib"),),
-            (member, group.contribution_amount, current_round),
+            (group_id.clone(), member, group.contribution_amount, current_round),
         );
 
         if Self::all_members_paid(&env, group_id.clone(), current_round) {
@@ -1310,6 +1310,11 @@ impl SavingsContract {
         env.events()
             .publish((symbol_short!("joined"),), (member, new_count));
 
+        // #750: include group_id in the admin's joined event
+        env.events().publish(
+            (symbol_short!("joined"),),
+            (group_id.clone(), member, new_count),
+        );
         Ok(())
     }
 
