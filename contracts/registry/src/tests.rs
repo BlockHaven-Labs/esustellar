@@ -40,7 +40,10 @@ fn register_group(
     let savings_contract_id = env.register(SavingsContract, ());
     let savings_client = SavingsContractClient::new(env, &savings_contract_id);
     
-    // Create a mock savings group
+    // Initialize the savings contract
+    savings_client.initialize(&admin.clone());
+    
+    // Create a mock savings group within the savings contract's context
     let mock_group = SavingsGroup {
         group_id: String::from_str(env, id_suffix),
         admin: admin.clone(),
@@ -58,9 +61,9 @@ fn register_group(
         payout_order: Vec::new(env),
     };
     
-    // Initialize the savings contract and set up the mock group
-    savings_client.initialize(&admin.clone());
-    env.storage().persistent().set(&esustellar_savings::DataKey::Group(String::from_str(env, id_suffix)), &mock_group);
+    env.as_contract(&savings_contract_id, || {
+        env.storage().persistent().set(&esustellar_savings::DataKey::Group(String::from_str(env, id_suffix)), &mock_group);
+    });
     
     // Call register_group without total_members parameter (derived from savings contract)
     client.register_group(
@@ -144,7 +147,7 @@ fn test_register_private_group_not_in_public_listing() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_cannot_register_duplicate_group() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -169,7 +172,7 @@ fn test_register_groups_with_same_name_different_contracts_allowed() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_cannot_register_duplicate_group_id_different_contract() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -229,7 +232,7 @@ fn test_add_member_idempotent() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_add_member_to_nonexistent_group_panics() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -344,7 +347,7 @@ fn test_transfer_admin_updates_group_info() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
+#[should_panic(expected = "Error(Contract, #102)")]
 fn test_transfer_admin_by_non_admin_panics() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -400,6 +403,7 @@ fn test_get_user_groups_empty_for_unknown_user() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_get_group_info_panics_for_unknown_group() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -408,7 +412,7 @@ fn test_get_group_info_panics_for_unknown_group() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_get_group_info_not_found() {
     let env = setup_env();
     let client = create_registry(&env);

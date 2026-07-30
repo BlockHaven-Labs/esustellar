@@ -17,6 +17,7 @@ pub enum Error {
     NotGroupAdmin = 102,
     UserNotInGroup = 103,
     InvalidAddress = 104,
+    InvalidMemberCount = 105,
 }
 
 #[contracttype]
