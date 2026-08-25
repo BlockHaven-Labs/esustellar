@@ -1,0 +1,1347 @@
+#![no_std]
+
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+    Vec,
+};
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    ContributionTooLow = 1,
+    InvalidMemberCount = 2,
+    StartDateMustBeFuture = 3,
+    GroupNotFound = 4,
+    GroupNotAcceptingMembers = 5,
+    GroupIsFull = 6,
+    AlreadyMember = 7,
+    GroupNotActive = 8,
+    NotMember = 9,
+    MemberDefaulted = 10,
+    AlreadyPaidThisRound = 11,
+    PaymentWindowClosed = 12,
+    RecipientNotFound = 13,
+    NoRecipientFound = 14,
+    Overflow = 15,
+    NotAdmin = 16,
+    GroupNotOpen = 17,
+    AdminOnly = 18,
+    RateLimited = 19,
+    NotAllPaid = 20,
+    NoRefundAvailable = 21,
+    RoundNotStalled = 22,
+    StartDateTooFarInFuture = 23,
+    GroupPaused = 24,
+    StartDateAlreadyPassed = 25,
+    ArithmeticOverflow = 26,
+    DataExpired = 27,
+    AlreadyInitialized = 28,
+    MemberDataMissing = 29,
+    ContributionTooHigh = 30,
+    CatchUpRequired = 31,
+    NotDefaulted = 32,
+    InvalidRound = 33,
+    GroupIsPrivate = 34,
+    GroupIdAlreadyExists = 35,
+    StringTooLong = 36,
+    InvalidGroupId = 37,
+}
+
+// Contract version for schema migration tracking.
+pub const CONTRACT_VERSION: &str = "0.1.0";
+
+pub const MIN_MEMBERS: u32 = 3;
+pub const MAX_MEMBERS: u32 = 20;
+pub const MIN_CONTRIBUTION: i128 = 10_000_000;
+pub const MAX_CONTRIBUTION: i128 = 1_000_000_000_000;
+pub const DEFAULT_PLATFORM_FEE_BPS: u32 = 200;
+pub const GRACE_PERIOD_SECONDS: u64 = 259_200;
+pub const MAX_START_TIMESTAMP_OFFSET: u64 = 31_536_000;
+pub const GROUP_TTL_EXTEND: u32 = 6_312_000;
+pub const PAGE_SIZE: u32 = 100;
+pub const MAX_STRING_LEN: u32 = 64;
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GroupStatus {
+    Open,
+    Active,
+    Completed,
+    Paused,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MemberStatus {
+    Active,
+    PaidCurrentRound,
+    Overdue,
+    Defaulted,
+    ReceivedPayout,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Frequency {
+    Weekly,
+    BiWeekly,
+    Monthly,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SavingsGroup {
+    pub group_id: String,
+    pub admin: Address,
+    pub name: String,
+    pub contribution_amount: i128,
+    pub total_members: u32,
+    pub frequency: Frequency,
+    pub start_timestamp: u64,
+    pub status: GroupStatus,
+    pub is_public: bool,
+    pub current_round: u32,
+    pub platform_fee_percent: u32,
+    pub treasury: Address,
+    pub token_address: Option<Address>,
+    pub payout_order: Vec<u32>,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Member {
+    pub address: Address,
+    pub join_timestamp: u64,
+    pub join_order: u32,
+    pub status: MemberStatus,
+    pub total_contributed: i128,
+    pub has_received_payout: bool,
+    pub payout_round: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Contribution {
+    pub member: Address,
+    pub amount: i128,
+    pub round: u32,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Payout {
+    pub recipient: Address,
+    pub amount: i128,
+    pub round: u32,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    Group(String),
+    Members(String),
+    MemberData(String, Address),
+    Contributions(String, u32),
+    Payouts(String, u32),
+    RoundDeadline(String, u32),
+    MemberCount(String),
+    AllGroups,
+    UserGroups(Address),
+    GroupPage(u32),
+    GroupPageIndex,
+    LastGroupTimestamp(Address),
+    Initialized,
+    Admin,
+}
+
+fn bump_group_keys(env: &Env, group_id: &String) {
+    let keys: Vec<DataKey> = Vec::from_array(
+        env,
+        [
+            DataKey::Group(group_id.clone()),
+            DataKey::Members(group_id.clone()),
+            DataKey::MemberCount(group_id.clone()),
+        ],
+    );
+    for key in keys.iter() {
+        env.storage().persistent().extend_ttl(&key, GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
+    }
+}
+
+fn bump_member_key(env: &Env, group_id: &String, member: &Address) {
+    let key = DataKey::MemberData(group_id.clone(), member.clone());
+    env.storage().persistent().extend_ttl(&key, GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
+}
+
+/// Normalizes a group ID string by trimming leading/trailing ASCII whitespace,
+/// folding ASCII characters to lowercase, and enforcing length constraints.
+pub fn normalize_group_id(env: &Env, raw_id: &String) -> Result<String, Error> {
+    let len = raw_id.len();
+    if len == 0 {
+        return Err(Error::InvalidGroupId);
+    }
+    if len > MAX_STRING_LEN {
+        return Err(Error::StringTooLong);
+    }
+
+    let mut buf = [0u8; 64];
+    let slice = &mut buf[..len as usize];
+    raw_id.copy_into_slice(slice);
+
+    let mut start = 0;
+    while start < slice.len() && slice[start].is_ascii_whitespace() {
+        start += 1;
+    }
+
+    let mut end = slice.len();
+    while end > start && slice[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+
+    let trimmed = &mut slice[start..end];
+    if trimmed.is_empty() {
+        return Err(Error::InvalidGroupId);
+    }
+
+    for b in trimmed.iter_mut() {
+        *b = b.to_ascii_lowercase();
+    }
+
+    let normalized_str = core::str::from_utf8(trimmed).map_err(|_| Error::InvalidGroupId)?;
+    Ok(String::from_str(env, normalized_str))
+}
+
+#[contract]
+pub struct SavingsContract;
+
+#[contractimpl]
+impl SavingsContract {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        if env.storage().persistent().has(&DataKey::Initialized) {
+            return Err(Error::AlreadyInitialized);
+        }
+        env.storage().persistent().set(&DataKey::Initialized, &true);
+        env.storage().persistent().set(&DataKey::Admin, &admin);
+
+        let version = String::from_str(&env, CONTRACT_VERSION);
+        env.events().publish(
+            (symbol_short!("version"),),
+            (version,),
+        );
+
+        Ok(())
+    }
+
+    pub fn create_group(
+        env: Env,
+        admin: Address,
+        group_id: String,
+        name: String,
+        contribution_amount: i128,
+        total_members: u32,
+        frequency: Frequency,
+        start_timestamp: u64,
+        is_public: bool,
+        treasury: Address,
+        token_address: Option<Address>,
+    ) -> Result<SavingsGroup, Error> {
+        admin.require_auth();
+
+        // Normalise group_id (trim whitespace + lowercase)
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Group(group_id.clone()))
+        {
+            return Err(Error::GroupIdAlreadyExists);
+        }
+
+        if group_id.len() > MAX_STRING_LEN || name.len() > MAX_STRING_LEN {
+            return Err(Error::StringTooLong);
+        }
+
+        let last_timestamp: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::LastGroupTimestamp(admin.clone()))
+            .unwrap_or(0);
+        if env.ledger().timestamp() < last_timestamp + 86400 {
+            return Err(Error::RateLimited);
+        }
+
+        if contribution_amount < MIN_CONTRIBUTION {
+            return Err(Error::ContributionTooLow);
+        }
+        if contribution_amount > MAX_CONTRIBUTION {
+            return Err(Error::ContributionTooHigh);
+        }
+        if total_members < MIN_MEMBERS || total_members > MAX_MEMBERS {
+            return Err(Error::InvalidMemberCount);
+        }
+        if start_timestamp <= env.ledger().timestamp() {
+            return Err(Error::StartDateMustBeFuture);
+        }
+        if start_timestamp > env.ledger().timestamp() + MAX_START_TIMESTAMP_OFFSET {
+            return Err(Error::StartDateTooFarInFuture);
+        }
+
+        let group = SavingsGroup {
+            group_id: group_id.clone(),
+            admin: admin.clone(),
+            name,
+            contribution_amount,
+            total_members,
+            frequency,
+            start_timestamp,
+            status: GroupStatus::Open,
+            is_public,
+            current_round: 0,
+            platform_fee_percent: DEFAULT_PLATFORM_FEE_BPS,
+            treasury: treasury.clone(),
+            token_address,
+            payout_order: Vec::new(&env),
+        };
+
+        env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+        env.storage().persistent().extend_ttl(&DataKey::Group(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
+
+        let members: Vec<Address> = Vec::new(&env);
+        env.storage().persistent().set(&DataKey::Members(group_id.clone()), &members);
+        env.storage().persistent().set(&DataKey::MemberCount(group_id.clone()), &0u32);
+        env.storage().persistent().extend_ttl(&DataKey::Members(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
+        env.storage().persistent().extend_ttl(&DataKey::MemberCount(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
+
+        let mut all_groups: Vec<String> = env
+            .storage().persistent().get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        all_groups.push_back(group_id.clone());
+        env.storage().persistent().set(&DataKey::AllGroups, &all_groups);
+
+        env.storage().persistent().set(&DataKey::LastGroupTimestamp(admin.clone()), &env.ledger().timestamp());
+
+        let mut admin_groups: Vec<String> = env
+            .storage().persistent().get(&DataKey::UserGroups(admin.clone()))
+            .unwrap_or(Vec::new(&env));
+        admin_groups.push_back(group_id.clone());
+        env.storage().persistent().set(&DataKey::UserGroups(admin.clone()), &admin_groups);
+
+        Self::add_admin_to_group(&env, admin.clone(), group_id.clone())?;
+
+        env.events().publish(
+            (symbol_short!("created"),),
+            (group_id, contribution_amount, total_members),
+        );
+
+        Ok(group)
+    }
+
+    pub fn join_group(env: Env, member: Address, group_id: String) -> Result<(), Error> {
+        member.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        bump_group_keys(&env, &group_id);
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotAcceptingMembers);
+        }
+        if env.ledger().timestamp() >= group.start_timestamp {
+            return Err(Error::StartDateAlreadyPassed);
+        }
+
+        if !group.is_public && member != group.admin {
+            return Err(Error::GroupIsPrivate);
+        }
+
+        let member_count: u32 = env
+            .storage().persistent().get(&DataKey::MemberCount(group_id.clone()))
+            .unwrap_or(0);
+
+        if member_count >= group.total_members {
+            return Err(Error::GroupIsFull);
+        }
+
+        if env.storage().persistent().has(&DataKey::MemberData(group_id.clone(), member.clone())) {
+            return Err(Error::AlreadyMember);
+        }
+
+        let new_count = Self::add_member_to_group(&env, &member, &group_id);
+        bump_member_key(&env, &group_id, &member);
+
+        let mut user_groups: Vec<String> = env
+            .storage().persistent().get(&DataKey::UserGroups(member.clone()))
+            .unwrap_or(Vec::new(&env));
+        user_groups.push_back(group_id.clone());
+        env.storage().persistent().set(&DataKey::UserGroups(member.clone()), &user_groups);
+
+        if new_count == group.total_members {
+            let mut group: SavingsGroup = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Group(group_id.clone()))
+                .ok_or(Error::GroupNotFound)?;
+            let mut group = group.clone();
+
+            let payout_order = Self::generate_payout_order(&env, group.total_members);
+
+            group.status = GroupStatus::Active;
+            group.current_round = 1;
+            group.payout_order = payout_order;
+
+            env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+
+            let deadline = Self::calculate_deadline(&env, &group, 1);
+            env.storage().persistent().set(&DataKey::RoundDeadline(group_id.clone(), 1), &deadline);
+        }
+
+        env.events().publish(
+            (symbol_short!("joined"),),
+            (member, new_count),
+        );
+
+        Ok(())
+    }
+
+    pub fn cancel_group(env: Env, caller: Address, group_id: String) -> Result<(), Error> {
+        caller.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if caller != group.admin {
+            return Err(Error::NotAdmin);
+        }
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotOpen);
+        }
+
+        let mut all_groups: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        let mut idx: u32 = 0;
+        while idx < all_groups.len() {
+            if all_groups.get(idx).unwrap() == group_id {
+                all_groups.remove(idx);
+                break;
+            }
+            idx += 1;
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::AllGroups, &all_groups);
+
+        let members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        for member_addr in members.iter() {
+            let mut user_groups: Vec<String> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::UserGroups(member_addr.clone()))
+                .unwrap_or(Vec::new(&env));
+            let mut i: u32 = 0;
+            while i < user_groups.len() {
+                if user_groups.get(i).unwrap() == group_id {
+                    user_groups.remove(i);
+                    break;
+                }
+                i += 1;
+            }
+            env.storage()
+                .persistent()
+                .set(&DataKey::UserGroups(member_addr), &user_groups);
+        }
+
+        env.events()
+            .publish((symbol_short!("cancelled"),), (caller, group_id));
+
+        Ok(())
+    }
+
+    pub fn contribute(env: Env, member: Address, group_id: String) -> Result<(), Error> {
+        member.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        bump_group_keys(&env, &group_id);
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        let mut member_data: Member = env
+            .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member.clone()))
+            .ok_or(Error::NotMember)?;
+
+        if member_data.status == MemberStatus::Defaulted {
+            return Err(Error::MemberDefaulted);
+        }
+        if member_data.status == MemberStatus::PaidCurrentRound {
+            return Err(Error::AlreadyPaidThisRound);
+        }
+
+        let current_round = group.current_round;
+        let deadline: u64 = env
+            .storage().persistent().get(&DataKey::RoundDeadline(group_id.clone(), current_round))
+            .unwrap_or(0);
+
+        let deadline_with_grace = deadline
+            .checked_add(GRACE_PERIOD_SECONDS)
+            .ok_or(Error::Overflow)?;
+
+        if env.ledger().timestamp() > deadline_with_grace {
+            member_data.status = MemberStatus::Defaulted;
+            env.storage()
+                .persistent()
+                .set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+            env.events().publish(
+                (symbol_short!("default"),),
+                (member, group_id, current_round),
+            );
+            return Err(Error::PaymentWindowClosed);
+        }
+
+        if env.ledger().timestamp() > deadline {
+            member_data.status = MemberStatus::Overdue;
+            env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+        }
+
+        if let Some(token) = group.token_address.clone() {
+            token::Client::new(&env, &token).transfer(
+                &member,
+                &env.current_contract_address(),
+                &group.contribution_amount,
+            );
+        }
+
+        let contribution = Contribution {
+            member: member.clone(),
+            amount: group.contribution_amount,
+            round: current_round,
+            timestamp: env.ledger().timestamp(),
+        };
+
+        let mut round_contributions: Vec<Contribution> = env
+            .storage().persistent().get(&DataKey::Contributions(group_id.clone(), current_round))
+            .unwrap_or(Vec::new(&env));
+        round_contributions.push_back(contribution);
+        env.storage().persistent().set(&DataKey::Contributions(group_id.clone(), current_round), &round_contributions);
+
+        member_data.status = MemberStatus::PaidCurrentRound;
+        member_data.total_contributed = member_data
+            .total_contributed
+            .checked_add(group.contribution_amount)
+            .ok_or(Error::ArithmeticOverflow)?;
+        env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+        bump_member_key(&env, &group_id, &member);
+
+        env.events().publish(
+            (symbol_short!("contrib"),),
+            (member, group.contribution_amount, current_round),
+        );
+
+        if Self::all_members_paid(&env, group_id.clone(), current_round) {
+            Self::distribute_payout(&env, group_id)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn force_end_round(env: Env, group_id: String) -> Result<(), Error> {
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let mut group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        let current_round = group.current_round;
+        let deadline: u64 = env
+            .storage().persistent().get(&DataKey::RoundDeadline(group_id.clone(), current_round))
+            .unwrap_or(0);
+
+        if env.ledger().timestamp() <= deadline + GRACE_PERIOD_SECONDS {
+            return Err(Error::RoundNotStalled);
+        }
+
+        let members: Vec<Address> = env
+            .storage().persistent().get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        for member_addr in members.iter() {
+            if let Some(mut member_data) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+            {
+                if member_data.status == MemberStatus::Active
+                    || member_data.status == MemberStatus::Overdue
+                {
+                    member_data.status = MemberStatus::Defaulted;
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::MemberData(group_id.clone(), member_addr), &member_data);
+                }
+            }
+        }
+
+        let _ = Self::distribute_payout(&env, group_id.clone());
+
+        group.status = GroupStatus::Paused;
+        env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events().publish((symbol_short!("paused"),), group_id);
+        Ok(())
+    }
+
+    pub fn pause_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
+        admin.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let mut group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::AdminOnly);
+        }
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        group.status = GroupStatus::Paused;
+        env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events().publish((symbol_short!("paused"),), group_id);
+        Ok(())
+    }
+
+    pub fn resume_group(env: Env, admin: Address, group_id: String) -> Result<(), Error> {
+        admin.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let mut group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::AdminOnly);
+        }
+        if group.status != GroupStatus::Paused {
+            return Err(Error::GroupNotActive);
+        }
+
+        group.status = GroupStatus::Active;
+        env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+
+        env.events().publish((symbol_short!("resumed"),), group_id);
+        Ok(())
+    }
+
+    pub fn remove_member(
+        env: Env,
+        admin: Address,
+        group_id: String,
+        member: Address,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != admin {
+            return Err(Error::AdminOnly);
+        }
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotAcceptingMembers);
+        }
+
+        let member_data: Member = env
+            .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member.clone()))
+            .ok_or(Error::NotMember)?;
+
+        if member_data.total_contributed > 0 {
+            return Err(Error::MemberDefaulted);
+        }
+
+        env.storage().persistent().remove(&DataKey::MemberData(group_id.clone(), member.clone()));
+
+        let members: Vec<Address> = env
+            .storage().persistent().get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let mut new_members: Vec<Address> = Vec::new(&env);
+        for m in members.iter() {
+            if m != member {
+                new_members.push_back(m);
+            }
+        }
+        env.storage().persistent().set(&DataKey::Members(group_id.clone()), &new_members);
+
+        let count: u32 = env
+            .storage().persistent().get(&DataKey::MemberCount(group_id.clone()))
+            .unwrap_or(0);
+        if count > 0 {
+            env.storage().persistent().set(&DataKey::MemberCount(group_id.clone()), &(count - 1));
+        }
+
+        env.events().publish((symbol_short!("removed"),), (group_id, member));
+        Ok(())
+    }
+
+    pub fn transfer_admin(
+        env: Env,
+        group_id: String,
+        current_admin: Address,
+        new_admin: Address,
+    ) -> Result<(), Error> {
+        current_admin.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let mut group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.admin != current_admin {
+            return Err(Error::AdminOnly);
+        }
+
+        group.admin = new_admin.clone();
+        env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
+
+        let mut new_admin_groups: Vec<String> = env
+            .storage().persistent().get(&DataKey::UserGroups(new_admin.clone()))
+            .unwrap_or(Vec::new(&env));
+        new_admin_groups.push_back(group_id.clone());
+        env.storage().persistent().set(&DataKey::UserGroups(new_admin.clone()), &new_admin_groups);
+
+        env.events().publish(
+            (symbol_short!("adm_xfer"),),
+            (group_id, current_admin, new_admin),
+        );
+        Ok(())
+    }
+
+    pub fn cure_default(
+        env: Env,
+        member: Address,
+        group_id: String,
+    ) -> Result<(), Error> {
+        member.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        let mut member_data: Member = env
+            .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member.clone()))
+            .ok_or(Error::NotMember)?;
+
+        if member_data.status != MemberStatus::Defaulted {
+            return Err(Error::NotDefaulted);
+        }
+
+        let current_round = group.current_round;
+        let last_paid_round = member_data.payout_round;
+
+        let missed_rounds = if current_round > last_paid_round + 1 {
+            current_round - last_paid_round - 1
+        } else {
+            0
+        };
+
+        if missed_rounds == 0 {
+            return Err(Error::CatchUpRequired);
+        }
+
+        let catch_up_amount = group
+            .contribution_amount
+            .checked_mul(missed_rounds as i128)
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        member_data.total_contributed = member_data
+            .total_contributed
+            .checked_add(catch_up_amount)
+            .ok_or(Error::ArithmeticOverflow)?;
+        member_data.status = MemberStatus::Active;
+
+        env.storage().persistent().set(
+            &DataKey::MemberData(group_id.clone(), member.clone()),
+            &member_data,
+        );
+        bump_member_key(&env, &group_id, &member);
+
+        env.events().publish(
+            (symbol_short!("cured"),),
+            (member, group_id, catch_up_amount, missed_rounds),
+        );
+
+        Ok(())
+    }
+
+    pub fn retry_distribution(env: Env, group_id: String) -> Result<(), Error> {
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        let current_round = group.current_round;
+        let members: Vec<Address> = env
+            .storage().persistent().get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let contributions: Vec<Contribution> = env
+            .storage().persistent().get(&DataKey::Contributions(group_id.clone(), current_round))
+            .unwrap_or(Vec::new(&env));
+
+        if contributions.len() != members.len() {
+            return Err(Error::NotAllPaid);
+        }
+
+        let existing_payouts: Vec<Payout> = env
+            .storage().persistent().get(&DataKey::Payouts(group_id.clone(), current_round))
+            .unwrap_or(Vec::new(&env));
+
+        if !existing_payouts.is_empty() {
+            return Ok(());
+        }
+
+        Self::distribute_payout(&env, group_id)
+    }
+
+    pub fn claim_refund(
+        env: Env,
+        member: Address,
+        group_id: String,
+        round: u32,
+    ) -> Result<i128, Error> {
+        member.require_auth();
+
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let _group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        let _member_data: Member = env
+            .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member.clone()))
+            .ok_or(Error::NotMember)?;
+
+        let contributions: Vec<Contribution> = env
+            .storage().persistent().get(&DataKey::Contributions(group_id.clone(), round))
+            .unwrap_or(Vec::new(&env));
+
+        let mut contributed_amount: i128 = 0;
+        let mut found = false;
+        for contrib in contributions.iter() {
+            if contrib.member == member {
+                contributed_amount = contrib.amount;
+                found = true;
+                break;
+            }
+        }
+
+        if !found || contributed_amount == 0 {
+            return Err(Error::NoRefundAvailable);
+        }
+
+        let payouts: Vec<Payout> = env
+            .storage().persistent().get(&DataKey::Payouts(group_id.clone(), round))
+            .unwrap_or(Vec::new(&env));
+
+        for payout in payouts.iter() {
+            if payout.recipient == member {
+                return Err(Error::NoRefundAvailable);
+            }
+        }
+
+        Ok(contributed_amount)
+    }
+
+    pub fn mark_defaulted(env: Env, member: Address, group_id: String) -> Result<(), Error> {
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        let mut member_data: Member = env
+            .storage().persistent().get(&DataKey::MemberData(group_id.clone(), member.clone()))
+            .ok_or(Error::NotMember)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(Error::GroupNotActive);
+        }
+
+        if member_data.status == MemberStatus::Defaulted
+            || member_data.status == MemberStatus::ReceivedPayout
+        {
+            return Ok(());
+        }
+
+        let deadline: u64 = env
+            .storage().persistent().get(&DataKey::RoundDeadline(group_id.clone(), group.current_round))
+            .unwrap_or(0);
+
+        if env.ledger().timestamp() > deadline + GRACE_PERIOD_SECONDS {
+            member_data.status = MemberStatus::Defaulted;
+            env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
+
+            env.events().publish(
+                (symbol_short!("defaulted"),),
+                (member, group.current_round),
+            );
+        }
+
+        Ok(())
+    }
+
+    fn generate_payout_order(env: &Env, total_members: u32) -> Vec<u32> {
+        let mut order: Vec<u32> = Vec::new(env);
+        for i in 0..total_members {
+            order.push_back(i);
+        }
+
+        let mut i = total_members;
+        while i > 1 {
+            i -= 1;
+            let rand_val: u32 = env
+                .prng()
+                .gen_range::<u64>(0..(total_members as u64 + 1)) as u32;
+            let j = rand_val % (i + 1);
+
+            let temp_i = order.get(i).unwrap();
+            let temp_j = order.get(j).unwrap();
+            order.set(i, temp_j);
+            order.set(j, temp_i);
+        }
+
+        order
+    }
+
+    fn distribute_payout(env: &Env, group_id: String) -> Result<(), Error> {
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        let current_round = group.current_round;
+
+        let total_pool = group
+            .contribution_amount
+            .checked_mul(group.total_members as i128)
+            .ok_or(Error::ArithmeticOverflow)?;
+        let platform_fee = (total_pool * (group.platform_fee_percent as i128)) / 10000;
+        let payout_amount = total_pool
+            .checked_sub(platform_fee)
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        let recipient = Self::get_next_payout_recipient(env, group_id.clone(), current_round)?;
+
+        // Transfer funds: payout to recipient, platform fee to treasury
+        if let Some(token) = group.token_address.clone() {
+            token::Client::new(env, &token).transfer(
+                &env.current_contract_address(),
+                &recipient,
+                &payout_amount,
+            );
+            if platform_fee > 0 {
+                token::Client::new(env, &token).transfer(
+                    &env.current_contract_address(),
+                    &group.treasury,
+                    &platform_fee,
+                );
+            }
+        }
+
+        let payout = Payout {
+            recipient: recipient.clone(),
+            amount: payout_amount,
+            round: current_round,
+            timestamp: env.ledger().timestamp(),
+        };
+
+        let mut payouts: Vec<Payout> = env
+            .storage().persistent().get(&DataKey::Payouts(group_id.clone(), current_round))
+            .unwrap_or(Vec::new(&env));
+        payouts.push_back(payout);
+        env.storage().persistent().set(&DataKey::Payouts(group_id.clone(), current_round), &payouts);
+
+        let mut recipient_data: Member = env
+            .storage().persistent().get(&DataKey::MemberData(group_id.clone(), recipient.clone()))
+            .ok_or(Error::RecipientNotFound)?;
+        recipient_data.has_received_payout = true;
+        recipient_data.payout_round = current_round;
+        recipient_data.status = MemberStatus::ReceivedPayout;
+        env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), recipient.clone()), &recipient_data);
+
+        // Publish payout event
+        env.events().publish(
+            (symbol_short!("payout"),),
+            (group_id.clone(), recipient, payout_amount, current_round),
+        );
+
+        // Publish FeeCollected event for audit trail
+        if platform_fee > 0 {
+            env.events().publish(
+                (symbol_short!("fee_col"),),
+                (group_id.clone(), group.treasury.clone(), platform_fee, current_round),
+            );
+        }
+
+        Self::end_round(env, group_id, group)?;
+
+        Ok(())
+    }
+
+    fn end_round(env: &Env, group_id: String, mut group: SavingsGroup) -> Result<(), Error> {
+        let members: Vec<Address> = env
+            .storage().persistent().get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        for member_addr in members.iter() {
+            if let Some(mut member_data) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+            {
+                if member_data.status == MemberStatus::PaidCurrentRound {
+                    member_data.status = MemberStatus::Active;
+                }
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::MemberData(group_id.clone(), member_addr.clone()), &member_data);
+            }
+        }
+
+        if group.current_round >= group.total_members {
+            group.status = GroupStatus::Completed;
+        } else {
+            group.current_round += 1;
+            let deadline = Self::calculate_deadline(env, &group, group.current_round);
+            env.storage().persistent().set(&DataKey::RoundDeadline(group_id.clone(), group.current_round), &deadline);
+        }
+
+        env.storage().persistent().set(&DataKey::Group(group_id), &group);
+
+        let ended_round = group.current_round.saturating_sub(1);
+        env.events()
+            .publish((symbol_short!("round_end"),), ended_round);
+
+        Ok(())
+    }
+
+    fn add_member_to_group(
+        env: &Env,
+        member: &Address,
+        group_id: &String,
+    ) -> u32 {
+        let member_count: u32 = env
+            .storage().persistent().get(&DataKey::MemberCount(group_id.clone()))
+            .unwrap_or(0);
+
+        let new_member = Member {
+            address: member.clone(),
+            join_timestamp: env.ledger().timestamp(),
+            join_order: member_count,
+            status: MemberStatus::Active,
+            total_contributed: 0,
+            has_received_payout: false,
+            payout_round: 0,
+        };
+
+        env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &new_member);
+
+        let mut members: Vec<Address> = env
+            .storage().persistent().get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+        members.push_back(member.clone());
+        env.storage().persistent().set(&DataKey::Members(group_id.clone()), &members);
+
+        let new_count = member_count + 1;
+        env.storage()
+            .persistent()
+            .set(&DataKey::MemberCount(group_id.clone()), &new_count);
+
+        new_count
+    }
+
+    fn add_admin_to_group(env: &Env, member: Address, group_id: String) -> Result<(), Error> {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::MemberData(group_id.clone(), member.clone()))
+        {
+            return Err(Error::AlreadyMember);
+        }
+
+        let new_count = Self::add_member_to_group(env, &member, &group_id);
+
+        env.events().publish(
+            (symbol_short!("joined"),),
+            (group_id, member, new_count),
+        );
+        Ok(())
+    }
+
+    fn calculate_deadline(_env: &Env, group: &SavingsGroup, round: u32) -> u64 {
+        let round_duration = match group.frequency {
+            Frequency::Weekly => 604800,
+            Frequency::BiWeekly => 1209600,
+            Frequency::Monthly => 2592000,
+        };
+        group.start_timestamp + (round as u64 * round_duration)
+    }
+
+    fn all_members_paid(env: &Env, group_id: String, round: u32) -> bool {
+        let members: Vec<Address> = env
+            .storage().persistent().get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let contributions: Vec<Contribution> = env
+            .storage().persistent().get(&DataKey::Contributions(group_id, round))
+            .unwrap_or(Vec::new(&env));
+
+        contributions.len() == members.len()
+    }
+
+    fn get_next_payout_recipient(env: &Env, group_id: String, round: u32) -> Result<Address, Error> {
+        if round == 0 {
+            return Err(Error::InvalidRound);
+        }
+
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if !group.payout_order.is_empty() {
+            let target_index = round - 1;
+            let join_order = group
+                .payout_order
+                .get(target_index)
+                .ok_or(Error::NoRecipientFound)?;
+
+            let members: Vec<Address> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Members(group_id.clone()))
+                .unwrap_or(Vec::new(&env));
+
+            for member_addr in members.iter() {
+                if let Some(data) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, Member>(&DataKey::MemberData(
+                        group_id.clone(),
+                        member_addr.clone(),
+                    ))
+                {
+                    if data.join_order == join_order
+                        && !data.has_received_payout
+                        && data.status != MemberStatus::Defaulted
+                    {
+                        return Ok(member_addr);
+                    }
+                }
+            }
+            return Err(Error::NoRecipientFound);
+        }
+
+        let members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Members(group_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let target_order = round - 1;
+        let mut best: Option<(u32, Address)> = None;
+
+        for member_addr in members.iter() {
+            let member_data: Member = match env
+                .storage().persistent().get::<DataKey, Member>(&DataKey::MemberData(group_id.clone(), member_addr.clone()))
+            {
+                Some(d) => d,
+                None => continue,
+            };
+
+            if member_data.has_received_payout
+                || member_data.status == MemberStatus::Defaulted
+                || member_data.join_order < target_order
+            {
+                continue;
+            }
+
+            let is_better = match &best {
+                None => true,
+                Some((best_order, _)) => member_data.join_order < *best_order,
+            };
+
+            if is_better {
+                best = Some((member_data.join_order, member_addr.clone()));
+            }
+        }
+
+        match best {
+            Some((_, addr)) => Ok(addr),
+            None => Err(Error::NoRecipientFound),
+        }
+    }
+
+    pub fn get_group(env: Env, group_id: String) -> Result<SavingsGroup, Error> {
+        let group_id = normalize_group_id(&env, &group_id)?;
+        env.storage().persistent().get(&DataKey::Group(group_id))
+            .ok_or(Error::GroupNotFound)
+    }
+
+    pub fn get_member(env: Env, member: Address, group_id: String) -> Result<Member, Error> {
+        let group_id = normalize_group_id(&env, &group_id)?;
+        env.storage().persistent().get(&DataKey::MemberData(group_id, member))
+            .ok_or(Error::NotMember)
+    }
+
+    pub fn get_members(env: Env, group_id: String) -> Vec<Address> {
+        let group_id = match normalize_group_id(&env, &group_id) {
+            Ok(id) => id,
+            Err(_) => return Vec::new(&env),
+        };
+        env.storage().persistent().get(&DataKey::Members(group_id))
+            .unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_round_contributions(env: Env, group_id: String, round: u32) -> Vec<Contribution> {
+        let group_id = match normalize_group_id(&env, &group_id) {
+            Ok(id) => id,
+            Err(_) => return Vec::new(&env),
+        };
+        env.storage().persistent().get(&DataKey::Contributions(group_id, round))
+            .unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_round_payouts(env: Env, group_id: String, round: u32) -> Vec<Payout> {
+        let group_id = match normalize_group_id(&env, &group_id) {
+            Ok(id) => id,
+            Err(_) => return Vec::new(&env),
+        };
+        env.storage().persistent().get(&DataKey::Payouts(group_id, round))
+            .unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_round_deadline(env: Env, group_id: String, round: u32) -> Result<u64, Error> {
+        let group_id = normalize_group_id(&env, &group_id)?;
+
+        let group: SavingsGroup = env
+            .storage().persistent().get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if round == 0 || round > group.total_members {
+            return Err(Error::InvalidRound);
+        }
+
+        if let Some(deadline) = env.storage().persistent().get(&DataKey::RoundDeadline(group_id.clone(), round)) {
+            return Ok(deadline);
+        }
+
+        Ok(Self::calculate_deadline(&env, &group, round))
+    }
+
+    pub fn get_user_groups(env: Env, user: Address) -> Vec<String> {
+        env.storage().persistent().get(&DataKey::UserGroups(user))
+            .unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_user_groups_page(env: Env, user: Address, page: u32, page_size: u32) -> Vec<String> {
+        let all: Vec<String> = env
+            .storage().persistent().get(&DataKey::UserGroups(user))
+            .unwrap_or(Vec::new(&env));
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, all.len() as usize);
+        let mut result: Vec<String> = Vec::new(&env);
+        if start < all.len() as usize {
+            for i in start..end {
+                if let Some(gid) = all.get(i as u32) {
+                    result.push_back(gid);
+                }
+            }
+        }
+        result
+    }
+
+    pub fn get_all_groups(env: Env) -> Vec<String> {
+        env.storage().persistent().get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_groups_page(env: Env, page: u32, page_size: u32) -> Vec<String> {
+        let all_groups: Vec<String> = env
+            .storage().persistent().get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+
+        let start = (page * page_size) as usize;
+        let end = core::cmp::min(start + page_size as usize, all_groups.len() as usize);
+
+        let mut result: Vec<String> = Vec::new(&env);
+        if start < all_groups.len() as usize {
+            for i in start..end {
+                if let Some(group_id) = all_groups.get(i as u32) {
+                    result.push_back(group_id);
+                }
+            }
+        }
+        result
+    }
+
+    pub fn get_group_total_count(env: Env) -> u32 {
+        let all_groups: Vec<String> = env
+            .storage().persistent().get(&DataKey::AllGroups)
+            .unwrap_or(Vec::new(&env));
+        all_groups.len()
+    }
+}
+
+#[cfg(test)]
+mod tests;

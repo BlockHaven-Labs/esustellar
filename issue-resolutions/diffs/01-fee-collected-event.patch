@@ -1,0 +1,40 @@
+--- a/contracts/savings/src/lib.rs
++++ b/contracts/savings/src/lib.rs
+@@ -1190,6 +1190,14 @@ impl SavingsContract {
+         let platform_fee = (total_pool * (group.platform_fee_percent as i128)) / 10000;
+         let payout_amount = total_pool
+             .checked_sub(platform_fee)
+             .ok_or(Error::ArithmeticOverflow)?;
+ 
+         let recipient = Self::get_next_payout_recipient(env, group_id.clone(), current_round)?;
+ 
+         // Pay recipient and transfer platform fee to treasury if SEP-41 token is configured
+         if let Some(token) = group.token_address.clone() {
+             token::Client::new(env, &token).transfer(
+                 &env.current_contract_address(),
+                 &recipient,
+                 &payout_amount,
+             );
++            if platform_fee > 0 {
++                token::Client::new(env, &token).transfer(
++                    &env.current_contract_address(),
++                    &group.treasury,
++                    &platform_fee,
++                );
++            }
+         }
+ 
+@@ -1228,6 +1236,13 @@ impl SavingsContract {
+         // Publish payout event
+         env.events().publish(
+             (symbol_short!("payout"),),
+             (group_id.clone(), recipient, payout_amount, current_round),
+         );
++
++        // Publish FeeCollected event for audit trail
++        if platform_fee > 0 {
++            env.events().publish(
++                (symbol_short!("fee_col"),),
++                (group_id.clone(), group.treasury.clone(), platform_fee, current_round),
++            );
++        }
