@@ -8,7 +8,7 @@ This guide explains how to get set up, follow the project workflow, and submit c
 ---
 
 ## 📦 Project Structure
-
+  <!-- // return [value, setStoredValue, loading]; -->
 ```
 esustellar/
 ├── apps/

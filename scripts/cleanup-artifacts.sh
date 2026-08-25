@@ -7,7 +7,7 @@
 #
 # Usage:
 #   ./scripts/cleanup-artifacts.sh [--dry-run]
-#
+#mmm
 # Requirements (container cleanup):
 #   - gh CLI authenticated (gh auth login)
 #   - GHCR_OWNER env var (defaults to git remote org/user)

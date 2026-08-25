@@ -3,7 +3,7 @@
 This document lists every environment variable used across EsuStellar apps.
 
 ## `apps/web`
-
+# Reference: Issue #536
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `NEXT_PUBLIC_SOROBAN_RPC_URL` | Stellar RPC endpoint | Yes | — |

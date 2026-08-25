@@ -9,7 +9,7 @@
 | Contribute | Free | ~0.001 XLM |
 | Payout txn | Free | ~0.001 XLM |
 | Account create | Free | 1 XLM (min balance) |
-
+# Reference: Issue #536
 ## Infrastructure
 
 | Service | Estimated Monthly Cost |

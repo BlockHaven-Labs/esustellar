@@ -8,7 +8,7 @@ set -euo pipefail
 # Usage:
 #   DEPLOYER_PUBLIC_KEY="G..." ./scripts/check-deployer-balance.sh
 #   DEPLOYER_PUBLIC_KEY="G..." STELLAR_NETWORK=mainnet ./scripts/check-deployer-balance.sh
-#
+#,,,,
 # Required env vars:
 #   DEPLOYER_PUBLIC_KEY  — Stellar public key of the deployer account
 #
