@@ -47,6 +47,8 @@ pub enum Error {
     GroupIdAlreadyExists = 35,
     StringTooLong = 36,
     NotAnAllowedMember = 37,
+    NotAdmin = 38,
+    GroupNotOpen = 39,
 }
 
 // #697: Contract version for schema migration tracking.
@@ -540,6 +542,46 @@ impl SavingsContract {
 
         env.events()
             .publish((symbol_short!("cancelled"),), (caller, group_id));
+
+        Ok(())
+    }
+
+    pub fn update_contribution(
+        env: Env,
+        caller: Address,
+        group_id: String,
+        new_amount: i128,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let mut group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if caller != group.admin {
+            return Err(Error::NotAdmin);
+        }
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotOpen);
+        }
+
+        let member_count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MemberCount(group_id.clone()))
+            .unwrap_or(0);
+
+        if member_count > 1 {
+            return Err(Error::GroupNotOpen);
+        }
+
+        group.contribution_amount = new_amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Group(group_id.clone()), &group);
 
         Ok(())
     }
