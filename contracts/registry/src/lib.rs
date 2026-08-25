@@ -17,6 +17,8 @@ pub enum Error {
     NotGroupAdmin = 102,
     UserNotInGroup = 103,
     InvalidAddress = 104,
+    EmptyGroupId = 105,
+    EmptyGroupName = 106,
 }
 
 #[contracttype]
@@ -63,6 +65,13 @@ impl GroupRegistry {
         total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
+
+        if group_id.len() == 0 {
+            return Err(Error::EmptyGroupId);
+        }
+        if name.len() == 0 {
+            return Err(Error::EmptyGroupName);
+        }
 
         if env
             .storage()

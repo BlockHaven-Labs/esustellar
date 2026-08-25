@@ -1288,3 +1288,43 @@ fn test_update_group_info_preserves_created_at() {
     assert_eq!(info.is_public, false, "is_public should be updated");
     assert_eq!(info.total_members, 10, "total_members should be updated");
 }
+
+// ── Input validation ──────────────────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "Error(Contract, #105)")]
+fn test_register_group_rejects_empty_group_id() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+    let contract = Address::generate(&env);
+
+    // Empty group_id must be rejected before the cross-contract call.
+    client.register_group(
+        &contract,
+        &String::from_str(&env, ""),
+        &String::from_str(&env, "Valid Name"),
+        &admin,
+        &true,
+        &5,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #106)")]
+fn test_register_group_rejects_empty_name() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+    let contract = Address::generate(&env);
+
+    // Empty name must be rejected before the cross-contract call.
+    client.register_group(
+        &contract,
+        &String::from_str(&env, "valid-id"),
+        &String::from_str(&env, ""),
+        &admin,
+        &true,
+        &5,
+    );
+}
