@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Vec,
 };
 
 // #697: Contract version for schema migration tracking.
@@ -36,6 +36,8 @@ pub struct GroupInfo {
 pub enum DataKey {
     AllGroups,
     UserGroups(Address),
+    /// Secondary O(1) membership set — mirrors the Vec in `UserGroups`.
+    UserGroupSet(Address),
     GroupInfo(Address),
     GroupCount,
     RegisteredGroupId(String),
@@ -133,6 +135,17 @@ impl GroupRegistry {
             .persistent()
             .set(&DataKey::UserGroups(admin.clone()), &admin_groups);
 
+        // Also populate the secondary Set for the admin.
+        let mut admin_set: Map<Address, bool> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroupSet(admin.clone()))
+            .unwrap_or(Map::new(&env));
+        admin_set.set(contract_address.clone(), true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserGroupSet(admin.clone()), &admin_set);
+
         env.events().publish(
             (symbol_short!("reg_group"),),
             (contract_address, group_id, admin),
@@ -171,18 +184,27 @@ impl GroupRegistry {
             .get(&DataKey::UserGroups(member.clone()))
             .unwrap_or(Vec::new(&env));
 
-        for i in 0..user_groups.len() {
-            if let Some(addr) = user_groups.get(i) {
-                if addr == contract_address {
-                    return Ok(false);
-                }
-            }
+        // O(1) duplicate check via the secondary Set.
+        let user_group_set: Map<Address, bool> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroupSet(member.clone()))
+            .unwrap_or(Map::new(&env));
+
+        if user_group_set.get(contract_address.clone()).unwrap_or(false) {
+            return Ok(false);
         }
 
         user_groups.push_back(contract_address.clone());
         env.storage()
             .persistent()
             .set(&DataKey::UserGroups(member.clone()), &user_groups);
+
+        let mut updated_set = user_group_set;
+        updated_set.set(contract_address.clone(), true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserGroupSet(member.clone()), &updated_set);
 
         env.events()
             .publish((symbol_short!("add_mem"),), (contract_address, member));
@@ -227,6 +249,17 @@ impl GroupRegistry {
             env.storage()
                 .persistent()
                 .set(&DataKey::UserGroups(member.clone()), &user_groups);
+
+            // Also remove from the secondary Set.
+            let mut user_group_set: Map<Address, bool> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::UserGroupSet(member.clone()))
+                .unwrap_or(Map::new(&env));
+            user_group_set.set(contract_address.clone(), false);
+            env.storage()
+                .persistent()
+                .set(&DataKey::UserGroupSet(member.clone()), &user_group_set);
 
             env.events()
                 .publish((symbol_short!("rm_mem"),), (contract_address, member));
@@ -304,6 +337,17 @@ impl GroupRegistry {
         env.storage()
             .persistent()
             .set(&DataKey::UserGroups(new_admin.clone()), &new_admin_groups);
+
+        // Also update the secondary Set for the new admin.
+        let mut new_admin_set: Map<Address, bool> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserGroupSet(new_admin.clone()))
+            .unwrap_or(Map::new(&env));
+        new_admin_set.set(contract_address.clone(), true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserGroupSet(new_admin.clone()), &new_admin_set);
 
         env.events().publish(
             (symbol_short!("adm_xfer"),),
