@@ -171,6 +171,7 @@ pub enum DataKey {
     MemberCount(String),
     AllGroups,
     UserGroups(Address),
+    AdministeredGroups(Address),
     AllowedMembers(String),
     GroupPage(u32),
     GroupPageIndex,
@@ -344,10 +345,10 @@ impl SavingsContract {
         env.storage().persistent().set(&DataKey::LastGroupTimestamp(admin.clone()), &env.ledger().timestamp());
 
         let mut admin_groups: Vec<String> = env
-            .storage().persistent().get(&DataKey::UserGroups(admin.clone()))
+            .storage().persistent().get(&DataKey::AdministeredGroups(admin.clone()))
             .unwrap_or(Vec::new(&env));
         admin_groups.push_back(group_id.clone());
-        env.storage().persistent().set(&DataKey::UserGroups(admin.clone()), &admin_groups);
+        env.storage().persistent().set(&DataKey::AdministeredGroups(admin.clone()), &admin_groups);
 
         Self::add_admin_to_group(&env, admin.clone(), group_id.clone())?;
 
