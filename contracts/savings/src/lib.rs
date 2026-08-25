@@ -344,7 +344,15 @@ impl SavingsContract {
 
         env.events().publish(
             (symbol_short!("created"),),
-            (group_id, contribution_amount, total_members),
+            (
+                group.group_id.clone(),
+                group.admin.clone(),
+                group.contribution_amount,
+                group.total_members,
+                group.frequency.clone(),
+                group.start_timestamp,
+                group.is_public,
+            ),
         );
 
         Ok(group)
@@ -1592,4 +1600,3 @@ impl SavingsContract {
 
 #[cfg(test)]
 mod tests;
-
