@@ -3,6 +3,21 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
     Vec,
+    pub fn get_group_duration_seconds(env: Env, group_id: String) -> Result<u64, Error> {
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        let frequency_seconds = match group.frequency {
+            Frequency::Weekly => 604800,
+            Frequency::BiWeekly => 1209600,
+            Frequency::Monthly => 2592000,
+        };
+
+        Ok(u64::from(group.total_members) * frequency_seconds)
+    }
 };
 
 // #696: Error codes are unique per-contract. Savings contract codes start at 1.
@@ -109,6 +124,9 @@ pub struct SavingsGroup {
     pub start_timestamp: u64,
     pub status: GroupStatus,
     pub is_public: bool,
+    /// The current round number. Initialized to 0, meaning no round has
+    /// started yet. Incremented to 1 when the group becomes Active.
+    /// See `get_round_deadline` for validation against this sentinel.
     pub current_round: u32,
     pub platform_fee_percent: u32,
     pub treasury: Address,
@@ -124,6 +142,9 @@ pub struct SavingsGroup {
 #[derive(Clone)]
 pub struct Member {
     pub address: Address,
+    /// Timestamp of when the member joined. For the admin, this is the
+    /// group-creation timestamp. For other members, it's the timestamp
+    /// of their `join_group` call.
     pub join_timestamp: u64,
     pub join_order: u32,
     pub status: MemberStatus,
@@ -358,7 +379,15 @@ impl SavingsContract {
         // (see event-schema convention comment above DataKey).
         env.events().publish(
             (symbol_short!("created"), group_id.clone()),
-            (group_id, contribution_amount, total_members),
+            (
+                group.group_id.clone(),
+                group.admin.clone(),
+                group.contribution_amount,
+                group.total_members,
+                group.frequency.clone(),
+                group.start_timestamp,
+                group.is_public,
+            ),
         );
 
         Ok(group)
@@ -1612,4 +1641,3 @@ impl SavingsContract {
 
 #[cfg(test)]
 mod tests;
-
