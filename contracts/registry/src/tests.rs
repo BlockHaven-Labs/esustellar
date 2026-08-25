@@ -1264,3 +1264,27 @@ fn test_update_group_info_updates_metadata() {
     assert_eq!(info.is_public, false);
     assert_eq!(info.total_members, 10);
 }
+
+#[test]
+fn test_update_group_info_preserves_created_at() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+
+    let group = register_group(&env, &client, "g-preserve", "Original Name", &admin, true, 5);
+    let original_created_at = client.get_group_info(&group).created_at;
+    assert!(original_created_at > 0, "created_at must be set at registration");
+
+    // Update mutable fields.
+    let new_name = String::from_str(&env, "Updated Name");
+    client.update_group_info(&group, &new_name, &false, &10);
+
+    let info = client.get_group_info(&group);
+    assert_eq!(
+        info.created_at, original_created_at,
+        "created_at must be preserved across update_group_info"
+    );
+    assert_eq!(info.name, new_name, "name should be updated");
+    assert_eq!(info.is_public, false, "is_public should be updated");
+    assert_eq!(info.total_members, 10, "total_members should be updated");
+}
