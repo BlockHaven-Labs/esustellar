@@ -84,6 +84,7 @@ pub enum MemberStatus {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Frequency {
+    Daily,
     Weekly,
     BiWeekly,
     Monthly,
