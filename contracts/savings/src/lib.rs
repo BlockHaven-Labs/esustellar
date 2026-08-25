@@ -3,6 +3,21 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
     Vec,
+    pub fn get_group_duration_seconds(env: Env, group_id: String) -> Result<u64, Error> {
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        let frequency_seconds = match group.frequency {
+            Frequency::Weekly => 604800,
+            Frequency::BiWeekly => 1209600,
+            Frequency::Monthly => 2592000,
+        };
+
+        Ok(u64::from(group.total_members) * frequency_seconds)
+    }
 };
 
 // #696: Error codes are unique per-contract. Savings contract codes start at 1.
