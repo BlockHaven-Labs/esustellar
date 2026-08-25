@@ -70,6 +70,100 @@ fn test_create_group_success() {
 }
 
 #[test]
+#[should_panic(expected = "Error::InvalidMemberCount")]
+fn test_create_group_2_members_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "test-group-2-members");
+    let name = String::from_str(&env, "Test Savings");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &2,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+        &None,
+    );
+}
+
+#[test]
+fn test_create_group_3_members_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "test-group-3-members");
+    let name = String::from_str(&env, "Test Savings");
+
+    let group = client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+        &None,
+    );
+
+    assert_eq!(group.total_members, 3);
+}
+
+#[test]
+fn test_create_group_20_members_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "test-group-20-members");
+    let name = String::from_str(&env, "Test Savings");
+
+    let group = client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &20,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+        &None,
+    );
+
+    assert_eq!(group.total_members, 20);
+}
+
+#[test]
+#[should_panic(expected = "Error::InvalidMemberCount")]
+fn test_create_group_21_members_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "test-group-21-members");
+    let name = String::from_str(&env, "Test Savings");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &21,
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+        &None,
+    );
+}
+
+#[test]
 #[should_panic]
 fn test_create_group_low_contribution() {
     let env = Env::default();
