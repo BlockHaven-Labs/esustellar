@@ -22,6 +22,7 @@ export default function DashboardPage() {
               <span className="font-mono text-muted-foreground">GDQP...X7KL</span>
             </div>
           </div>
+  {/* // const [loading, setLoading] = useState(true); */}
 
           {/* Stats */}
           <DashboardStats />

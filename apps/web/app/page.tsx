@@ -18,7 +18,8 @@ export default function HomePage() {
         <HowItWorksSection />
         <CTASection />
       </main>
-      <Footer />
+      {/* <Footer /> */}
+            <Footer />
     </div>
   )
 }
