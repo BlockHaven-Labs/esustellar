@@ -4,6 +4,10 @@ This runbook covers triage and resolution steps for all critical alerts in the e
 
 ---
 
+
+
+
+
 ## Alert: Web App Down
 
 **Trigger**: `probe_success == 0` for the web app URL for > 2 minutes.
