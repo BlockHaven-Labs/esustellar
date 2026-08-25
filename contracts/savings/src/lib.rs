@@ -46,6 +46,7 @@ pub enum Error {
     GroupIsPrivate = 34,
     GroupIdAlreadyExists = 35,
     StringTooLong = 36,
+    MaxOpenGroupsReached = 37,
 }
 
 // #697: Contract version for schema migration tracking.
@@ -60,6 +61,7 @@ pub const MAX_START_TIMESTAMP_OFFSET: u64 = 31_536_000;
 pub const GROUP_TTL_EXTEND: u32 = 6_312_000;
 pub const PAGE_SIZE: u32 = 100;
 pub const GRACE_PERIOD_SECONDS: u64 = 259_200; // 3 days
+pub const MAX_OPEN_GROUPS_PER_ADMIN: u32 = 5;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -175,6 +177,7 @@ pub enum DataKey {
     LastGroupTimestamp(Address),
     Initialized,
     Admin,
+    OpenGroupCount(Address),
 }
 
 fn bump_group_keys(env: &Env, group_id: &String) {
@@ -298,6 +301,19 @@ impl SavingsContract {
         if start_timestamp > env.ledger().timestamp() + MAX_START_TIMESTAMP_OFFSET {
             return Err(Error::StartDateTooFarInFuture);
         }
+
+        let open_group_count_key = DataKey::OpenGroupCount(admin.clone());
+        let open_group_count: u32 = env
+            .storage()
+            .persistent()
+            .get(&open_group_count_key)
+            .unwrap_or(0);
+        if open_group_count >= MAX_OPEN_GROUPS_PER_ADMIN {
+            return Err(Error::MaxOpenGroupsReached);
+        }
+        env.storage()
+            .persistent()
+            .set(&open_group_count_key, &(open_group_count + 1));
 
         let group = SavingsGroup {
             group_id: group_id.clone(),
@@ -429,6 +445,18 @@ impl SavingsContract {
                 .ok_or(Error::GroupNotFound)?;
             let mut group = group.clone();
 
+            let open_group_count_key = DataKey::OpenGroupCount(group.admin.clone());
+            let open_group_count: u32 = env
+                .storage()
+                .persistent()
+                .get(&open_group_count_key)
+                .unwrap_or(0);
+            if open_group_count > 0 {
+                env.storage()
+                    .persistent()
+                    .set(&open_group_count_key, &(open_group_count - 1));
+            }
+
             // #744/#745: Generate pseudorandom payout order so the admin
             // is NOT deterministically first. Uses Fisher-Yates shuffle
             // seeded by the ledger's PRNG to produce an unbiased ordering.
@@ -472,6 +500,18 @@ impl SavingsContract {
 
         if group.status != GroupStatus::Open {
             return Err(Error::GroupNotOpen);
+        }
+
+        let open_group_count_key = DataKey::OpenGroupCount(group.admin.clone());
+        let open_group_count: u32 = env
+            .storage()
+            .persistent()
+            .get(&open_group_count_key)
+            .unwrap_or(0);
+        if open_group_count > 0 {
+            env.storage()
+                .persistent()
+                .set(&open_group_count_key, &(open_group_count - 1));
         }
 
         // Remove from global groups list
@@ -1592,4 +1632,3 @@ impl SavingsContract {
 
 #[cfg(test)]
 mod tests;
-
