@@ -20,7 +20,7 @@ esustellar/
 │   └── shared/           # Shared utilities and types
 ├── docs/                 # Documentation and specs
 ├── deploy.sh             # Contract deployment script
-└── README.md
+└── README.md.
 ```
 
 ---

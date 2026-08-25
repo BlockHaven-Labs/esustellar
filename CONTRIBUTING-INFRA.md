@@ -18,7 +18,7 @@ The `main` branch is protected with enforced rules:
 
 See `docs/branch-protection.md` for detailed configuration and setup instructions.
 
-## Principles
+## Principles,
 
 1. **All infra changes must be reviewed** — no direct pushes to `main`
 2. **Docs must stay in sync with code** — update docs in the same PR
