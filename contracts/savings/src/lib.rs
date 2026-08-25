@@ -377,7 +377,7 @@ impl SavingsContract {
     pub fn join_group(env: Env, member: Address, group_id: String) -> Result<(), Error> {
         member.require_auth();
 
-        let group: SavingsGroup = env
+        let mut group: SavingsGroup = env
             .storage().persistent().get(&DataKey::Group(group_id.clone()))
             .ok_or(Error::GroupNotFound)?;
 
@@ -422,13 +422,6 @@ impl SavingsContract {
         // This ensures the registry stays in sync with on-chain state automatically.
 
         if new_count == group.total_members {
-            let mut group: SavingsGroup = env
-                .storage()
-                .persistent()
-                .get(&DataKey::Group(group_id.clone()))
-                .ok_or(Error::GroupNotFound)?;
-            let mut group = group.clone();
-
             // #744/#745: Generate pseudorandom payout order so the admin
             // is NOT deterministically first. Uses Fisher-Yates shuffle
             // seeded by the ledger's PRNG to produce an unbiased ordering.
