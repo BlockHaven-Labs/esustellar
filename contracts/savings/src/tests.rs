@@ -1019,3 +1019,24 @@ fn test_get_user_groups_page() {
     let page = client.get_user_groups_page(&user, &0, &2);
     assert_eq!(page.len(), 2);
 }
+
+#[test]
+fn temp_xdr_capture() {
+    use soroban_sdk::xdr::ToXdr;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "xdr-snap-group");
+    let name = String::from_str(&env, "XDR Snapshot Test");
+
+    let group = client.create_group(
+        &admin, &group_id, &name, &100_000_000, &3,
+        &Frequency::Weekly, &(env.ledger().timestamp() + 86400),
+        &true, &admin, &None,
+    );
+
+    let xdr_bytes = group.to_xdr(&env);
+    panic!("SAVINGS_GROUP_XDR={:?}", xdr_bytes);
+}
