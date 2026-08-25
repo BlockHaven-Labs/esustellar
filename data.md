@@ -23,7 +23,7 @@ See `docs/branch-protection.md` for detailed configuration and setup instruction
 1. **All infra changes must be reviewed** — no direct pushes to `main`
 2. **Docs must stay in sync with code** — update docs in the same PR
 3. **Secrets never committed** — use Docker secrets, env files, or GH secrets
-4. **Test changes on testnet first** — never test directly on mainnet
+4. **Test changes on testnet first** — never test directly on mainnet.
 
 ## CI Workflow Changes
 
