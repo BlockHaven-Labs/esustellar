@@ -127,6 +127,9 @@ pub struct SavingsGroup {
 #[derive(Clone)]
 pub struct Member {
     pub address: Address,
+    /// Timestamp of when the member joined. For the admin, this is the
+    /// group-creation timestamp. For other members, it's the timestamp
+    /// of their `join_group` call.
     pub join_timestamp: u64,
     pub join_order: u32,
     pub status: MemberStatus,
