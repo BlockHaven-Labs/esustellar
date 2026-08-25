@@ -57,7 +57,6 @@ impl GroupRegistry {
         group_id: String,
         name: String,
         admin: Address,
-        is_public: bool,
         total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
@@ -87,7 +86,7 @@ impl GroupRegistry {
             group_id: group_id.clone(),
             name,
             admin: admin.clone(),
-            is_public,
+            is_public: savings_group.is_public,
             created_at: env.ledger().timestamp(),
             total_members,
         };
