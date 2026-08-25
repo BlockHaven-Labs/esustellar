@@ -46,6 +46,7 @@ pub enum Error {
     GroupIsPrivate = 34,
     GroupIdAlreadyExists = 35,
     StringTooLong = 36,
+    NotAnAllowedMember = 37,
 }
 
 // #697: Contract version for schema migration tracking.
@@ -170,6 +171,7 @@ pub enum DataKey {
     MemberCount(String),
     AllGroups,
     UserGroups(Address),
+    AllowedMembers(String),
     GroupPage(u32),
     GroupPageIndex,
     LastGroupTimestamp(Address),
@@ -254,6 +256,7 @@ impl SavingsContract {
         is_public: bool,
         treasury: Address,
         token_address: Option<Address>,
+        allowed_members: Option<Vec<Address>>,
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
 
@@ -318,6 +321,12 @@ impl SavingsContract {
 
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
         env.storage().persistent().extend_ttl(&DataKey::Group(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
+
+        if let Some(members) = allowed_members {
+            if !is_public {
+                env.storage().persistent().set(&DataKey::AllowedMembers(group_id.clone()), &members);
+            }
+        }
 
         let members: Vec<Address> = Vec::new(&env);
         env.storage().persistent().set(&DataKey::Members(group_id.clone()), &members);
@@ -391,8 +400,17 @@ impl SavingsContract {
         }
 
         // #617: enforce private groups — only the admin may join a non-public group.
-        if !group.is_public && member != group.admin {
-            return Err(Error::GroupIsPrivate);
+        if !group.is_public {
+            if member != group.admin {
+                let allowed_members: Vec<Address> = env
+                    .storage()
+                    .persistent()
+                    .get(&DataKey::AllowedMembers(group_id.clone()))
+                    .unwrap_or(Vec::new(&env));
+                if !allowed_members.contains(&member) {
+                    return Err(Error::NotAnAllowedMember);
+                }
+            }
         }
 
         let member_count: u32 = env
@@ -1592,4 +1610,3 @@ impl SavingsContract {
 
 #[cfg(test)]
 mod tests;
-
