@@ -109,6 +109,9 @@ pub struct SavingsGroup {
     pub start_timestamp: u64,
     pub status: GroupStatus,
     pub is_public: bool,
+    /// The current round number. Initialized to 0, meaning no round has
+    /// started yet. Incremented to 1 when the group becomes Active.
+    /// See `get_round_deadline` for validation against this sentinel.
     pub current_round: u32,
     pub platform_fee_percent: u32,
     pub treasury: Address,
