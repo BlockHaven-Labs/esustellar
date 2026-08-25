@@ -17,7 +17,13 @@ pub enum Error {
     NotGroupAdmin = 102,
     UserNotInGroup = 103,
     InvalidAddress = 104,
+    /// group_id or name was empty (or below the minimum length).
+    InvalidInput = 105,
 }
+
+/// Minimum character length for group_id and name fields.
+pub const MIN_GROUP_ID_LEN: u32 = 1;
+pub const MIN_NAME_LEN: u32 = 1;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,6 +67,15 @@ impl GroupRegistry {
         total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
+
+        // #40: Reject empty (or below-minimum-length) group_id and name to prevent
+        // blank-identifier entries that are ambiguous in discovery UIs.
+        if group_id.len() < MIN_GROUP_ID_LEN {
+            return Err(Error::InvalidInput);
+        }
+        if name.len() < MIN_NAME_LEN {
+            return Err(Error::InvalidInput);
+        }
 
         if env
             .storage()
@@ -245,6 +260,11 @@ impl GroupRegistry {
         total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
+
+        // #40: Mirror the same minimum-length check applied in register_group.
+        if name.len() < MIN_NAME_LEN {
+            return Err(Error::InvalidInput);
+        }
 
         let mut group_info: GroupInfo = env
             .storage()
