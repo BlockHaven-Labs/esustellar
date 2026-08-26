@@ -1,0 +1,51 @@
+# Issue #900 — Horizontal Pod Autoscaler for the web app.
+#
+# Scaling rationale:
+# - CPU target 70%: the web app is I/O bound (Stellar RPC calls),
+#   so CPU usage is a reasonable proxy for request load.
+# - Memory target 80%: Next.js SSR can spike memory under heavy
+#   concurrent requests; 80% provides headroom before OOM kills.
+# - Min 2 replicas: ensures availability during rolling deploys.
+# - Max 8 replicas: prevents runaway costs while handling traffic
+#   spikes (e.g., contribution deadline windows).
+# - Scale-up is faster (60s stabilization) than scale-down (300s)
+#   to respond quickly to bursts.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: esustellar-web-hpa
+  labels:
+    app: esustellar-web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: esustellar-web
+  minReplicas: 2
+  maxReplicas: 8
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
