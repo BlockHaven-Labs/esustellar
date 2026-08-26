@@ -1,7 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Executable,
+    String, Vec,
 };
 
 // #697: Contract version for schema migration tracking.
@@ -17,7 +18,9 @@ pub enum Error {
     NotGroupAdmin = 102,
     UserNotInGroup = 103,
     InvalidAddress = 104,
-    InvalidMemberCount = 105,
+    MetadataMismatch = 105,
+    NotAContract = 106,
+    InvalidMemberCount = 107,
 }
 
 #[contracttype]
@@ -51,7 +54,8 @@ pub struct GroupRegistry;
 impl GroupRegistry {
     /// Register a savings group in the registry.
     /// Verifies the contract address is a real deployed savings contract that
-    /// knows about the group_id and that the admin matches.
+    /// knows about the group_id, that the admin matches, and that
+    /// caller-supplied metadata (name, is_public) matches the on-chain state.
     /// total_members is derived from the actual savings contract, not caller input.
     pub fn register_group(
         env: Env,
@@ -62,6 +66,13 @@ impl GroupRegistry {
         is_public: bool,
     ) -> Result<(), Error> {
         admin.require_auth();
+
+        // TASK4: Verify the address points to an actual deployed contract,
+        // not a plain externally-owned account.
+        match contract_address.executable() {
+            Some(Executable::Wasm(_)) => {}
+            _ => return Err(Error::NotAContract),
+        }
 
         if env
             .storage()
@@ -79,8 +90,17 @@ impl GroupRegistry {
             .try_get_group(&group_id)
             .map_err(|_| Error::InvalidAddress)?
             .map_err(|_| Error::InvalidAddress)?;
+
+        // TASK1: Verify that the caller-supplied metadata matches the on-chain
+        // savings contract, preventing registry/UI drift.
         if savings_group.admin != admin {
             return Err(Error::NotGroupAdmin);
+        }
+        if savings_group.name != name {
+            return Err(Error::MetadataMismatch);
+        }
+        if savings_group.is_public != is_public {
+            return Err(Error::MetadataMismatch);
         }
 
         let group_info = GroupInfo {
