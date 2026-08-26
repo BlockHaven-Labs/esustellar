@@ -46,7 +46,7 @@ export default function CreateGroupForm() {
   const [totalMembers, setTotalMembers] = useState("");
   const [frequency, setFrequency] = useState<Frequency>("Monthly");
   const [startDate, setStartDate] = useState("");
-
+  {/* // const [loading, setLoading] = useState(true); */}
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
