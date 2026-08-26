@@ -646,4 +646,9 @@ fn test_timestamps_are_monotonic_across_registrations() {
     let t2 = client.get_group_info(&g2).created_at;
 
     assert!(t2 > t1, "Later registration must have a higher created_at timestamp");
+
+    fn registry_test(env: &Env) -> GroupRegistryClient<'_> {
+    let contract_id = env.register(GroupRegistry, ());
+    GroupRegistryClient::new(env, &contract_id)
+}
 }
