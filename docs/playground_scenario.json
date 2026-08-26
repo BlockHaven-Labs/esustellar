@@ -1,0 +1,24 @@
+```json
+{
+  "meta": {
+    "generator": "scripts/playground.sh",
+    "compiledAt": "2026-06-26T15:15:00Z",
+    "compatibilityMode": "IDE-Playground-Engine/v2"
+  },
+  "environment": {
+    "targetNetwork": "local",
+    "signerIdentity": "MASKED_SESSION_KEY"
+  },
+  "traceData": {
+    "executedCalls": [
+      "register_property_with_token on property-token (CC_PROPERTY_TOKEN_ADDRESS)",
+      "create_escrow_advanced on escrow (CC_ESCROW_ADDRESS)",
+      "stake on staking (CC_STAKING_ADDRESS)"
+    ],
+    "emittedEvents": [
+      "Event::PropertyRegistered(id: 1, valuation: 500000000000)",
+      "Event::EscrowInitialized(id: 42, property_id: 1, amount: 2500000000)",
+      "Event::TokensStaked(actor: GD7...34A, amount: 10000000000, duration: ThirtyDays)"
+    ]
+  }
+}

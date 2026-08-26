@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esustellar-config
+  namespace: esustellar-mainnet
+  labels:
+    app: esustellar-web
+    environment: mainnet
+data:
+  NEXT_PUBLIC_SAVINGS_CONTRACT_ID: ""
+  NEXT_PUBLIC_REGISTRY_CONTRACT_ID: ""
+  NEXT_PUBLIC_CONTRACT_ID: ""

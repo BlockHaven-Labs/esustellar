@@ -6,12 +6,23 @@ Soroban smart contracts for the EsuStellar savings platform.
 
 ```
 contracts/
-└── savings/
-    ├── src/
-    │   ├── lib.rs          # Main contract logic
-    │   └── tests.rs        # Comprehensive tests
-    ├── Cargo.toml          # Dependencies
-    └── deployment-info.json # Deployment records
+├── savings/              # Core savings group contract
+│   ├── src/
+│   │   ├── lib.rs        # Main contract logic
+│   │   └── tests.rs      # Comprehensive tests
+│   ├── test_snapshots/   # Insta test snapshots
+│   ├── Cargo.toml        # Dependencies
+│   ├── Makefile          # Build utilities
+│   ├── .gitignore        # Git exclusions
+│   └── README.md         # This file
+├── registry/             # Group registry & discovery contract
+│   ├── src/
+│   │   ├── lib.rs        # Registry logic
+│   │   └── tests.rs      # Registry tests
+│   ├── test_snapshots/   # Insta test snapshots
+│   └── Cargo.toml        # Dependencies
+├── README.md             # Contracts overview
+└── Dockerfile            # Reproducible WASM builds
 ```
 
 ## 🚀 Quick Start
@@ -25,7 +36,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 2. **Add WASM target**
 ```bash
-rustup target add wasm32-unknown-unknown
+rustup target add wasm32v1-none
 ```
 
 3. **Install Stellar CLI**
@@ -36,6 +47,11 @@ cargo install --locked stellar-cli --features opt
 ### Build
 
 ```bash
+# Build both contracts
+cd contracts/registry && stellar contract build && cd ../..
+cd contracts/savings && stellar contract build && cd ../..
+
+# Or build individually
 cd contracts/savings
 stellar contract build
 ```
@@ -43,12 +59,19 @@ stellar contract build
 ### Test
 
 ```bash
+# Test both contracts
+cargo test --manifest-path contracts/savings/Cargo.toml
+cargo test --manifest-path contracts/registry/Cargo.toml
+
+# Or from within a contract directory
+cd contracts/savings
 cargo test
 ```
 
 ### Deploy to Testnet
 
 ```bash
+# From repo root
 chmod +x deploy.sh
 ./deploy.sh
 ```
@@ -77,7 +100,7 @@ fn create_group(
     frequency: Frequency,
     start_timestamp: u64,
     is_public: bool,
-) -> Result<SavingsGroup, String>
+) -> Result<SavingsGroup, Error>
 ```
 
 **Parameters:**
@@ -102,7 +125,7 @@ fn create_group(
 Join an open savings group.
 
 ```rust
-fn join_group(env: Env, member: Address) -> Result<(), String>
+fn join_group(env: Env, member: Address, group_id: String) -> Result<(), Error>
 ```
 
 **Requirements:**
@@ -119,7 +142,7 @@ fn join_group(env: Env, member: Address) -> Result<(), String>
 Make contribution for current round.
 
 ```rust
-fn contribute(env: Env, member: Address) -> Result<(), String>
+fn contribute(env: Env, member: Address, group_id: String) -> Result<(), Error>
 ```
 
 **Requirements:**
@@ -137,14 +160,14 @@ fn contribute(env: Env, member: Address) -> Result<(), String>
 
 #### `get_group`
 ```rust
-fn get_group(env: Env) -> Result<SavingsGroup, String>
+fn get_group(env: Env) -> Result<SavingsGroup, Error>
 ```
 
 Returns complete group information.
 
 #### `get_member`
 ```rust
-fn get_member(env: Env, member: Address) -> Result<Member, String>
+fn get_member(env: Env, member: Address, group_id: String) -> Result<Member, Error>
 ```
 
 Returns member details and status.
@@ -324,6 +347,7 @@ stellar contract invoke \
 3. **No dispute resolution:** Built-in mechanism not yet implemented
 4. **Grace period hardcoded:** 3 days, not configurable per group
 5. **Platform fee fixed:** 2%, not adjustable
+6. **Uneven gas costs:** The member whose contribution completes a round pays additional gas for payout distribution and round transition (see issue #701)
 
 ## 🔮 Future Enhancements
 
@@ -376,3 +400,41 @@ stellar keys fund deployer --network testnet
 **Contract Version:** 0.1.0  
 **Soroban SDK:** 21.7.13  
 **Network:** Testnet (MVP)
+## Payout Order Guarantee - Important for Prospective Members
+
+> **The group creator always receives the first payout.** This is a structural property
+> of the current design and is documented here for full transparency (#746).
+
+### How payout order works
+
+Payout order is determined by `join_order`, assigned sequentially at join time:
+
+- `join_order 0` (group creator / admin): receives payout in **Round 1**
+- `join_order 1` (first joiner): receives payout in **Round 2**
+- `join_order 2` (second joiner): receives payout in **Round 3**
+- and so on...
+
+There is currently **no rotation scheme, no escrow delay, and no bonding requirement** on
+the admin's payout.
+
+### Known risk: admin default after round-1 payout (#744, #745)
+
+Because the admin receives the first payout automatically and there is no forced-default
+mechanism, a malicious group creator can:
+
+1. Create a group and attract members.
+2. Allow all members to contribute in Round 1 — the admin payout triggers automatically.
+3. Never call `contribute()` again.
+4. The group is permanently stuck: `all_members_paid()` never returns true for Round 2+,
+   so `distribute_payout()` is never called and remaining members cannot receive their payouts.
+
+**Current status:** This is an acknowledged critical finding (#744). A forced-default /
+emergency-exit mechanism and admin bonding requirement are planned as future mitigations.
+Until that fix lands, **only join groups whose creator you personally trust.**
+
+### Planned mitigations (#745)
+
+- **Admin bonding**: admin posts a stake forfeited to the group on default
+- **Forced-default governance**: any member can trigger a forced-default after a missed deadline
+- **Rotating priority**: elect or randomize payout order rather than using join_order
+

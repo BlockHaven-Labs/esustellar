@@ -1,14 +1,14 @@
 # Contributing to EsuStellar 🤝
 
 Thank you for your interest in contributing to **EsuStellar** 🎉
-We welcome **developers, designers, writers, and community members**.
+We welcome **developers, designers, writers, and community members**..
 
 This guide explains how to get set up, follow the project workflow, and submit changes that pass CI.
 
 ---
 
 ## 📦 Project Structure
-
+  <!-- // return [value, setStoredValue, loading]; -->
 ```
 esustellar/
 ├── apps/
@@ -20,7 +20,7 @@ esustellar/
 │   └── shared/           # Shared utilities and types
 ├── docs/                 # Documentation and specs
 ├── deploy.sh             # Contract deployment script
-└── README.md
+└── README.md.
 ```
 
 ---
@@ -61,7 +61,7 @@ npm install
 
 ---
 
-### 3️⃣ Run the Frontend (optional depending on the issue you are working on)
+<!-- ### 3️⃣ Run the Frontend (optional depending on the issue you are working on) -->
 
 ```bash
 cd apps/web

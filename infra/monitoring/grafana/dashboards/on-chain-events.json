@@ -1,0 +1,28 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "On-Chain Savings Events",
+  "uid": "on-chain-events",
+  "panels": [
+    {
+      "title": "Groups Created",
+      "type": "stat",
+      "targets": [{ "expr": "increase(stellar_group_created_total[24h])", "legendFormat": "24h" }]
+    },
+    {
+      "title": "Contributions Made",
+      "type": "graph",
+      "targets": [{ "expr": "rate(stellar_contribution_total[5m])", "legendFormat": "rate" }]
+    },
+    {
+      "title": "Payouts Sent",
+      "type": "graph",
+      "targets": [{ "expr": "rate(stellar_payout_total[5m])", "legendFormat": "rate" }]
+    },
+    {
+      "title": "Event Log",
+      "type": "logs",
+      "targets": [{ "expr": "{job=\"stellar-indexer\"}", "legendFormat": "" }]
+    }
+  ]
+}

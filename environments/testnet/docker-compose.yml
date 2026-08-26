@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      cache_from:
+        - ghcr.io/blockhaven-labs/esustellar-web:testnet-cache
+        - ghcr.io/blockhaven-labs/esustellar-web:testnet
+    image: ghcr.io/blockhaven-labs/esustellar-web:testnet
+    ports:
+      - "3000:3000"
+    env_file:
+      - config/testnet.env
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_NETWORK=testnet
+    secrets:
+      - soroban_rpc_url
+      - stellar_network_passphrase
+    depends_on:
+      - stellar-rpc
+
+  stellar-rpc:
+    image: stellar/quickstart:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - NETWORK=testnet
+    volumes:
+      - stellar-data:/opt/stellar
+    secrets:
+      - stellar_seed
+
+secrets:
+  soroban_rpc_url:
+    file: config/secrets/soroban_rpc_url.txt
+  stellar_network_passphrase:
+    file: config/secrets/stellar_network_passphrase.txt
+  stellar_seed:
+    file: config/secrets/stellar_seed.txt
+
+volumes:
+  stellar-data:
