@@ -778,3 +778,136 @@ fn test_savings_registry_full_lifecycle_stays_consistent() {
     assert_eq!(savings.get_round_payouts(&group_id, &1).len(), 1);
 }
 }
+
+#[test]
+fn test_remove_member_removes_group_from_user_groups() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+    let member = Address::generate(&env);
+
+    let group = register_group(&env, &client, "g-rem", "Removable Group", &admin, true, 5);
+
+    client.add_member(&group, &member);
+    let groups_before = client.get_user_groups(&member);
+    assert_eq!(groups_before.len(), 1);
+
+    client.remove_member(&group, &member);
+    let groups_after = client.get_user_groups(&member);
+    assert_eq!(groups_after.len(), 0);
+}
+
+#[test]
+fn test_update_group_info_updates_metadata() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+
+    let group = register_group(&env, &client, "g-upd", "Original Name", &admin, true, 5);
+
+    let new_name = String::from_str(&env, "Updated Name");
+    client.update_group_info(&group, &new_name, &false, &10);
+
+    let info = client.get_group_info(&group);
+    assert_eq!(info.name, new_name);
+    assert_eq!(info.is_public, false);
+    assert_eq!(info.total_members, 10);
+}
+
+// ── Large scale / unbounded-iteration empirical resource tests (50+ groups) ──
+
+#[test]
+fn test_get_all_public_groups_and_get_all_groups_info_large_group_count_50_plus() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+    let total_groups: u32 = 60; // 50+ groups requirement
+
+    // Register 60 groups with a mix of public and private (40 public, 20 private)
+    let mut expected_public_count: u32 = 0;
+    for i in 0..total_groups {
+        let is_public = i % 3 != 0; // 40 true, 20 false
+        if is_public {
+            expected_public_count += 1;
+        }
+        let suffix = format!("scale-grp-{i}");
+        let label = format!("Scale Group {i}");
+        register_group(
+            &env,
+            &client,
+            &suffix,
+            &label,
+            &admin,
+            is_public,
+            5 + (i % 15),
+        );
+    }
+
+    assert_eq!(client.get_group_count(), total_groups);
+
+    // 1. Exercise get_all_public_groups against 60 registered groups
+    let public_groups = client.get_all_public_groups();
+    assert_eq!(
+        public_groups.len(),
+        expected_public_count,
+        "get_all_public_groups must return exactly the public groups"
+    );
+    for i in 0..public_groups.len() {
+        let g = public_groups.get(i).unwrap();
+        assert!(g.is_public, "All returned groups must be marked public");
+        assert!(g.created_at > 0, "created_at must be populated");
+    }
+
+    // 2. Exercise get_all_groups_info against 60 registered groups
+    let all_info = client.get_all_groups_info();
+    assert_eq!(
+        all_info.len(),
+        total_groups,
+        "get_all_groups_info must return all 60 registered groups"
+    );
+    for i in 0..all_info.len() {
+        let info = all_info.get(i).unwrap();
+        assert!(info.created_at > 0, "created_at must be valid");
+        assert_eq!(info.admin, admin, "admin must match");
+    }
+
+    // 3. Exercise get_all_groups against 60 registered groups
+    let all_addresses = client.get_all_groups();
+    assert_eq!(all_addresses.len(), total_groups);
+
+    // 4. Verify paginated queries consistency against unbounded iterations
+    let page0 = client.get_public_groups_page(&0, &25);
+    let page1 = client.get_public_groups_page(&1, &25);
+    assert_eq!(page0.len(), 25);
+    assert_eq!(page1.len(), expected_public_count - 25);
+}
+
+#[test]
+fn test_large_scale_100_groups_unbounded_iteration_budget() {
+    let env = setup_env();
+    let client = create_registry(&env);
+    let admin = Address::generate(&env);
+    let total_groups: u32 = 100;
+
+    for i in 0..total_groups {
+        let suffix = format!("stress-grp-{i}");
+        let label = format!("Stress Group {i}");
+        register_group(
+            &env,
+            &client,
+            &suffix,
+            &label,
+            &admin,
+            true,
+            10,
+        );
+    }
+
+    assert_eq!(client.get_group_count(), total_groups);
+
+    let public_groups = client.get_all_public_groups();
+    assert_eq!(public_groups.len(), total_groups);
+
+    let all_info = client.get_all_groups_info();
+    assert_eq!(all_info.len(), total_groups);
+}
