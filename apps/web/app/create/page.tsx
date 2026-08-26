@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Wallet, AlertCircle, Loader2 } from "lucide-react";
+import { Wallet, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 
 import { useWallet } from "@/hooks/use-wallet";
 import { useSavingsContract, type Frequency } from "@/context/savingsContract";
+import { useTxToast } from "@/hooks/use-tx-toast";
 
 import {
   Card,
@@ -27,17 +28,20 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRegistryContract } from "@/context/registryContract";
-import { logger } from "@/lib/logger";
+
+// Tracks which step of the two-step process we're on so the user always
+// knows what's happening.
+type CreationStep = "idle" | "creating" | "registering" | "done" | "error";
 
 export default function CreateGroupForm() {
   const { isConnected, connect, publicKey } = useWallet();
   const contract = useSavingsContract();
   const registryContract = useRegistryContract();
 
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [step, setStep] = useState<CreationStep>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const createTx = useTxToast();
+  const registerTx = useTxToast();
 
   // Form state
   const [groupName, setGroupName] = useState("");
@@ -46,11 +50,24 @@ export default function CreateGroupForm() {
   const [totalMembers, setTotalMembers] = useState("");
   const [frequency, setFrequency] = useState<Frequency>("Monthly");
   const [startDate, setStartDate] = useState("");
-  {/* // const [loading, setLoading] = useState(true); */}
+  const [isPrivate, setIsPrivate] = useState(false);
+
+  const isLoading = step === "creating" || step === "registering";
+
+  const resetForm = () => {
+    setGroupName("");
+    setDescription("");
+    setContributionAmount("");
+    setTotalMembers("");
+    setStartDate("");
+    setIsPrivate(false);
+    setFrequency("Monthly");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
+    setStep("idle");
 
     if (!isConnected || !publicKey) {
       setError("Please connect your wallet first");
@@ -75,7 +92,7 @@ export default function CreateGroupForm() {
       return;
     }
 
-    const startTimestamp = new Date(startDate).getTime() / 1000;
+    const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
     const currentTime = Math.floor(Date.now() / 1000);
 
     if (startTimestamp <= currentTime) {
@@ -83,80 +100,88 @@ export default function CreateGroupForm() {
       return;
     }
 
-    const bufferedTimestamp = startTimestamp + 3600;
+    // Convert XLM to stroops (1 XLM = 10,000,000 stroops)
+    const contributionStroops = BigInt(Math.floor(amount * 10_000_000));
+    const groupId = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    setIsLoading(true);
+    // ── Step 1: Create group on savings contract ─────────────
+    setStep("creating");
 
-    try {
-      // Convert XLM to stroops (1 XLM = 10,000,000 stroops)
-      const contributionStroops = BigInt(Math.floor(amount * 10_000_000));
-
-       const groupId = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-      // const groupId = generateGroupId();
-      // Example: "grp1739721234567abc12345"
-
-      logger.info("Creating group with params", {
-        groupId,
-        name: groupName,
-        contributionAmount: contributionStroops.toString(),
-        totalMembers: members,
-        frequency,
-        startTimestamp: BigInt(Math.floor(bufferedTimestamp)),
-        isPublic: !isPrivate,
-      });
-
-      const result = await contract.createGroup({
-        groupId,
-        name: groupName,
-        contributionAmount: contributionStroops,
-        totalMembers: members,
-        frequency,
-        startTimestamp: BigInt(Math.floor(startTimestamp)),
-        isPublic: !isPrivate,
-      });
-
-      logger.info("Group created successfully", { result });
-
-      // Step 2: Register group in Registry contract
-      try {
-        await registryContract.registerGroup({
-          contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ID!, // Savings contract address
+    const createResult = await createTx.submitTx(
+      () =>
+        contract.createGroup({
           groupId,
           name: groupName,
-          admin: publicKey,
-          isPublic: !isPrivate,
+          contributionAmount: contributionStroops,
           totalMembers: members,
-        });
+          frequency,
+          startTimestamp: BigInt(startTimestamp),
+          isPublic: !isPrivate,
+        }),
+      {
+        label: "create_group",
+        pending: "Creating your group on-chain…",
+        success: "Group created on-chain — registering for discovery…",
+      },
+    );
 
-        logger.info("Group registered in Registry contract");
-      } catch (registryErr) {
-        logger.error("Failed to register in Registry", { error: registryErr instanceof Error ? registryErr.message : String(registryErr) });
-
-        setError("Group created but failed to register. Please contact support.");
-        return;
-      }
-
-      setSuccess(true);
-
-      // Reset form
-      setGroupName("");
-      setDescription("");
-      setContributionAmount("");
-      setTotalMembers("");
-      setStartDate("");
-      setIsPrivate(false);
-
-      // Optional: Redirect to groups page after a delay
-      setTimeout(() => {
-        window.location.href = "/dashboard";
-      }, 5000);
-    } catch (err: any) {
-      logger.error("Error creating group", { error: err instanceof Error ? err.message : String(err) });
-      setError(err.message || "Failed to create group. Please try again.");
-    } finally {
-      setIsLoading(false);
+    if (createResult.error) {
+      setStep("error");
+      return;
     }
+
+    // ── Step 2: Register group in registry contract ──────────
+    // Critical step — if it fails, the group exists on-chain but won't
+    // appear in discovery. A network/contract failure gets one automatic
+    // retry; a rejected signature does not, since silently re-prompting
+    // Freighter after the person just declined would be surprising rather
+    // than helpful.
+    setStep("registering");
+
+    const doRegister = () =>
+      registryContract.registerGroup({
+        contractAddress: process.env.NEXT_PUBLIC_SAVINGS_CONTRACT_ID!,
+        groupId,
+        name: groupName,
+        admin: publicKey,
+        isPublic: !isPrivate,
+        totalMembers: members,
+      });
+
+    let registerResult = await registerTx.submitTx(doRegister, {
+      label: "register_group",
+      pending: "Registering group for discovery…",
+      success: "Group created and registered successfully!",
+    });
+
+    if (registerResult.error && registerResult.error.kind !== "rejected") {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      registerResult = await registerTx.submitTx(doRegister, {
+        label: "register_group_retry",
+        pending: "Retrying registration…",
+        success: "Group created and registered successfully!",
+      });
+    }
+
+    if (registerResult.error) {
+      // Group IS created on-chain — don't hide that from the user.
+      setError(
+        `Your group was created on-chain (ID: ${groupId}) but could not be registered for discovery. ` +
+        (registerResult.error.kind === "rejected"
+          ? "The registration signature was not approved. Reload and try registering again."
+          : "Please contact support with this group ID so we can manually register it.")
+      );
+      setStep("error");
+      return;
+    }
+
+    // ── Done ─────────────────────────────────────────────────
+    setStep("done");
+    resetForm();
+
+    setTimeout(() => {
+      window.location.href = "/dashboard";
+    }, 3000);
   };
 
   /* ----------------------------
@@ -215,9 +240,9 @@ export default function CreateGroupForm() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Success Message */}
-          {success && (
+          {step === "done" && (
             <Alert className="bg-green-50 border-green-200">
-              <AlertCircle className="h-4 w-4 text-green-600" />
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">
                 Group created successfully! Redirecting to dashboard...
               </AlertDescription>
@@ -229,6 +254,18 @@ export default function CreateGroupForm() {
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Step indicator while loading */}
+          {isLoading && (
+            <Alert>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription>
+                {step === "creating"
+                  ? "Step 1 of 2: Creating your group on-chain..."
+                  : "Step 2 of 2: Registering group for discovery..."}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -360,12 +397,12 @@ export default function CreateGroupForm() {
             type="submit"
             size="lg"
             className="w-full"
-            disabled={isLoading || !contract.isReady}
+            disabled={isLoading || !contract.isReady || step === "done"}
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Creating Group...
+                {step === "creating" ? "Creating Group..." : "Registering..."}
               </>
             ) : (
               "Create Group"

@@ -106,31 +106,33 @@ export function GroupMembers({ groupId }: GroupMembersProps) {
             {members.map((member) => (
               <div
                 key={member.address}
-                className={`flex items-center justify-between rounded-lg border p-3 ${member.isYou ? "border-primary/30 bg-primary/5" : "border-border"
+                className={`flex items-center justify-between gap-2 rounded-lg border p-3 ${member.isYou ? "border-primary/30 bg-primary/5" : "border-border"
                   }`}
               >
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="h-10 w-10 shrink-0">
                     <AvatarFallback className="bg-muted text-muted-foreground text-xs">
                       #{member.position}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-foreground">{member.address}</span>
+                      <span className="truncate font-mono text-sm text-foreground">{member.address}</span>
                       {member.isYou && (
-                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                        <Badge variant="outline" className="shrink-0 text-xs bg-primary/10 text-primary border-primary/20">
                           You
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="truncate text-xs text-muted-foreground">
                       Position #{member.position} • Joined {member.joinedAt}
                     </p>
                   </div>
 
                 </div>
-                <MemberStatusBadge status={member.status} />
+                <div className="shrink-0">
+                  <MemberStatusBadge status={member.status} />
+                </div>
               </div>
 
             ))}

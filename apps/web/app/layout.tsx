@@ -5,6 +5,8 @@ import { Analytics } from "@vercel/analytics/next"
 import { WalletProvider } from "@/hooks/use-wallet"
 import { SavingsContractProvider } from "@/context/savingsContract"
 import { RegistryContractProvider } from "@/context/registryContract"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -49,13 +51,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
-        <WalletProvider>
-          <RegistryContractProvider>
-            <SavingsContractProvider>
-              {children}
-            </SavingsContractProvider>
-          </RegistryContractProvider>
-        </WalletProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <WalletProvider>
+            <RegistryContractProvider>
+              <SavingsContractProvider>
+                {children}
+              </SavingsContractProvider>
+            </RegistryContractProvider>
+          </WalletProvider>
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

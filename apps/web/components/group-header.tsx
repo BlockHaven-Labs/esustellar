@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Users, Calendar, Coins, Clock, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Users, Calendar, Coins, Clock, ExternalLink, Loader2, AlertCircle } from 'lucide-react'
 import { useSavingsContract } from '@/context/savingsContract'
 import { useWallet } from '@/hooks/use-wallet'
-import { logger } from '@/lib/logger'
+import { useTxToast } from '@/hooks/use-tx-toast'
 
 interface GroupHeaderProps {
   groupId: string
@@ -36,63 +36,42 @@ export function GroupHeader({ groupId, group, onActionSuccess }: GroupHeaderProp
   const { isConnected } = useWallet()
   const savings = useSavingsContract()
 
-  const [isJoining, setIsJoining] = useState(false)
-  const [joinError, setJoinError] = useState<string | null>(null)
-  const [joinSuccess, setJoinSuccess] = useState(false)
-  const [isContributing, setIsContributing] = useState(false)
-  const [contributeError, setContributeError] = useState<string | null>(null)
-  const [contributeSuccess, setContributeSuccess] = useState(false)
+  const [preflightError, setPreflightError] = useState<string | null>(null)
+  const joinTx = useTxToast()
+  const contributeTx = useTxToast()
 
   const progress = (group.currentRound / group.totalMembers) * 100
 
   const handleJoin = async () => {
-    setJoinError(null)
-    setJoinSuccess(false)
-    setContributeError(null)
-    setContributeSuccess(false)
+    setPreflightError(null)
 
     if (!isConnected) {
-      setJoinError('Connect your wallet before joining this group.')
+      setPreflightError('Connect your wallet before joining this group.')
       return
     }
 
-    setIsJoining(true)
-
-    try {
-      await savings.joinGroup(groupId)
-      setJoinSuccess(true)
-      onActionSuccess?.()
-    } catch (err) {
-      logger.error('Join group failed', { error: err instanceof Error ? err.message : String(err) })
-      setJoinError(err instanceof Error ? err.message : 'Failed to join group. Please try again.')
-    } finally {
-      setIsJoining(false)
-    }
+    const { error } = await joinTx.submitTx(() => savings.joinGroup(groupId), {
+      label: 'join_group',
+      pending: 'Joining group…',
+      success: 'You have joined the group!',
+    })
+    if (!error) onActionSuccess?.()
   }
 
   const handleContribute = async () => {
-    setContributeError(null)
-    setContributeSuccess(false)
-    setJoinError(null)
-    setJoinSuccess(false)
+    setPreflightError(null)
 
     if (!isConnected) {
-      setContributeError('Connect your wallet before making a contribution.')
+      setPreflightError('Connect your wallet before making a contribution.')
       return
     }
 
-    setIsContributing(true)
-
-    try {
-      await savings.contribute(groupId)
-      setContributeSuccess(true)
-      onActionSuccess?.()
-    } catch (err) {
-      logger.error('Contribution failed', { error: err instanceof Error ? err.message : String(err) })
-      setContributeError(err instanceof Error ? err.message : 'Contribution failed. Please try again.')
-    } finally {
-      setIsContributing(false)
-    }
+    const { error } = await contributeTx.submitTx(() => savings.contribute(groupId), {
+      label: 'contribute',
+      pending: 'Submitting contribution…',
+      success: 'Contribution recorded!',
+    })
+    if (!error) onActionSuccess?.()
   }
 
   return (
@@ -151,33 +130,12 @@ export function GroupHeader({ groupId, group, onActionSuccess }: GroupHeaderProp
           {/* Actions */}
           <div className="flex flex-col gap-3 lg:w-64">
 
-            {/* Feedback alerts */}
-            {joinError && (
+            {/* Pre-flight validation (wallet not connected) — actual transaction
+                status is surfaced via the shared tx toast, not inline here. */}
+            {preflightError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription className="text-xs">{joinError}</AlertDescription>
-              </Alert>
-            )}
-            {joinSuccess && (
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-xs text-green-800">
-                  You have joined the group!
-                </AlertDescription>
-              </Alert>
-            )}
-            {contributeError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription className="text-xs">{contributeError}</AlertDescription>
-              </Alert>
-            )}
-            {contributeSuccess && (
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-xs text-green-800">
-                  Contribution recorded!
-                </AlertDescription>
+                <AlertDescription className="text-xs">{preflightError}</AlertDescription>
               </Alert>
             )}
 
@@ -185,10 +143,10 @@ export function GroupHeader({ groupId, group, onActionSuccess }: GroupHeaderProp
               <>
                 <Button
                   className="bg-primary text-primary-foreground hover:bg-primary-dark"
-                  disabled={group.hasPaidThisRound || isContributing || group.status !== 'Active'}
+                  disabled={group.hasPaidThisRound || contributeTx.isSubmitting || group.status !== 'Active'}
                   onClick={handleContribute}
                 >
-                  {isContributing ? (
+                  {contributeTx.isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Submitting...
@@ -213,10 +171,10 @@ export function GroupHeader({ groupId, group, onActionSuccess }: GroupHeaderProp
             ) : (
               <Button
                 className="bg-primary text-primary-foreground hover:bg-primary-dark"
-                disabled={isJoining || group.status !== 'Open' || joinSuccess}
+                disabled={joinTx.isSubmitting || group.status !== 'Open'}
                 onClick={handleJoin}
               >
-                {isJoining ? (
+                {joinTx.isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Joining...
