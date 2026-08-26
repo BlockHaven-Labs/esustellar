@@ -54,7 +54,7 @@
     "call-bind": "^1.0.8",
     "call-bind-apply-helpers": "^1.0.2",
     "call-bound": "^1.0.4",
-    "callsites": "^3.1.0",
+    "callsites": "^4.2.0",
     "caniuse-lite": "^1.0.30001761",
     "chalk": "^4.1.2",
     "client-only": "^0.0.1",
