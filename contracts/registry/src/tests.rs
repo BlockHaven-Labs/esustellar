@@ -1,5 +1,6 @@
 use crate::{GroupRegistry, GroupRegistryClient};
 use soroban_sdk::{testutils::{Address as _, Ledger, LedgerInfo}, Address, Env, String, Vec};
+use esustellar_savings::{SavingsContract, SavingsContractClient, SavingsGroup, Frequency, GroupStatus};
 
 // ── Test fixtures & helpers ───────────────────────────────────────────────────
 
@@ -9,7 +10,7 @@ fn setup_env() -> Env {
     env.mock_all_auths();
     env.ledger().set(LedgerInfo {
         timestamp: 1_700_000_000,
-        protocol_version: 22,
+        protocol_version: 23,
         sequence_number: 1_000,
         network_id: [0u8; 32],
         base_reserve: 10,
@@ -35,16 +36,44 @@ fn register_group(
     is_public: bool,
     max_members: u32,
 ) -> Address {
-    let contract = Address::generate(env);
+    // Register and mock a savings contract for the cross-contract call
+    let savings_contract_id = env.register(SavingsContract, ());
+    let savings_client = SavingsContractClient::new(env, &savings_contract_id);
+    
+    // Initialize the savings contract
+    savings_client.initialize(&admin.clone());
+    
+    // Create a mock savings group within the savings contract's context
+    let mock_group = SavingsGroup {
+        group_id: String::from_str(env, id_suffix),
+        admin: admin.clone(),
+        name: String::from_str(env, name_str),
+        contribution_amount: 100_000_000,
+        total_members: max_members,
+        frequency: Frequency::Monthly,
+        start_timestamp: env.ledger().timestamp() + 86400,
+        status: GroupStatus::Open,
+        is_public,
+        current_round: 0,
+        platform_fee_percent: 200,
+        treasury: Address::generate(env),
+        token_address: None,
+        payout_order: Vec::new(env),
+    };
+    
+    env.as_contract(&savings_contract_id, || {
+        env.storage().persistent().set(&esustellar_savings::DataKey::Group(String::from_str(env, id_suffix)), &mock_group);
+    });
+    
+    // Call register_group without total_members parameter (derived from savings contract)
     client.register_group(
-        &contract,
+        &savings_contract_id,
         &String::from_str(env, id_suffix),
         &String::from_str(env, name_str),
         admin,
         &is_public,
-        &max_members,
     );
-    contract
+    savings_contract_id
 }
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -54,12 +83,11 @@ fn test_register_group_stores_all_fields() {
     let env = setup_env();
     let client = create_registry(&env);
 
-    let group_contract = Address::generate(&env);
     let admin = Address::generate(&env);
     let group_id = String::from_str(&env, "test-group-1");
     let name = String::from_str(&env, "Test Savings Group");
 
-    client.register_group(&group_contract, &group_id, &name, &admin, &true, &5);
+    let group_contract = register_group(&env, &client, "test-group-1", "Test Savings Group", &admin, true, 5);
 
     let info = client.get_group_info(&group_contract);
     assert_eq!(info.contract_address, group_contract, "contract_address must match");
@@ -119,19 +147,15 @@ fn test_register_private_group_not_in_public_listing() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_cannot_register_duplicate_group() {
     let env = setup_env();
     let client = create_registry(&env);
-
-    let group_contract = Address::generate(&env);
     let admin = Address::generate(&env);
-    let group_id = String::from_str(&env, "dup-group");
-    let name = String::from_str(&env, "Duplicate");
 
-    client.register_group(&group_contract, &group_id, &name, &admin, &true, &5);
+    let _g = register_group(&env, &client, "dup-group", "Duplicate", &admin, true, 5);
     // Second registration with the same contract address must panic.
-    client.register_group(&group_contract, &group_id, &name, &admin, &true, &5);
+    register_group(&env, &client, "dup-group", "Duplicate", &admin, true, 5);
 }
 
 #[test]
@@ -148,21 +172,17 @@ fn test_register_groups_with_same_name_different_contracts_allowed() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_cannot_register_duplicate_group_id_different_contract() {
     let env = setup_env();
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let contract_a = Address::generate(&env);
-    let contract_b = Address::generate(&env);
-    let group_id = String::from_str(&env, "same-group-id");
-    let name1 = String::from_str(&env, "Group One");
-    let name2 = String::from_str(&env, "Group Two");
+    let _group_id = String::from_str(&env, "same-group-id");
 
-    client.register_group(&contract_a, &group_id, &name1, &admin, &true, &5);
+    register_group(&env, &client, "same-group-id", "Group One", &admin, true, 5);
     // Second registration with a different contract address but same group_id must panic.
-    client.register_group(&contract_b, &group_id, &name2, &admin, &true, &5);
+    register_group(&env, &client, "same-group-id", "Group Two", &admin, true, 5);
 }
 
 #[test]
@@ -171,17 +191,12 @@ fn test_can_register_group_id_after_unregister() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let contract_a = Address::generate(&env);
-    let contract_b = Address::generate(&env);
-    let group_id = String::from_str(&env, "reusable-group-id");
-    let name = String::from_str(&env, "Reusable Group");
-
-    client.register_group(&contract_a, &group_id, &name, &admin, &true, &5);
+    let contract_a = register_group(&env, &client, "reusable-group-id", "Reusable Group", &admin, true, 5);
     client.unregister_group(&contract_a, &admin);
 
     // After unregistering contract_a, registering group_id with contract_b should succeed.
-    client.register_group(&contract_b, &group_id, &name, &admin, &true, &5);
-    assert_eq!(client.get_group_info(&contract_b).group_id, group_id);
+    let contract_b = register_group(&env, &client, "reusable-group-id", "Reusable Group", &admin, true, 5);
+    assert_eq!(client.get_group_info(&contract_b).group_id, String::from_str(&env, "reusable-group-id"));
 }
 
 // ── Membership ────────────────────────────────────────────────────────────────
@@ -217,7 +232,7 @@ fn test_add_member_idempotent() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_add_member_to_nonexistent_group_panics() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -332,7 +347,7 @@ fn test_transfer_admin_updates_group_info() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
+#[should_panic(expected = "Error(Contract, #102)")]
 fn test_transfer_admin_by_non_admin_panics() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -388,6 +403,7 @@ fn test_get_user_groups_empty_for_unknown_user() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_get_group_info_panics_for_unknown_group() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -396,7 +412,7 @@ fn test_get_group_info_panics_for_unknown_group() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_get_group_info_not_found() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -459,20 +475,16 @@ fn test_get_group_count_exact_five() {
     let admin = Address::generate(&env);
 
     assert_eq!(client.get_group_count(), 0);
-    for i in 1..=5u32 {
-        let suffix = format!("g-{i}");
-        let label = format!("Group {i}");
-        register_group(
-            &env,
-            &client,
-            &suffix,
-            &label,
-            &admin,
-            true,
-            5,
-        );
-        assert_eq!(client.get_group_count(), i, "Count must match after each registration");
-    }
+    register_group(&env, &client, "g-1", "Group 1", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 1);
+    register_group(&env, &client, "g-2", "Group 2", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 2);
+    register_group(&env, &client, "g-3", "Group 3", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 3);
+    register_group(&env, &client, "g-4", "Group 4", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 4);
+    register_group(&env, &client, "g-5", "Group 5", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 5, "Count must match after each registration");
 }
 
 // ── Boundary / edge cases ─────────────────────────────────────────────────────
@@ -509,13 +521,16 @@ fn test_large_number_of_groups_and_members() {
     let user = Address::generate(&env);
     let n = 20u32;
 
-    let mut group_addresses = std::vec::Vec::new();
-    for i in 0..n {
-        let suffix = format!("group-{i}");
-        let label = format!("Group {i}");
-        let g = register_group(&env, &client, &suffix, &label, &admin, i % 2 == 0, 10);
+    let mut group_addresses: Vec<Address> = Vec::new(&env);
+    // Create 20 groups with alternating public/private
+    let group_ids = ["group-0", "group-1", "group-2", "group-3", "group-4", "group-5", "group-6", "group-7", "group-8", "group-9",
+                      "group-a0", "group-a1", "group-a2", "group-a3", "group-a4", "group-a5", "group-a6", "group-a7", "group-a8", "group-a9"];
+    let group_names = ["Group 0", "Group 1", "Group 2", "Group 3", "Group 4", "Group 5", "Group 6", "Group 7", "Group 8", "Group 9",
+                       "Group A0", "Group A1", "Group A2", "Group A3", "Group A4", "Group A5", "Group A6", "Group A7", "Group A8", "Group A9"];
+    for i in 0..20u32 {
+        let g = register_group(&env, &client, group_ids[i as usize], group_names[i as usize], &admin, i % 2 == 0, 10);
         client.add_member(&g, &user);
-        group_addresses.push(g);
+        group_addresses.push_back(g);
     }
 
     assert_eq!(client.get_group_count(), n, "Count must equal n");
@@ -618,7 +633,7 @@ fn test_timestamps_are_monotonic_across_registrations() {
     // Advance the ledger timestamp.
     env.ledger().set(LedgerInfo {
         timestamp: 1_700_001_000,
-        protocol_version: 22,
+        protocol_version: 23,
         sequence_number: 1_001,
         network_id: [0u8; 32],
         base_reserve: 10,

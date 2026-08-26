@@ -10,7 +10,7 @@
 - If self-hosting is required, deploy a push-notification relay service in the cluster:
   - Endpoint: `POST /api/notifications/send`
   - Reads device tokens from the database and forwards to FCM/APNs.
-
+  // const [loading, setLoading] = useState(true);
 ## Requirements Summary
 | Service | Solution | In-cluster? |
 |---------|----------|-------------|
