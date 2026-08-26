@@ -35,6 +35,22 @@ const SLIDES = [
       'Stay on top of payouts, due dates, and group progress with simple updates in one place.',
   },
   {
+    eyebrow: 'Wallet Required',
+    icon: '👛',
+    title: 'You need a Stellar wallet',
+    description:
+      'EsuStellar is built on the Stellar blockchain. You will need a Stellar wallet (such as Freighter or Lobstr) to contribute, receive payouts, and interact with your savings group.',
+    isWalletSlide: true,
+  },
+  {
+    eyebrow: 'Important Notice',
+    icon: '⚠️',
+    title: 'MVP — No escrow yet',
+    description:
+      'Contributions are recorded on-chain but funds are not yet locked in the contract. Real token custody and dispute resolution are planned for a future release. Participate with this in mind.',
+    isMvpDisclaimer: true,
+  },
+  {
     eyebrow: 'Secure',
     icon: '🔐',
     title: 'Start with confidence',
@@ -119,6 +135,21 @@ export default function OnboardingScreen() {
         <Text style={styles.icon}>{slide.icon}</Text>
         <Text style={styles.title}>{slide.title}</Text>
         <Text style={styles.description}>{slide.description}</Text>
+        {'isWalletSlide' in slide && slide.isWalletSlide && (
+          <View style={styles.walletNote}>
+            <Text style={styles.walletNoteText}>
+              💡 Don't have a wallet yet? You can set one up for free at{' '}
+              <Text style={styles.walletNoteLink}>freighter.app</Text> or use Lobstr.
+            </Text>
+          </View>
+        )}
+        {'isMvpDisclaimer' in slide && slide.isMvpDisclaimer && (
+          <View style={styles.disclaimerNote}>
+            <Text style={styles.disclaimerNoteText}>
+              This notice will be updated when escrow functionality is released.
+            </Text>
+          </View>
+        )}
       </View>
 
       <PaginationDots total={SLIDES.length} current={currentStep} />
@@ -354,5 +385,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  walletNote: {
+    backgroundColor: '#1E3A5F',
+    borderRadius: 12,
+    marginTop: 20,
+    padding: 14,
+    borderStartWidth: 3,
+    borderStartColor: '#60A5FA',
+  },
+  walletNoteText: {
+    color: '#93C5FD',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'left',
+  },
+  walletNoteLink: {
+    color: '#60A5FA',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  disclaimerNote: {
+    backgroundColor: '#2D2410',
+    borderRadius: 12,
+    marginTop: 20,
+    padding: 14,
+    borderStartWidth: 3,
+    borderStartColor: '#F59E0B',
+  },
+  disclaimerNoteText: {
+    color: '#FDE68A',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'left',
   },
 });
