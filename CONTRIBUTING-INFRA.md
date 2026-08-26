@@ -15,7 +15,7 @@ The infra folder includes:
 The `main` branch is protected with enforced rules:
 - **Required status checks**: Docker CI and E2E Status Gate must pass
 - **PR reviews**: At least 1 approval required
-- **Force pushes**: Disallowed
+- **Force pushes**: Disallowed,
 
 See `docs/branch-protection.md` for detailed configuration and setup instructions.
 

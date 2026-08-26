@@ -10,7 +10,7 @@ Esustellar is an open-source platform that brings informal savings groups
 It helps communities save money together transparently, securely, and
 without relying on a single trusted organizer..
 
----
+------
 
 ## 🚨 Problem
 
