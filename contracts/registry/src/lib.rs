@@ -108,7 +108,7 @@ impl GroupRegistry {
             group_id: group_id.clone(),
             name,
             admin: admin.clone(),
-            is_public,
+            is_public: savings_group.is_public,
             created_at: env.ledger().timestamp(),
             total_members: savings_group.total_members,
         };
