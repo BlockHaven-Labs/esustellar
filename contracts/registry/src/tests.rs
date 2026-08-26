@@ -576,6 +576,69 @@ fn test_multiple_admins_each_own_one_group() {
 // ── Integration / journey ─────────────────────────────────────────────────────
 
 #[test]
+fn test_savings_registry_full_lifecycle_stays_consistent() {
+    let env = setup_env();
+    let registry = create_registry(&env);
+    let savings_contract_id = env.register(SavingsContract, ());
+    let savings = SavingsContractClient::new(&env, &savings_contract_id);
+    let admin = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let group_id = String::from_str(&env, "round-trip-group");
+    let name = String::from_str(&env, "Round Trip Group");
+    let start_timestamp = env.ledger().timestamp() + 86_400;
+
+    savings.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &start_timestamp,
+        &true,
+        &admin,
+        &None,
+    );
+
+    registry.register_group(
+        &savings_contract_id,
+        &group_id,
+        &name,
+        &admin,
+        &true,
+    );
+
+    let assert_consistent = || {
+        let live_group = savings.get_group(&group_id);
+        let cached_group = registry.get_group_info(&savings_contract_id);
+        assert_eq!(cached_group.total_members, live_group.total_members);
+        assert_eq!(cached_group.is_public, live_group.is_public);
+    };
+
+    assert_consistent();
+
+    savings.join_group(&member1, &group_id);
+    assert_consistent();
+
+    savings.join_group(&member2, &group_id);
+    assert_eq!(savings.get_group(&group_id).status, GroupStatus::Active);
+    assert_consistent();
+
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp = start_timestamp + 1;
+    });
+    savings.contribute(&admin, &group_id);
+    assert_consistent();
+    savings.contribute(&member1, &group_id);
+    assert_consistent();
+    savings.contribute(&member2, &group_id);
+    assert_consistent();
+
+    assert_eq!(savings.get_round_payouts(&group_id, &1).len(), 1);
+}
+
+#[test]
 fn test_complete_user_journey() {
     let env = setup_env();
     let client = create_registry(&env);
