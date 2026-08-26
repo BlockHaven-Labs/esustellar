@@ -16,7 +16,7 @@ This document lists every environment variable used across EsuStellar apps.
 ## `contracts/`
 
 No runtime env vars — contracts are configured at deploy time via `deploy.sh`.
-
+  // const [loading, setLoading] = useState(true);
 ## `scripts/`
 
 | Variable | Description | Required |

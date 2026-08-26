@@ -1,7 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Executable,
+    String, Vec,
 };
 
 // #697: Contract version for schema migration tracking.
@@ -17,8 +18,9 @@ pub enum Error {
     NotGroupAdmin = 102,
     UserNotInGroup = 103,
     InvalidAddress = 104,
-    EmptyGroupId = 105,
-    EmptyGroupName = 106,
+    MetadataMismatch = 105,
+    NotAContract = 106,
+    InvalidMemberCount = 107,
 }
 
 #[contracttype]
@@ -38,8 +40,6 @@ pub struct GroupInfo {
 pub enum DataKey {
     AllGroups,
     UserGroups(Address),
-    /// Secondary O(1) membership set — mirrors the Vec in `UserGroups`.
-    UserGroupSet(Address),
     GroupInfo(Address),
     GroupCount,
     RegisteredGroupId(String),
@@ -54,7 +54,9 @@ pub struct GroupRegistry;
 impl GroupRegistry {
     /// Register a savings group in the registry.
     /// Verifies the contract address is a real deployed savings contract that
-    /// knows about the group_id and that the admin matches.
+    /// knows about the group_id, that the admin matches, and that
+    /// caller-supplied metadata (name, is_public) matches the on-chain state.
+    /// total_members is derived from the actual savings contract, not caller input.
     pub fn register_group(
         env: Env,
         contract_address: Address,
@@ -62,15 +64,14 @@ impl GroupRegistry {
         name: String,
         admin: Address,
         is_public: bool,
-        total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
 
-        if group_id.len() == 0 {
-            return Err(Error::EmptyGroupId);
-        }
-        if name.len() == 0 {
-            return Err(Error::EmptyGroupName);
+        // TASK4: Verify the address points to an actual deployed contract,
+        // not a plain externally-owned account.
+        match contract_address.executable() {
+            Some(Executable::Wasm(_)) => {}
+            _ => return Err(Error::NotAContract),
         }
 
         if env
@@ -89,8 +90,17 @@ impl GroupRegistry {
             .try_get_group(&group_id)
             .map_err(|_| Error::InvalidAddress)?
             .map_err(|_| Error::InvalidAddress)?;
+
+        // TASK1: Verify that the caller-supplied metadata matches the on-chain
+        // savings contract, preventing registry/UI drift.
         if savings_group.admin != admin {
             return Err(Error::NotGroupAdmin);
+        }
+        if savings_group.name != name {
+            return Err(Error::MetadataMismatch);
+        }
+        if savings_group.is_public != is_public {
+            return Err(Error::MetadataMismatch);
         }
 
         let group_info = GroupInfo {
@@ -98,9 +108,9 @@ impl GroupRegistry {
             group_id: group_id.clone(),
             name,
             admin: admin.clone(),
-            is_public,
+            is_public: savings_group.is_public,
             created_at: env.ledger().timestamp(),
-            total_members,
+            total_members: savings_group.total_members,
         };
 
         env.storage()
@@ -144,17 +154,6 @@ impl GroupRegistry {
             .persistent()
             .set(&DataKey::UserGroups(admin.clone()), &admin_groups);
 
-        // Also populate the secondary Set for the admin.
-        let mut admin_set: Map<Address, bool> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserGroupSet(admin.clone()))
-            .unwrap_or(Map::new(&env));
-        admin_set.set(contract_address.clone(), true);
-        env.storage()
-            .persistent()
-            .set(&DataKey::UserGroupSet(admin.clone()), &admin_set);
-
         env.events().publish(
             (symbol_short!("reg_group"),),
             (contract_address, group_id, admin),
@@ -193,27 +192,18 @@ impl GroupRegistry {
             .get(&DataKey::UserGroups(member.clone()))
             .unwrap_or(Vec::new(&env));
 
-        // O(1) duplicate check via the secondary Set.
-        let user_group_set: Map<Address, bool> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserGroupSet(member.clone()))
-            .unwrap_or(Map::new(&env));
-
-        if user_group_set.get(contract_address.clone()).unwrap_or(false) {
-            return Ok(false);
+        for i in 0..user_groups.len() {
+            if let Some(addr) = user_groups.get(i) {
+                if addr == contract_address {
+                    return Ok(false);
+                }
+            }
         }
 
         user_groups.push_back(contract_address.clone());
         env.storage()
             .persistent()
             .set(&DataKey::UserGroups(member.clone()), &user_groups);
-
-        let mut updated_set = user_group_set;
-        updated_set.set(contract_address.clone(), true);
-        env.storage()
-            .persistent()
-            .set(&DataKey::UserGroupSet(member.clone()), &updated_set);
 
         env.events()
             .publish((symbol_short!("add_mem"),), (contract_address, member));
@@ -259,17 +249,6 @@ impl GroupRegistry {
                 .persistent()
                 .set(&DataKey::UserGroups(member.clone()), &user_groups);
 
-            // Also remove from the secondary Set.
-            let mut user_group_set: Map<Address, bool> = env
-                .storage()
-                .persistent()
-                .get(&DataKey::UserGroupSet(member.clone()))
-                .unwrap_or(Map::new(&env));
-            user_group_set.set(contract_address.clone(), false);
-            env.storage()
-                .persistent()
-                .set(&DataKey::UserGroupSet(member.clone()), &user_group_set);
-
             env.events()
                 .publish((symbol_short!("rm_mem"),), (contract_address, member));
         }
@@ -278,13 +257,13 @@ impl GroupRegistry {
     }
 
     /// Update the mutable metadata for a registered group.
+    /// total_members is derived from the actual savings contract, not caller input.
     pub fn update_group_info(
         env: Env,
         contract_address: Address,
         admin: Address,
         name: String,
         is_public: bool,
-        total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
 
@@ -298,9 +277,15 @@ impl GroupRegistry {
             return Err(Error::NotGroupAdmin);
         }
 
+        // Derive total_members from the actual savings contract to ensure consistency
+        let savings_group = esustellar_savings::SavingsContractClient::new(&env, &contract_address)
+            .try_get_group(&group_info.group_id)
+            .map_err(|_| Error::InvalidAddress)?
+            .map_err(|_| Error::InvalidAddress)?;
+
         group_info.name = name;
         group_info.is_public = is_public;
-        group_info.total_members = total_members;
+        group_info.total_members = savings_group.total_members;
 
         env.storage()
             .persistent()
@@ -347,17 +332,6 @@ impl GroupRegistry {
             .persistent()
             .set(&DataKey::UserGroups(new_admin.clone()), &new_admin_groups);
 
-        // Also update the secondary Set for the new admin.
-        let mut new_admin_set: Map<Address, bool> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserGroupSet(new_admin.clone()))
-            .unwrap_or(Map::new(&env));
-        new_admin_set.set(contract_address.clone(), true);
-        env.storage()
-            .persistent()
-            .set(&DataKey::UserGroupSet(new_admin.clone()), &new_admin_set);
-
         env.events().publish(
             (symbol_short!("adm_xfer"),),
             (contract_address, current_admin, new_admin),
@@ -388,7 +362,7 @@ impl GroupRegistry {
             .persistent()
             .remove(&DataKey::RegisteredGroupId(group_info.group_id.clone()));
 
-        let mut all_groups: Vec<Address> = env
+        let all_groups: Vec<Address> = env
             .storage()
             .persistent()
             .get(&DataKey::AllGroups)
@@ -681,7 +655,7 @@ impl GroupRegistry {
         result
     }
 
-    pub fn get_all_groups_info_page_filtered(
+    pub fn get_groups_info_page_filtered(
         env: Env,
         page: u32,
         page_size: u32,

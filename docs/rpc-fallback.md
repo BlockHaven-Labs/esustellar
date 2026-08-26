@@ -7,7 +7,7 @@
 3. **Fallback 2**: Local Stellar Quickstart container (`http://localhost:8000`)
 
 ## Implementation
-
+  // const [loading, setLoading] = useState(true);
 The frontend reads `NEXT_PUBLIC_SOROBAN_RPC_URL` from env. For resilience:
 
 - Configure a load balancer in front of multiple RPC endpoints

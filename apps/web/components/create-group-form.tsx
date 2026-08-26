@@ -33,7 +33,7 @@ import { logger } from '@/lib/logger'
 type CreationStep =
   | 'idle'
   | 'creating'   // Step 1: savings contract
-  | 'registering' // Step 2: registry contract
+  | 'registering' 
   | 'done'
   | 'error'
 
