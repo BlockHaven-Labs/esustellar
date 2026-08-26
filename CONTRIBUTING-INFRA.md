@@ -7,7 +7,7 @@ This guide complements `CONTRIBUTING.md` and covers infra-specific contribution 
 The infra folder includes:
 - `infra/` — deployment configs, Docker Compose, terraform/pulumi
 - `.github/workflows/` — CI/CD pipelines
-- `docs/` — architecture, deployment, runbooks, standards
+- `docs/` — architecture, deployment, runbooks, standards.
 
 ## Branch Protection
   <!-- // return [value, setStoredValue, loading]; -->
