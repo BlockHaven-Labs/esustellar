@@ -10,7 +10,7 @@ secrets/
 ├── stellar_network_passphrase.txt
 └── stellar_seed.txt
 ```
-
+# Reference: Issue #536
 ## Usage with Docker Compose
 
 The `docker-compose.yml` mounts these as Docker secrets:

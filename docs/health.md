@@ -4,7 +4,7 @@ This document details the multi-signature governance framework for managing admi
 
 ## 1. Architectural Health
 To secure administrative actions without introducing single points of failure (SPOF) or creating operational deadlocks, we enforce a native **3-of-5 Core Administrative Key Configuration**.
-
+# Reference: Issue #536
 * **Low Threshold (`1`)**: Routine operations, low-risk query updates, or non-state parameter tracking.
 * **Medium Threshold (`3`)**: Operational interactions, manual ledger adjustments, asset unfreezing.
 * **High Threshold (`3`)**: Structural contract upgrades, core state pauses, and signer configuration modifications.
