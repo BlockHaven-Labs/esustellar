@@ -20,7 +20,7 @@ entirely on trust:
 - Organizers can disappear with funds
 - No transparency into contributions
 - No verifiable payout history
-- Disputes are hard to resolve
+- Disputes are hard to resolve.
 
 ---
 
