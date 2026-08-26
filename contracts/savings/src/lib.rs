@@ -3,6 +3,21 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
     Vec,
+    pub fn get_group_duration_seconds(env: Env, group_id: String) -> Result<u64, Error> {
+        let group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        let frequency_seconds = match group.frequency {
+            Frequency::Weekly => 604800,
+            Frequency::BiWeekly => 1209600,
+            Frequency::Monthly => 2592000,
+        };
+
+        Ok(u64::from(group.total_members) * frequency_seconds)
+    }
 };
 
 // #696: Error codes are unique per-contract. Savings contract codes start at 1.
@@ -46,6 +61,9 @@ pub enum Error {
     GroupIsPrivate = 34,
     GroupIdAlreadyExists = 35,
     StringTooLong = 36,
+    NotAnAllowedMember = 37,
+    NotAdmin = 38,
+    GroupNotOpen = 39,
 }
 
 // #697: Contract version for schema migration tracking.
@@ -83,6 +101,7 @@ pub enum MemberStatus {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Frequency {
+    Daily,
     Weekly,
     BiWeekly,
     Monthly,
@@ -109,6 +128,9 @@ pub struct SavingsGroup {
     pub start_timestamp: u64,
     pub status: GroupStatus,
     pub is_public: bool,
+    /// The current round number. Initialized to 0, meaning no round has
+    /// started yet. Incremented to 1 when the group becomes Active.
+    /// See `get_round_deadline` for validation against this sentinel.
     pub current_round: u32,
     pub platform_fee_percent: u32,
     pub treasury: Address,
@@ -124,6 +146,9 @@ pub struct SavingsGroup {
 #[derive(Clone)]
 pub struct Member {
     pub address: Address,
+    /// Timestamp of when the member joined. For the admin, this is the
+    /// group-creation timestamp. For other members, it's the timestamp
+    /// of their `join_group` call.
     pub join_timestamp: u64,
     pub join_order: u32,
     pub status: MemberStatus,
@@ -160,6 +185,18 @@ pub struct Payout {
 
 #[contracttype]
 #[derive(Clone)]
+/// #750: Event-schema convention
+///
+/// Every event this contract emits about a specific group MUST carry
+/// that group's identifier as its **second topic** (index 1) in the
+/// event's topic tuple.  This allows off-chain indexers and the
+/// activity feed to filter events by group without decoding the data.
+///
+/// Example topic structure:
+///   ("event_name", group_id)
+///
+/// When adding a new event type, always include `group_id` in the
+/// topics tuple as the second element — never in the data payload only.
 pub enum DataKey {
     Group(String),
     Members(String),
@@ -170,6 +207,8 @@ pub enum DataKey {
     MemberCount(String),
     AllGroups,
     UserGroups(Address),
+    AdministeredGroups(Address),
+    AllowedMembers(String),
     GroupPage(u32),
     GroupPageIndex,
     LastGroupTimestamp(Address),
@@ -254,6 +293,7 @@ impl SavingsContract {
         is_public: bool,
         treasury: Address,
         token_address: Option<Address>,
+        allowed_members: Option<Vec<Address>>,
     ) -> Result<SavingsGroup, Error> {
         admin.require_auth();
 
@@ -319,6 +359,12 @@ impl SavingsContract {
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
         env.storage().persistent().extend_ttl(&DataKey::Group(group_id.clone()), GROUP_TTL_EXTEND, GROUP_TTL_EXTEND);
 
+        if let Some(members) = allowed_members {
+            if !is_public {
+                env.storage().persistent().set(&DataKey::AllowedMembers(group_id.clone()), &members);
+            }
+        }
+
         let members: Vec<Address> = Vec::new(&env);
         env.storage().persistent().set(&DataKey::Members(group_id.clone()), &members);
         env.storage().persistent().set(&DataKey::MemberCount(group_id.clone()), &0u32);
@@ -335,16 +381,26 @@ impl SavingsContract {
         env.storage().persistent().set(&DataKey::LastGroupTimestamp(admin.clone()), &env.ledger().timestamp());
 
         let mut admin_groups: Vec<String> = env
-            .storage().persistent().get(&DataKey::UserGroups(admin.clone()))
+            .storage().persistent().get(&DataKey::AdministeredGroups(admin.clone()))
             .unwrap_or(Vec::new(&env));
         admin_groups.push_back(group_id.clone());
-        env.storage().persistent().set(&DataKey::UserGroups(admin.clone()), &admin_groups);
+        env.storage().persistent().set(&DataKey::AdministeredGroups(admin.clone()), &admin_groups);
 
         Self::add_admin_to_group(&env, admin.clone(), group_id.clone())?;
 
+        // #750: group_id must always be the second topic for group-scoped events
+        // (see event-schema convention comment above DataKey).
         env.events().publish(
-            (symbol_short!("created"),),
-            (group_id, contribution_amount, total_members),
+            (symbol_short!("created"), group_id.clone()),
+            (
+                group.group_id.clone(),
+                group.admin.clone(),
+                group.contribution_amount,
+                group.total_members,
+                group.frequency.clone(),
+                group.start_timestamp,
+                group.is_public,
+            ),
         );
 
         Ok(group)
@@ -377,7 +433,7 @@ impl SavingsContract {
     pub fn join_group(env: Env, member: Address, group_id: String) -> Result<(), Error> {
         member.require_auth();
 
-        let group: SavingsGroup = env
+        let mut group: SavingsGroup = env
             .storage().persistent().get(&DataKey::Group(group_id.clone()))
             .ok_or(Error::GroupNotFound)?;
 
@@ -391,8 +447,17 @@ impl SavingsContract {
         }
 
         // #617: enforce private groups — only the admin may join a non-public group.
-        if !group.is_public && member != group.admin {
-            return Err(Error::GroupIsPrivate);
+        if !group.is_public {
+            if member != group.admin {
+                let allowed_members: Vec<Address> = env
+                    .storage()
+                    .persistent()
+                    .get(&DataKey::AllowedMembers(group_id.clone()))
+                    .unwrap_or(Vec::new(&env));
+                if !allowed_members.contains(&member) {
+                    return Err(Error::NotAnAllowedMember);
+                }
+            }
         }
 
         let member_count: u32 = env
@@ -422,13 +487,6 @@ impl SavingsContract {
         // This ensures the registry stays in sync with on-chain state automatically.
 
         if new_count == group.total_members {
-            let mut group: SavingsGroup = env
-                .storage()
-                .persistent()
-                .get(&DataKey::Group(group_id.clone()))
-                .ok_or(Error::GroupNotFound)?;
-            let mut group = group.clone();
-
             // #744/#745: Generate pseudorandom payout order so the admin
             // is NOT deterministically first. Uses Fisher-Yates shuffle
             // seeded by the ledger's PRNG to produce an unbiased ordering.
@@ -444,8 +502,9 @@ impl SavingsContract {
             env.storage().persistent().set(&DataKey::RoundDeadline(group_id.clone(), 1), &deadline);
         }
 
+        // #750: group_id must always be the second topic for group-scoped events
         env.events().publish(
-            (symbol_short!("joined"),),
+            (symbol_short!("joined"), group_id.clone()),
             (member, new_count),
         );
 
@@ -518,8 +577,49 @@ impl SavingsContract {
                 .set(&DataKey::UserGroups(member_addr), &user_groups);
         }
 
+        // #750: group_id must always be the second topic for group-scoped events
         env.events()
-            .publish((symbol_short!("cancelled"),), (caller, group_id));
+            .publish((symbol_short!("cancelled"), group_id.clone()), (caller, group_id));
+
+        Ok(())
+    }
+
+    pub fn update_contribution(
+        env: Env,
+        caller: Address,
+        group_id: String,
+        new_amount: i128,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let mut group: SavingsGroup = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Group(group_id.clone()))
+            .ok_or(Error::GroupNotFound)?;
+
+        if caller != group.admin {
+            return Err(Error::NotAdmin);
+        }
+
+        if group.status != GroupStatus::Open {
+            return Err(Error::GroupNotOpen);
+        }
+
+        let member_count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MemberCount(group_id.clone()))
+            .unwrap_or(0);
+
+        if member_count > 1 {
+            return Err(Error::GroupNotOpen);
+        }
+
+        group.contribution_amount = new_amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Group(group_id.clone()), &group);
 
         Ok(())
     }
@@ -630,8 +730,9 @@ impl SavingsContract {
         env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
         bump_member_key(&env, &group_id, &member);
 
+        // #750: group_id must always be the second topic for group-scoped events
         env.events().publish(
-            (symbol_short!("contrib"),),
+            (symbol_short!("contrib"), group_id.clone()),
             (group_id.clone(), member, group.contribution_amount, current_round),
         );
 
@@ -709,7 +810,8 @@ impl SavingsContract {
 
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
 
-        env.events().publish((symbol_short!("paused"),), group_id);
+        // #750: group_id must always be the second topic for group-scoped events
+        env.events().publish((symbol_short!("paused"), group_id.clone()), group_id);
         Ok(())
     }
 
@@ -744,7 +846,8 @@ impl SavingsContract {
         group.status = GroupStatus::Paused;
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
 
-        env.events().publish((symbol_short!("paused"),), group_id);
+        // #750: group_id must always be the second topic for group-scoped events
+        env.events().publish((symbol_short!("paused"), group_id.clone()), group_id);
         Ok(())
     }
 
@@ -779,7 +882,8 @@ impl SavingsContract {
         group.status = GroupStatus::Active;
         env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
 
-        env.events().publish((symbol_short!("resumed"),), group_id);
+        // #750: group_id must always be the second topic for group-scoped events
+        env.events().publish((symbol_short!("resumed"), group_id.clone()), group_id);
         Ok(())
     }
 
@@ -850,7 +954,8 @@ impl SavingsContract {
             env.storage().persistent().set(&DataKey::MemberCount(group_id.clone()), &(count - 1));
         }
 
-        env.events().publish((symbol_short!("removed"),), (group_id, member));
+        // #750: group_id must always be the second topic for group-scoped events
+        env.events().publish((symbol_short!("removed"), group_id.clone()), (group_id, member));
         Ok(())
     }
 
@@ -893,8 +998,9 @@ impl SavingsContract {
         new_admin_groups.push_back(group_id.clone());
         env.storage().persistent().set(&DataKey::UserGroups(new_admin.clone()), &new_admin_groups);
 
+        // #750: group_id must always be the second topic for group-scoped events
         env.events().publish(
-            (symbol_short!("adm_xfer"),),
+            (symbol_short!("adm_xfer"), group_id.clone()),
             (group_id, current_admin, new_admin),
         );
         Ok(())
@@ -973,8 +1079,9 @@ impl SavingsContract {
         );
         bump_member_key(&env, &group_id, &member);
 
+        // #750: group_id must always be the second topic for group-scoped events
         env.events().publish(
-            (symbol_short!("cured"),),
+            (symbol_short!("cured"), group_id.clone()),
             (member, group_id, catch_up_amount, missed_rounds),
         );
 
@@ -1133,8 +1240,9 @@ impl SavingsContract {
             member_data.status = MemberStatus::Defaulted;
             env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), member.clone()), &member_data);
 
+            // #750: group_id must always be the second topic for group-scoped events
             env.events().publish(
-                (symbol_short!("defaulted"),),
+                (symbol_short!("defaulted"), group_id.clone()),
                 (member, group.current_round),
             );
         }
@@ -1225,9 +1333,10 @@ impl SavingsContract {
         recipient_data.status = MemberStatus::ReceivedPayout;
         env.storage().persistent().set(&DataKey::MemberData(group_id.clone(), recipient.clone()), &recipient_data);
 
+        // #750: group_id must always be the second topic for group-scoped events
         // #752: include group_id so the activity feed can attribute this payout
         env.events().publish(
-            (symbol_short!("payout"),),
+            (symbol_short!("payout"), group_id.clone()),
             (group_id.clone(), recipient, payout_amount, current_round),
         );
 
@@ -1270,14 +1379,15 @@ impl SavingsContract {
             env.storage().persistent().set(&DataKey::RoundDeadline(group_id.clone(), group.current_round), &deadline);
         }
 
-        env.storage().persistent().set(&DataKey::Group(group_id), &group);
+        env.storage().persistent().set(&DataKey::Group(group_id.clone()), &group);
 
         // #636: Use saturating_sub to guard against underflow if current_round is ever 0.
         // Currently unreachable (current_round starts at 1), but protects against
         // future changes to round-numbering logic.
         let ended_round = group.current_round.saturating_sub(1);
+        // #750: group_id must always be the second topic for group-scoped events
         env.events()
-            .publish((symbol_short!("round_end"),), ended_round);
+            .publish((symbol_short!("round_end"), group_id.clone()), ended_round);
 
         Ok(())
     }
@@ -1331,12 +1441,13 @@ impl SavingsContract {
 
         let new_count = Self::add_member_to_group(env, &member, &group_id);
 
+        // #750: group_id must always be the second topic for group-scoped events
         env.events()
-            .publish((symbol_short!("joined"),), (member.clone(), new_count));
+            .publish((symbol_short!("joined"), group_id.clone()), (member.clone(), new_count));
 
-        // #750: include group_id in the admin's joined event
+        // #750: group_id must always be the second topic for group-scoped events
         env.events().publish(
-            (symbol_short!("joined"),),
+            (symbol_short!("joined"), group_id.clone()),
             (group_id.clone(), member, new_count),
         );
         Ok(())
@@ -1592,4 +1703,3 @@ impl SavingsContract {
 
 #[cfg(test)]
 mod tests;
-

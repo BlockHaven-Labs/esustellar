@@ -8,7 +8,7 @@
 | P1 | Major feature broken | 30 min |
 | P2 | Minor issue / non-critical | 4 hrs |
 | P3 | Cosmetic / enhancement | Next sprint |
-
+  // const [loading, setLoading] = useState(true);
 ## Response Steps
 
 ### 1. Detect

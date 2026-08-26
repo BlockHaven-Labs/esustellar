@@ -1,7 +1,7 @@
 # Contributing to EsuStellar 🤝
 
 Thank you for your interest in contributing to **EsuStellar** 🎉
-We welcome **developers, designers, writers, and community members**.
+We welcome **developers, designers, writers, and community members**..
 
 This guide explains how to get set up, follow the project workflow, and submit changes that pass CI.
 
