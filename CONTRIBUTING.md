@@ -61,7 +61,7 @@ npm install
 
 ---
 
-### 3️⃣ Run the Frontend (optional depending on the issue you are working on)
+<!-- ### 3️⃣ Run the Frontend (optional depending on the issue you are working on) -->
 
 ```bash
 cd apps/web
