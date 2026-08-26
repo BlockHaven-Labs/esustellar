@@ -569,6 +569,128 @@ fn test_mark_defaulted_external() {
     assert_eq!(member_data.status, MemberStatus::Defaulted);
 }
 
+// ─── Multi-member stall tests (#780) ─────────────────────────────────
+
+#[test]
+fn test_two_members_simultaneously_late() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    // Round 1: admin pays; m1 and m2 are simultaneously late.
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+    client.contribute(&admin, &group_id);
+
+    // Advance past deadline + grace period.
+    let deadline = group.start_timestamp + 604800;
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 259200 + 1;
+    });
+
+    // Both late members cannot contribute — payment window closed.
+    assert!(client.try_contribute(&m1, &group_id).is_err());
+    assert!(client.try_contribute(&m2, &group_id).is_err());
+
+    // Mark both as defaulted via the external stall-recovery path.
+    client.mark_defaulted(&m1, &group_id);
+    client.mark_defaulted(&m2, &group_id);
+
+    // Both Defaulted statuses persist (cf. #736/#740 where writes were reverted).
+    assert_eq!(
+        client.get_member(&m1, &group_id).status,
+        MemberStatus::Defaulted
+    );
+    assert_eq!(
+        client.get_member(&m2, &group_id).status,
+        MemberStatus::Defaulted
+    );
+
+    // Defaulted members still cannot contribute.
+    assert!(client.try_contribute(&m1, &group_id).is_err());
+    assert!(client.try_contribute(&m2, &group_id).is_err());
+}
+
+#[test]
+fn test_force_end_round_with_two_late_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    // Round 1: admin pays; m1 and m2 are simultaneously late.
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+    client.contribute(&admin, &group_id);
+
+    // Advance past deadline + grace period.
+    let deadline = group.start_timestamp + 604800;
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 259200 + 1;
+    });
+
+    // Force-end the stalled round.
+    client.force_end_round(&group_id);
+
+    // Group should be paused (round advanced, payout attempted).
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Paused);
+
+    // Both late members are defaulted by force_end_round.
+    assert_eq!(
+        client.get_member(&m1, &group_id).status,
+        MemberStatus::Defaulted
+    );
+    assert_eq!(
+        client.get_member(&m2, &group_id).status,
+        MemberStatus::Defaulted
+    );
+
+    // Admin (who paid) is not defaulted.
+    assert_ne!(
+        client.get_member(&admin, &group_id).status,
+        MemberStatus::Defaulted
+    );
+}
+
+#[test]
+fn test_cure_default_both_defaulted_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    // Round 1: nobody pays — everyone is simultaneously late.
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    // Force-end round — all members become Defaulted.
+    client.force_end_round(&group_id);
+
+    // Resume to make the group Active again.
+    client.resume_group(&admin, &group_id);
+
+    // Both defaulted members can cure their defaults.
+    client.cure_default(&m1, &group_id);
+    client.cure_default(&m2, &group_id);
+
+    assert_eq!(
+        client.get_member(&m1, &group_id).status,
+        MemberStatus::Active
+    );
+    assert_eq!(
+        client.get_member(&m2, &group_id).status,
+        MemberStatus::Active
+    );
+}
+
 #[test]
 fn test_get_user_groups() {
     let env = Env::default();
