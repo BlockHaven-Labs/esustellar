@@ -8,9 +8,9 @@ Esustellar is an open-source platform that brings informal savings groups
 (Esusu / Ajo / Rotating Savings) to the Stellar blockchain.
 
 It helps communities save money together transparently, securely, and
-without relying on a single trusted organizer.
+without relying on a single trusted organizer..
 
----
+------
 
 ## 🚨 Problem
 
@@ -119,6 +119,7 @@ esustellar/
 ├── docs/ # Architecture & specs
 ├── .github/
 │ └── ISSUE_TEMPLATE/
+├── CHANGELOG.md # Contract & platform interface changelog
 └── README.md
 ```
 

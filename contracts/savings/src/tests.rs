@@ -1,7 +1,10 @@
 use crate::{Error, Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env, String,
+    symbol_short,
+    testutils::{Address as _, Events, Ledger},
+    Address, Env, String, Symbol, TryFromVal,
+    testutils::{Address as _, Events as _, Ledger},
+    symbol_short, Address, Env, IntoVal, String, Symbol,
 };
 
 fn create_test_group(env: &Env) -> (Address, SavingsContractClient<'_>) {
@@ -569,6 +572,128 @@ fn test_mark_defaulted_external() {
     assert_eq!(member_data.status, MemberStatus::Defaulted);
 }
 
+// ─── Multi-member stall tests (#780) ─────────────────────────────────
+
+#[test]
+fn test_two_members_simultaneously_late() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    // Round 1: admin pays; m1 and m2 are simultaneously late.
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+    client.contribute(&admin, &group_id);
+
+    // Advance past deadline + grace period.
+    let deadline = group.start_timestamp + 604800;
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 259200 + 1;
+    });
+
+    // Both late members cannot contribute — payment window closed.
+    assert!(client.try_contribute(&m1, &group_id).is_err());
+    assert!(client.try_contribute(&m2, &group_id).is_err());
+
+    // Mark both as defaulted via the external stall-recovery path.
+    client.mark_defaulted(&m1, &group_id);
+    client.mark_defaulted(&m2, &group_id);
+
+    // Both Defaulted statuses persist (cf. #736/#740 where writes were reverted).
+    assert_eq!(
+        client.get_member(&m1, &group_id).status,
+        MemberStatus::Defaulted
+    );
+    assert_eq!(
+        client.get_member(&m2, &group_id).status,
+        MemberStatus::Defaulted
+    );
+
+    // Defaulted members still cannot contribute.
+    assert!(client.try_contribute(&m1, &group_id).is_err());
+    assert!(client.try_contribute(&m2, &group_id).is_err());
+}
+
+#[test]
+fn test_force_end_round_with_two_late_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    // Round 1: admin pays; m1 and m2 are simultaneously late.
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+    client.contribute(&admin, &group_id);
+
+    // Advance past deadline + grace period.
+    let deadline = group.start_timestamp + 604800;
+    env.ledger().with_mut(|li| {
+        li.timestamp = deadline + 259200 + 1;
+    });
+
+    // Force-end the stalled round.
+    client.force_end_round(&group_id);
+
+    // Group should be paused (round advanced, payout attempted).
+    let group = client.get_group(&group_id);
+    assert_eq!(group.status, GroupStatus::Paused);
+
+    // Both late members are defaulted by force_end_round.
+    assert_eq!(
+        client.get_member(&m1, &group_id).status,
+        MemberStatus::Defaulted
+    );
+    assert_eq!(
+        client.get_member(&m2, &group_id).status,
+        MemberStatus::Defaulted
+    );
+
+    // Admin (who paid) is not defaulted.
+    assert_ne!(
+        client.get_member(&admin, &group_id).status,
+        MemberStatus::Defaulted
+    );
+}
+
+#[test]
+fn test_cure_default_both_defaulted_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    // Round 1: nobody pays — everyone is simultaneously late.
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    // Force-end round — all members become Defaulted.
+    client.force_end_round(&group_id);
+
+    // Resume to make the group Active again.
+    client.resume_group(&admin, &group_id);
+
+    // Both defaulted members can cure their defaults.
+    client.cure_default(&m1, &group_id);
+    client.cure_default(&m2, &group_id);
+
+    assert_eq!(
+        client.get_member(&m1, &group_id).status,
+        MemberStatus::Active
+    );
+    assert_eq!(
+        client.get_member(&m2, &group_id).status,
+        MemberStatus::Active
+    );
+}
+
 #[test]
 fn test_get_user_groups() {
     let env = Env::default();
@@ -896,4 +1021,577 @@ fn test_get_user_groups_page() {
 
     let page = client.get_user_groups_page(&user, &0, &2);
     assert_eq!(page.len(), 2);
+}
+
+// ── Event decoding assertions for all five event types (#created, #joined, #contrib, #payout, #round_end) ──
+
+#[test]
+fn test_decode_created_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "event-created-grp");
+    let name = String::from_str(&env, "Event Created Group");
+    let contribution_amount = 100_000_000i128;
+    let total_members = 3u32;
+// ============================================================
+// #750: Event-topic assertion tests
+// Verify that every group-scoped event carries group_id as its
+// second topic, and that event data shapes are correct.
+// ============================================================
+
+/// Helper: find the first event whose topics[0] matches `name`.
+fn find_event(
+    env: &Env,
+    name: Symbol,
+) -> (soroban_sdk::Address, soroban_sdk::Vec<Symbol>, soroban_sdk::Val) {
+    let events = env.events().all();
+    for i in 0..events.len() {
+        let (contract_id, topics, data) = events.get(i).unwrap();
+        let topic_0: Symbol = topics.get(0).unwrap().try_into_val(env).unwrap();
+        if topic_0 == name {
+            let typed_topics: soroban_sdk::Vec<Symbol> =
+                topics.try_into_val(env).unwrap();
+            return (contract_id, typed_topics, data);
+        }
+    }
+    panic!("Event '{}' not found", name.to_string());
+}
+
+#[test]
+fn test_event_created_topics_and_data() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "evt-create");
+    let name = String::from_str(&env, "Event Test");
+    let contribution_amount: i128 = 100_000_000;
+    let total_members: u32 = 5;
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &contribution_amount,
+        &total_members,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &Frequency::Monthly,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &admin,
+        &None,
+    );
+
+    let all_events = env.events().all();
+    let mut found = false;
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("created") {
+                    let (decoded_gid, decoded_amount, decoded_members) =
+                        <(String, i128, u32)>::try_from_val(&env, &data)
+                            .expect("created event data should decode to (String, i128, u32)");
+                    assert_eq!(decoded_gid, group_id);
+                    assert_eq!(decoded_amount, contribution_amount);
+                    assert_eq!(decoded_members, total_members);
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+    assert!(found, "created event must be emitted and decodable");
+}
+
+#[test]
+fn test_decode_joined_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "event-joined-grp");
+    let name = String::from_str(&env, "Event Joined Group");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
+        &None,
+    );
+
+    let member2 = Address::generate(&env);
+    client.join_group(&member2, &group_id);
+
+    let all_events = env.events().all();
+    let mut found = false;
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("joined") {
+                    if let Ok((decoded_member, decoded_count)) =
+                        <(Address, u32)>::try_from_val(&env, &data)
+                    {
+                        if decoded_member == member2 && decoded_count == 2 {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(found, "joined event for member2 must be emitted and decodable with count 2");
+}
+
+#[test]
+fn test_decode_contrib_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, m1, _m2, _, client, group_id) = setup_full_group(&env);
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("created"));
+
+    // Topics: ("created", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("created"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_joined_topics_and_data() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "evt-join");
+    let name = String::from_str(&env, "Join Test");
+
+    client.create_group(
+        &admin, &group_id, &name, &100_000_000, &3,
+        &Frequency::Weekly, &(env.ledger().timestamp() + 86400),
+        &true, &admin, &None,
+    );
+
+    let member = Address::generate(&env);
+    client.join_group(&member, &group_id);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("joined"));
+
+    // Topics: ("joined", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("joined"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_cancelled_topics_and_data() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "evt-cancel");
+    let name = String::from_str(&env, "Cancel Test");
+
+    client.create_group(
+        &admin, &group_id, &name, &100_000_000, &5,
+        &Frequency::Monthly, &(env.ledger().timestamp() + 86400),
+        &true, &admin, &None,
+    );
+
+    client.cancel_group(&admin, &group_id);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("cancelled"));
+
+    // Topics: ("cancelled", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("cancelled"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_contrib_topics_and_data() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    client.contribute(&m1, &group_id);
+
+    let all_events = env.events().all();
+    let mut found = false;
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("contrib") {
+                    let (decoded_gid, decoded_member, decoded_amount, decoded_round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("contrib event data should decode to (String, Address, i128, u32)");
+                    if decoded_member == m1 {
+                        assert_eq!(decoded_gid, group_id);
+                        assert_eq!(decoded_amount, 100_000_000);
+                        assert_eq!(decoded_round, 1);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    assert!(found, "contrib event for m1 must be emitted and decodable");
+}
+
+#[test]
+fn test_decode_payout_and_round_end_events() {
+    let env = Env::default();
+    env.mock_all_auths();
+    client.contribute(&admin, &group_id);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("contrib"));
+
+    // Topics: ("contrib", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("contrib"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_payout_topics_and_data() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    // All members contribute in round 1
+    client.contribute(&admin, &group_id);
+    client.contribute(&m1, &group_id);
+    client.contribute(&m2, &group_id);
+
+    let all_events = env.events().all();
+    let mut found_payout = false;
+    let mut found_round_end = false;
+
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("payout") {
+                    let (decoded_gid, decoded_recipient, decoded_amount, decoded_round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("payout event data should decode to (String, Address, i128, u32)");
+                    assert_eq!(decoded_gid, group_id);
+                    assert_eq!(decoded_round, 1);
+                    assert!(decoded_amount > 0);
+                    assert!(decoded_recipient == admin || decoded_recipient == m1 || decoded_recipient == m2);
+                    found_payout = true;
+                } else if topic_sym == symbol_short!("round_end") {
+                    let decoded_round = u32::try_from_val(&env, &data)
+                        .expect("round_end event data should decode to u32");
+                    assert_eq!(decoded_round, 1);
+                    found_round_end = true;
+                }
+            }
+        }
+    }
+
+    assert!(found_payout, "payout event must be emitted and decodable");
+    assert!(found_round_end, "round_end event must be emitted and decodable");
+}
+
+#[test]
+fn test_all_five_event_types_decoded_in_full_lifecycle() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "lifecycle-evt-grp");
+    let name = String::from_str(&env, "Lifecycle Event Test Group");
+    let contribution_amount = 100_000_000i128;
+    let total_members = 3u32;
+
+    // 1. Create group -> emits 'created' (and admin 'joined')
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &contribution_amount,
+        &total_members,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
+        &None,
+    );
+
+    // 2. Join members -> emits 'joined'
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    client.join_group(&m1, &group_id);
+    client.join_group(&m2, &group_id);
+
+    // 3. Move timestamp to active start and contribute -> emits 'contrib', 'payout', and 'round_end'
+    env.ledger().with_mut(|li| {
+        li.timestamp = 100_000 + 101;
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("payout"));
+
+    // Topics: ("payout", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("payout"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_paused_topics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+
+    client.pause_group(&admin, &group_id);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("paused"));
+
+    // Topics: ("paused", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("paused"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_resumed_topics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+
+    client.pause_group(&admin, &group_id);
+    client.resume_group(&admin, &group_id);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("resumed"));
+
+    // Topics: ("resumed", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("resumed"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_removed_topics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "evt-remove");
+    let name = String::from_str(&env, "Remove Test");
+
+    client.create_group(
+        &admin, &group_id, &name, &100_000_000, &5,
+        &Frequency::Monthly, &(env.ledger().timestamp() + 86400),
+        &true, &admin, &None,
+    );
+
+    let member = Address::generate(&env);
+    client.join_group(&member, &group_id);
+    client.remove_member(&admin, &group_id, &member);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("removed"));
+
+    // Topics: ("removed", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("removed"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_adm_xfer_topics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "evt-xfer");
+    let name = String::from_str(&env, "Xfer Test");
+    let new_admin = Address::generate(&env);
+
+    client.create_group(
+        &admin, &group_id, &name, &100_000_000, &3,
+        &Frequency::Weekly, &(env.ledger().timestamp() + 100),
+        &true, &admin, &None,
+    );
+
+    client.transfer_admin(&group_id, &admin, &new_admin);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("adm_xfer"));
+
+    // Topics: ("adm_xfer", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("adm_xfer"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_defaulted_topics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    client.mark_defaulted(&m2, &group_id);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("defaulted"));
+
+    // Topics: ("defaulted", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("defaulted"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_cured_topics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 604800 + 259200 + 1;
+    });
+
+    client.force_end_round(&group_id);
+    client.resume_group(&admin, &group_id);
+    client.cure_default(&m2, &group_id);
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("cured"));
+
+    // Topics: ("cured", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("cured"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
+}
+
+#[test]
+fn test_event_round_end_topics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, m1, m2, _, client, group_id) = setup_full_group(&env);
+    let group = client.get_group(&group_id);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = group.start_timestamp + 1;
+    });
+
+    client.contribute(&admin, &group_id);
+    client.contribute(&m1, &group_id);
+    client.contribute(&m2, &group_id);
+
+    let all_events = env.events().all();
+
+    let mut created_count = 0u32;
+    let mut joined_count = 0u32;
+    let mut contrib_count = 0u32;
+    let mut payout_count = 0u32;
+    let mut round_end_count = 0u32;
+
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("created") {
+                    let (gid, amount, members) =
+                        <(String, i128, u32)>::try_from_val(&env, &data)
+                            .expect("created event data decode");
+                    assert_eq!(gid, group_id);
+                    assert_eq!(amount, contribution_amount);
+                    assert_eq!(members, total_members);
+                    created_count += 1;
+                } else if topic_sym == symbol_short!("joined") {
+                    if let Ok((member, count)) = <(Address, u32)>::try_from_val(&env, &data) {
+                        assert!(count >= 1 && count <= 3);
+                        assert!(member == admin || member == m1 || member == m2);
+                        joined_count += 1;
+                    }
+                } else if topic_sym == symbol_short!("contrib") {
+                    let (gid, member, amount, round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("contrib event data decode");
+                    assert_eq!(gid, group_id);
+                    assert_eq!(amount, contribution_amount);
+                    assert_eq!(round, 1);
+                    assert!(member == admin || member == m1 || member == m2);
+                    contrib_count += 1;
+                } else if topic_sym == symbol_short!("payout") {
+                    let (gid, recipient, amount, round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("payout event data decode");
+                    assert_eq!(gid, group_id);
+                    assert_eq!(round, 1);
+                    assert!(amount > 0);
+                    assert!(recipient == admin || recipient == m1 || recipient == m2);
+                    payout_count += 1;
+                } else if topic_sym == symbol_short!("round_end") {
+                    let round = u32::try_from_val(&env, &data)
+                        .expect("round_end event data decode");
+                    assert_eq!(round, 1);
+                    round_end_count += 1;
+                }
+            }
+        }
+    }
+
+    assert!(created_count >= 1, "Must have decoded at least 1 'created' event");
+    assert!(joined_count >= 3, "Must have decoded at least 3 'joined' events");
+    assert_eq!(contrib_count, 3, "Must have decoded exactly 3 'contrib' events");
+    assert_eq!(payout_count, 1, "Must have decoded exactly 1 'payout' event");
+    assert_eq!(round_end_count, 1, "Must have decoded exactly 1 'round_end' event");
+}
+
+    let (_, topics, _data) =
+        find_event(&env, symbol_short!("round_end"));
+
+    // Topics: ("round_end", group_id)
+    assert_eq!(topics.len(), 2);
+    assert_eq!(topics.get(0).unwrap(), symbol_short!("round_end"));
+    let topic_gid: String = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic_gid, group_id);
 }

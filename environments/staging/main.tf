@@ -7,6 +7,10 @@ terraform {
       version = "~> 2.30"
     }
   }
+
+
+
+  
 }
 
 provider "kubernetes" {

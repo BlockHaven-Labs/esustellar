@@ -3,7 +3,7 @@
 All events follow the shape `(topics_tuple, data_tuple)`.
 Every event includes `group_id` as the first data element so off-chain
 consumers (activity feeds, indexers) can attribute any event to its group.
-
+# Reference: Issue #536
 ## Events
 
 ### `created`

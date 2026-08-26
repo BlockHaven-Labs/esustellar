@@ -1,7 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Executable,
+    String, Vec,
 };
 
 // #697: Contract version for schema migration tracking.
@@ -17,6 +18,9 @@ pub enum Error {
     NotGroupAdmin = 102,
     UserNotInGroup = 103,
     InvalidAddress = 104,
+    MetadataMismatch = 105,
+    NotAContract = 106,
+    InvalidMemberCount = 107,
 }
 
 #[contracttype]
@@ -50,7 +54,9 @@ pub struct GroupRegistry;
 impl GroupRegistry {
     /// Register a savings group in the registry.
     /// Verifies the contract address is a real deployed savings contract that
-    /// knows about the group_id and that the admin matches.
+    /// knows about the group_id, that the admin matches, and that
+    /// caller-supplied metadata (name, is_public) matches the on-chain state.
+    /// total_members is derived from the actual savings contract, not caller input.
     pub fn register_group(
         env: Env,
         contract_address: Address,
@@ -58,9 +64,15 @@ impl GroupRegistry {
         name: String,
         admin: Address,
         is_public: bool,
-        total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
+
+        // TASK4: Verify the address points to an actual deployed contract,
+        // not a plain externally-owned account.
+        match contract_address.executable() {
+            Some(Executable::Wasm(_)) => {}
+            _ => return Err(Error::NotAContract),
+        }
 
         if env
             .storage()
@@ -78,8 +90,17 @@ impl GroupRegistry {
             .try_get_group(&group_id)
             .map_err(|_| Error::InvalidAddress)?
             .map_err(|_| Error::InvalidAddress)?;
+
+        // TASK1: Verify that the caller-supplied metadata matches the on-chain
+        // savings contract, preventing registry/UI drift.
         if savings_group.admin != admin {
             return Err(Error::NotGroupAdmin);
+        }
+        if savings_group.name != name {
+            return Err(Error::MetadataMismatch);
+        }
+        if savings_group.is_public != is_public {
+            return Err(Error::MetadataMismatch);
         }
 
         let group_info = GroupInfo {
@@ -87,9 +108,9 @@ impl GroupRegistry {
             group_id: group_id.clone(),
             name,
             admin: admin.clone(),
-            is_public,
+            is_public: savings_group.is_public,
             created_at: env.ledger().timestamp(),
-            total_members,
+            total_members: savings_group.total_members,
         };
 
         env.storage()
@@ -236,13 +257,13 @@ impl GroupRegistry {
     }
 
     /// Update the mutable metadata for a registered group.
+    /// total_members is derived from the actual savings contract, not caller input.
     pub fn update_group_info(
         env: Env,
         contract_address: Address,
         admin: Address,
         name: String,
         is_public: bool,
-        total_members: u32,
     ) -> Result<(), Error> {
         admin.require_auth();
 
@@ -256,9 +277,15 @@ impl GroupRegistry {
             return Err(Error::NotGroupAdmin);
         }
 
+        // Derive total_members from the actual savings contract to ensure consistency
+        let savings_group = esustellar_savings::SavingsContractClient::new(&env, &contract_address)
+            .try_get_group(&group_info.group_id)
+            .map_err(|_| Error::InvalidAddress)?
+            .map_err(|_| Error::InvalidAddress)?;
+
         group_info.name = name;
         group_info.is_public = is_public;
-        group_info.total_members = total_members;
+        group_info.total_members = savings_group.total_members;
 
         env.storage()
             .persistent()
@@ -335,7 +362,7 @@ impl GroupRegistry {
             .persistent()
             .remove(&DataKey::RegisteredGroupId(group_info.group_id.clone()));
 
-        let mut all_groups: Vec<Address> = env
+        let all_groups: Vec<Address> = env
             .storage()
             .persistent()
             .get(&DataKey::AllGroups)
@@ -628,7 +655,7 @@ impl GroupRegistry {
         result
     }
 
-    pub fn get_all_groups_info_page_filtered(
+    pub fn get_groups_info_page_filtered(
         env: Env,
         page: u32,
         page_size: u32,

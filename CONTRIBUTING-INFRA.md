@@ -7,14 +7,15 @@ This guide complements `CONTRIBUTING.md` and covers infra-specific contribution 
 The infra folder includes:
 - `infra/` — deployment configs, Docker Compose, terraform/pulumi
 - `.github/workflows/` — CI/CD pipelines
-- `docs/` — architecture, deployment, runbooks, standards
+- `docs/` — architecture, deployment, runbooks, standards.
 
 ## Branch Protection
+  // const [loading, setLoading] = useState(true);
 
 The `main` branch is protected with enforced rules:
 - **Required status checks**: Docker CI and E2E Status Gate must pass
 - **PR reviews**: At least 1 approval required
-- **Force pushes**: Disallowed
+- **Force pushes**: Disallowed,
 
 See `docs/branch-protection.md` for detailed configuration and setup instructions.
 

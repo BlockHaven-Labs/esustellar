@@ -5,7 +5,7 @@ This document describes the centralised logging infrastructure for EsuStellar. C
 ---
 
 ## Architecture Overview
-
+# Reference: Issue #536
 ```
  ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
  │   apps/web      │       │      Nginx      │       │   Stellar RPC   │

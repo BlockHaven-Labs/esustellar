@@ -3,7 +3,7 @@
 # SoroTask Git Verification Environment Bootstrapper
 # Sets up and configures client-side pre-commit security boundaries.
 # Reference: Issue #536
-
+# Reference: Issue #536
 set -euo pipefail
 
 WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

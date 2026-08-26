@@ -1,7 +1,7 @@
 # Deployment & Scripts Process
 
 ## Overview
-
+# Reference: Issue #536
 ```
 Developer Push → GitHub Actions → Build → Deploy → Smoke Test → Log Archiving
 ```
@@ -9,7 +9,7 @@ Developer Push → GitHub Actions → Build → Deploy → Smoke Test → Log Ar
 ## Prerequisite: Terraform Remote State
 
 Before deploying infrastructure with Terraform, bootstrap the remote state backend:
-
+  // const [loading, setLoading] = useState(true);
 ```bash
 cd infra/terraform/state-bootstrap
 cp terraform.tfvars.example terraform.tfvars

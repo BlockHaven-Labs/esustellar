@@ -1,0 +1,91 @@
+--- a/contracts/savings/src/lib.rs
++++ b/contracts/savings/src/lib.rs
+@@ -48,6 +48,7 @@ pub enum Error {
+     GroupIdAlreadyExists = 35,
+     StringTooLong = 36,
++    InvalidGroupId = 37,
+ }
+ 
++/// Normalizes a group ID string by trimming leading/trailing ASCII whitespace,
++/// folding ASCII characters to lowercase, and enforcing length constraints.
++pub fn normalize_group_id(env: &Env, raw_id: &String) -> Result<String, Error> {
++    let len = raw_id.len();
++    if len == 0 {
++        return Err(Error::InvalidGroupId);
++    }
++    if len > MAX_STRING_LEN {
++        return Err(Error::StringTooLong);
++    }
++
++    let mut buf = [0u8; 64];
++    let slice = &mut buf[..len as usize];
++    raw_id.copy_into_slice(slice);
++
++    let mut start = 0;
++    while start < slice.len() && slice[start].is_ascii_whitespace() {
++        start += 1;
++    }
++
++    let mut end = slice.len();
++    while end > start && slice[end - 1].is_ascii_whitespace() {
++        end -= 1;
++    }
++
++    let trimmed = &mut slice[start..end];
++    if trimmed.is_empty() {
++        return Err(Error::InvalidGroupId);
++    }
++
++    for b in trimmed.iter_mut() {
++        *b = b.to_ascii_lowercase();
++    }
++
++    let normalized_str = core::str::from_utf8(trimmed).map_err(|_| Error::InvalidGroupId)?;
++    Ok(String::from_str(env, normalized_str))
++}
++
+--- a/contracts/registry/src/lib.rs
++++ b/contracts/registry/src/lib.rs
+@@ -19,6 +19,8 @@ pub enum Error {
+     InvalidAddress = 104,
++    InvalidGroupId = 105,
++    StringTooLong = 106,
+ }
+ 
++/// Normalizes a group ID string by trimming leading/trailing ASCII whitespace,
++/// folding ASCII characters to lowercase, and enforcing length constraints.
++pub fn normalize_group_id(env: &Env, raw_id: &String) -> Result<String, Error> {
++    let len = raw_id.len();
++    if len == 0 {
++        return Err(Error::InvalidGroupId);
++    }
++    if len > MAX_STRING_LEN {
++        return Err(Error::StringTooLong);
++    }
++
++    let mut buf = [0u8; 64];
++    let slice = &mut buf[..len as usize];
++    raw_id.copy_into_slice(slice);
++
++    let mut start = 0;
++    while start < slice.len() && slice[start].is_ascii_whitespace() {
++        start += 1;
++    }
++
++    let mut end = slice.len();
++    while end > start && slice[end - 1].is_ascii_whitespace() {
++        end -= 1;
++    }
++
++    let trimmed = &mut slice[start..end];
++    if trimmed.is_empty() {
++        return Err(Error::InvalidGroupId);
++    }
++
++    for b in trimmed.iter_mut() {
++        *b = b.to_ascii_lowercase();
++    }
++
++    let normalized_str = core::str::from_utf8(trimmed).map_err(|_| Error::InvalidGroupId)?;
++    Ok(String::from_str(env, normalized_str))
++}
