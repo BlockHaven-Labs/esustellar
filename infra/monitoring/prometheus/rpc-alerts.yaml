@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rpc-alert-rules
+  namespace: esustellar-monitoring
+data:
+  rpc-alerts.yml: |
+    groups:
+      - name: stellar-rpc-node
+        rules:
+          # RPC endpoint unreachable
+          - alert: StellarRpcDown
+            expr: probe_success{job="stellar-rpc"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              service: stellar-rpc
+            annotations:
+              summary: "Stellar RPC endpoint is unreachable"
+              description: "The Stellar RPC endpoint {{ $labels.instance }} has been unreachable for more than 1 minute."
+
+          # High RPC error rate
+          - alert: StellarRpcHighErrorRate
+            expr: |
+              (
+                sum(rate(stellar_rpc_requests_total{status=~"5.."}[5m])) by (instance)
+                /
+                sum(rate(stellar_rpc_requests_total[5m])) by (instance)
+              ) > 0.1
+            for: 5m
+            labels:
+              severity: warning
+              service: stellar-rpc
+            annotations:
+              summary: "High error rate on Stellar RPC"
+              description: "RPC error rate is above 10% for the last 5 minutes on {{ $labels.instance }}."
+
+          # RPC latency spike
+          - alert: StellarRpcHighLatency
+            expr: histogram_quantile(0.95, rate(stellar_rpc_request_duration_seconds_bucket[5m])) > 5
+            for: 5m
+            labels:
+              severity: warning
+              service: stellar-rpc
+            annotations:
+              summary: "Stellar RPC latency is elevated"
+              description: "P95 latency on {{ $labels.instance }} is above 5 seconds."
+
+          # Contract call failures
+          - alert: ContractCallFailureRate
+            expr: |
+              (
+                sum(rate(stellar_rpc_contract_call_errors_total[5m])) by (contract_id)
+                /
+                sum(rate(stellar_rpc_contract_call_total[5m])) by (contract_id)
+              ) > 0.2
+            for: 10m
+            labels:
+              severity: warning
+              service: soroban
+            annotations:
+              summary: "High contract call failure rate"
+              description: "Contract {{ $labels.contract_id }} has >20% failure rate for 10 minutes."
+
+          # Node sync lag
+          - alert: StellarNodeSyncLag
+            expr: stellar_node_sync_lag_seconds > 30
+            for: 5m
+            labels:
+              severity: warning
+              service: stellar-node
+            annotations:
+              summary: "Stellar node sync lag detected"
+              description: "Node {{ $labels.instance }} is {{ $value }}s behind the network."
+
+      - name: esustellar-app
+        rules:
+          # Web app down
+          - alert: WebAppDown
+            expr: probe_success{job="esustellar-web"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              service: web
+            annotations:
+              summary: "Web app health check is failing"
+              description: "The web app /api/health endpoint has been returning non-200 for more than 2 minutes."
+
+          # High error rate
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+              service: web
+            annotations:
+              summary: "High error rate on web app"
+              description: "Error rate is above 5% for the last 5 minutes."
