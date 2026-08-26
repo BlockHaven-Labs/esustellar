@@ -12,6 +12,12 @@ const STEPS = [
     description: 'Start a new group or join an existing one in your community.',
   },
   {
+    icon: '👛',
+    title: 'Connect your Stellar wallet',
+    description:
+      'A Stellar wallet (Freighter, Lobstr, or compatible) is required. It holds your funds and signs transactions on-chain.',
+  },
+  {
     icon: '💳',
     title: 'Contribute monthly with your Stellar wallet',
     description: 'Send your fixed contribution each month using your Stellar wallet.',
@@ -45,6 +51,15 @@ export default function HowItWorksScreen() {
           </View>
         </View>
       ))}
+
+      <View style={styles.mvpDisclaimer}>
+        <Text style={styles.mvpDisclaimerTitle}>⚠️ Current Limitations (MVP)</Text>
+        <Text style={styles.mvpDisclaimerText}>
+          Contributions are recorded on-chain but funds are <Text style={styles.mvpDisclaimerBold}>not yet locked in an escrow contract</Text>.
+          Real token custody, dispute resolution, and configurable admin controls are planned for future releases.
+          Participate with this in mind.
+        </Text>
+      </View>
 
       <View style={styles.nav}>
         <Pressable
@@ -107,4 +122,26 @@ const styles = StyleSheet.create({
   navButtonPrimary: { backgroundColor: '#6366F1', borderColor: '#6366F1' },
   navButtonText: { color: '#94A3B8', fontWeight: '600', fontSize: 15 },
   navButtonTextPrimary: { color: '#FFFFFF' },
+  mvpDisclaimer: {
+    backgroundColor: '#2D2410',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    borderStartWidth: 3,
+    borderStartColor: '#F59E0B',
+  },
+  mvpDisclaimerTitle: {
+    color: '#FDE68A',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  mvpDisclaimerText: {
+    color: '#FDE68A',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  mvpDisclaimerBold: {
+    fontWeight: '700',
+  },
 });
