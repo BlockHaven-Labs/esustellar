@@ -119,6 +119,7 @@ esustellar/
 ├── docs/ # Architecture & specs
 ├── .github/
 │ └── ISSUE_TEMPLATE/
+├── CHANGELOG.md # Contract & platform interface changelog
 └── README.md
 ```
 
