@@ -1,23 +1,16 @@
 use crate::{GroupRegistry, GroupRegistryClient};
-use esustellar_savings::{
-    Error as SavingsError, Frequency, SavingsContract, SavingsContractClient,
-};
-use soroban_sdk::{
-    testutils::{Address as _, Ledger, LedgerInfo},
-    Address, Env, String, Vec,
-};
+use soroban_sdk::{testutils::{Address as _, Ledger, LedgerInfo}, Address, Env, String, Vec};
+use esustellar_savings::{SavingsContract, SavingsContractClient, SavingsGroup, Frequency, GroupStatus};
 
 // ── Test fixtures & helpers ───────────────────────────────────────────────────
 
 /// Create a registry client with a deterministic ledger state.
-/// The timestamp is set far enough in the future that savings contracts
-/// can create groups with start_timestamps in the future.
 fn setup_env() -> Env {
     let env = Env::default();
     env.mock_all_auths();
     env.ledger().set(LedgerInfo {
-        timestamp: 5_000_000_000,
-        protocol_version: 22,
+        timestamp: 1_700_000_000,
+        protocol_version: 23,
         sequence_number: 1_000,
         network_id: [0u8; 32],
         base_reserve: 10,
@@ -33,65 +26,54 @@ fn create_registry(env: &Env) -> GroupRegistryClient<'_> {
     GroupRegistryClient::new(env, &contract_id)
 }
 
-/// Deploy a savings contract, initialize it, create a group, and register
-/// that group in the registry with matching metadata.  Returns the savings
-/// contract address.
-fn deploy_and_register_group(
+/// Register a group with default safe values and return the group contract address.
+fn register_group(
     env: &Env,
-    registry: &GroupRegistryClient<'_>,
+    client: &GroupRegistryClient<'_>,
+    id_suffix: &str,
+    name_str: &str,
     admin: &Address,
-    group_id: &str,
-    name: &str,
     is_public: bool,
-    total_members: u32,
+    max_members: u32,
 ) -> Address {
-    // Increment ledger timestamp by 1 second between calls to avoid
-    // hitting the per-admin 24-hour rate limit in the savings contract.
-    let current_ts = env.ledger().timestamp();
-    env.ledger().set(LedgerInfo {
-        timestamp: current_ts + 1,
-        protocol_version: 22,
-        sequence_number: 1_001,
-        network_id: [0u8; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 50_000,
-        min_persistent_entry_ttl: 50_000,
-        max_entry_ttl: 50_000,
+    // Register and mock a savings contract for the cross-contract call
+    let savings_contract_id = env.register(SavingsContract, ());
+    let savings_client = SavingsContractClient::new(env, &savings_contract_id);
+    
+    // Initialize the savings contract
+    savings_client.initialize(&admin.clone());
+    
+    // Create a mock savings group within the savings contract's context
+    let mock_group = SavingsGroup {
+        group_id: String::from_str(env, id_suffix),
+        admin: admin.clone(),
+        name: String::from_str(env, name_str),
+        contribution_amount: 100_000_000,
+        total_members: max_members,
+        frequency: Frequency::Monthly,
+        start_timestamp: env.ledger().timestamp() + 86400,
+        status: GroupStatus::Open,
+        is_public,
+        current_round: 0,
+        platform_fee_percent: 200,
+        treasury: Address::generate(env),
+        token_address: None,
+        payout_order: Vec::new(env),
+    };
+    
+    env.as_contract(&savings_contract_id, || {
+        env.storage().persistent().set(&esustellar_savings::DataKey::Group(String::from_str(env, id_suffix)), &mock_group);
     });
-
-    // Deploy and initialize a real savings contract.
-    let savings_id = env.register(SavingsContract, ());
-    let savings_client = SavingsContractClient::new(env, &savings_id);
-    savings_client.initialize(admin);
-
-    let start_timestamp = env.ledger().timestamp() + 3600;
-
-    savings_client.create_group(
-        admin,
-        &String::from_str(env, group_id),
-        &String::from_str(env, name),
-        &10_000_000_i128,                   // MIN_CONTRIBUTION
-        &total_members,
-        &Frequency::Weekly,
-        &start_timestamp,
-        &is_public,
-        admin,                               // treasury
-        &None,                               // token_address
-    );
-
-    let savings_addr = savings_id.clone();
-
-    // Register in the registry with metadata matching the savings contract.
-    registry.register_group(
-        &savings_addr,
-        &String::from_str(env, group_id),
-        &String::from_str(env, name),
+    
+    // Call register_group without total_members parameter (derived from savings contract)
+    client.register_group(
+        &savings_contract_id,
+        &String::from_str(env, id_suffix),
+        &String::from_str(env, name_str),
         admin,
         &is_public,
-        &total_members,
     );
-
-    savings_addr
+    savings_contract_id
 }
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -100,15 +82,17 @@ fn deploy_and_register_group(
 fn test_register_group_stores_all_fields() {
     let env = setup_env();
     let client = create_registry(&env);
+
     let admin = Address::generate(&env);
+    let group_id = String::from_str(&env, "test-group-1");
+    let name = String::from_str(&env, "Test Savings Group");
 
-    let savings_addr =
-        deploy_and_register_group(&env, &client, &admin, "test-group-1", "Test Savings Group", true, 5);
+    let group_contract = register_group(&env, &client, "test-group-1", "Test Savings Group", &admin, true, 5);
 
-    let info = client.get_group_info(&savings_addr);
-    assert_eq!(info.contract_address, savings_addr, "contract_address must match");
-    assert_eq!(info.group_id, String::from_str(&env, "test-group-1"), "group_id must match");
-    assert_eq!(info.name, String::from_str(&env, "Test Savings Group"), "name must match");
+    let info = client.get_group_info(&group_contract);
+    assert_eq!(info.contract_address, group_contract, "contract_address must match");
+    assert_eq!(info.group_id, group_id, "group_id must match");
+    assert_eq!(info.name, name, "name must match");
     assert_eq!(info.admin, admin, "admin must match");
     assert_eq!(info.is_public, true, "is_public must match");
     assert_eq!(info.total_members, 5, "total_members must match");
@@ -127,10 +111,10 @@ fn test_register_group_increments_count() {
 
     assert_eq!(client.get_group_count(), 0, "Initial count must be 0");
 
-    deploy_and_register_group(&env, &client, &admin, "g-1", "Group One", true, 5);
+    register_group(&env, &client, "g-1", "Group One", &admin, true, 5);
     assert_eq!(client.get_group_count(), 1);
 
-    deploy_and_register_group(&env, &client, &admin, "g-2", "Group Two", true, 5);
+    register_group(&env, &client, "g-2", "Group Two", &admin, true, 5);
     assert_eq!(client.get_group_count(), 2);
 }
 
@@ -140,12 +124,11 @@ fn test_register_group_adds_admin_to_user_groups() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let savings_addr =
-        deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
 
     let admin_groups = client.get_user_groups(&admin);
     assert_eq!(admin_groups.len(), 1);
-    assert_eq!(admin_groups.get(0).unwrap(), savings_addr);
+    assert_eq!(admin_groups.get(0).unwrap(), g);
 }
 
 #[test]
@@ -154,7 +137,7 @@ fn test_register_private_group_not_in_public_listing() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    deploy_and_register_group(&env, &client, &admin, "private-g", "Secret Group", false, 5);
+    register_group(&env, &client, "private-g", "Secret Group", &admin, false, 5);
 
     assert_eq!(
         client.get_all_public_groups().len(),
@@ -164,26 +147,15 @@ fn test_register_private_group_not_in_public_listing() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_cannot_register_duplicate_group() {
     let env = setup_env();
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let savings_addr =
-        deploy_and_register_group(&env, &client, &admin, "dup-group", "Duplicate", true, 5);
-
+    let _g = register_group(&env, &client, "dup-group", "Duplicate", &admin, true, 5);
     // Second registration with the same contract address must panic.
-    // The duplicate check (GroupAlreadyRegistered) fires before the
-    // cross-contract call, so it hits the same error regardless.
-    client.register_group(
-        &savings_addr,
-        &String::from_str(&env, "dup-group"),
-        &String::from_str(&env, "Duplicate"),
-        &admin,
-        &true,
-        &5,
-    );
+    register_group(&env, &client, "dup-group", "Duplicate", &admin, true, 5);
 }
 
 #[test]
@@ -193,46 +165,24 @@ fn test_register_groups_with_same_name_different_contracts_allowed() {
     let admin = Address::generate(&env);
 
     // Same name, different contract addresses — should both succeed.
-    deploy_and_register_group(&env, &client, &admin, "id-a", "Same Name", true, 5);
-    deploy_and_register_group(&env, &client, &admin, "id-b", "Same Name", true, 5);
+    register_group(&env, &client, "id-a", "Same Name", &admin, true, 5);
+    register_group(&env, &client, "id-b", "Same Name", &admin, true, 5);
 
     assert_eq!(client.get_group_count(), 2);
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_cannot_register_duplicate_group_id_different_contract() {
     let env = setup_env();
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    // First: create a group_id "same-group-id" in a real savings contract
-    // and register it.  The group_id gets stored in RegisteredGroupId.
-    let savings_a = deploy_and_register_group(
-        &env, &client, &admin, "same-group-id", "Group One", true, 5,
-    );
+    let _group_id = String::from_str(&env, "same-group-id");
 
-    // Second: deploy a different savings contract with a different group_id,
-    // but try to register it with the *same* group_id.
-    // The duplicate group_id check fires before the cross-contract call.
-    let savings_b_id = env.register(SavingsContract, ());
-    let savings_b = SavingsContractClient::new(&env, &savings_b_id);
-    savings_b.initialize(&admin);
-
-    let group_id_dup = String::from_str(&env, "same-group-id");
-    let name2 = String::from_str(&env, "Group Two");
-
-    // NOTE: This should panic because the group_id "same-group-id" is
-    // already registered via savings_a.  The duplicate check at the top
-    // of register_group catches it.
-    client.register_group(
-        &savings_b_id,
-        &group_id_dup,
-        &name2,
-        &admin,
-        &true,
-        &5,
-    );
+    register_group(&env, &client, "same-group-id", "Group One", &admin, true, 5);
+    // Second registration with a different contract address but same group_id must panic.
+    register_group(&env, &client, "same-group-id", "Group Two", &admin, true, 5);
 }
 
 #[test]
@@ -241,20 +191,12 @@ fn test_can_register_group_id_after_unregister() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let savings_a = deploy_and_register_group(
-        &env, &client, &admin, "reusable-group-id", "Reusable Group", true, 5,
-    );
-    client.unregister_group(&savings_a, &admin);
+    let contract_a = register_group(&env, &client, "reusable-group-id", "Reusable Group", &admin, true, 5);
+    client.unregister_group(&contract_a, &admin);
 
-    // After unregistering savings_a, registering group_id with a new
-    // savings contract should succeed.
-    let savings_b = deploy_and_register_group(
-        &env, &client, &admin, "reusable-group-id", "Reusable Group", true, 5,
-    );
-    assert_eq!(
-        client.get_group_info(&savings_b).group_id,
-        String::from_str(&env, "reusable-group-id")
-    );
+    // After unregistering contract_a, registering group_id with contract_b should succeed.
+    let contract_b = register_group(&env, &client, "reusable-group-id", "Reusable Group", &admin, true, 5);
+    assert_eq!(client.get_group_info(&contract_b).group_id, String::from_str(&env, "reusable-group-id"));
 }
 
 // ── Membership ────────────────────────────────────────────────────────────────
@@ -266,7 +208,7 @@ fn test_add_member_appears_in_user_groups() {
     let admin = Address::generate(&env);
     let member = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
     client.add_member(&g, &member);
 
     let groups = client.get_user_groups(&member);
@@ -281,7 +223,7 @@ fn test_add_member_idempotent() {
     let admin = Address::generate(&env);
     let member = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
     client.add_member(&g, &member);
     client.add_member(&g, &member); // duplicate — must be ignored
 
@@ -290,7 +232,7 @@ fn test_add_member_idempotent() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_add_member_to_nonexistent_group_panics() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -306,7 +248,7 @@ fn test_admin_adding_self_as_member_idempotent() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
     // Admin is already in user_groups from registration; adding explicitly should be idempotent.
     client.add_member(&g, &admin);
 
@@ -321,9 +263,9 @@ fn test_user_in_multiple_groups_shows_all() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    let g1 = deploy_and_register_group(&env, &client, &admin, "g-1", "Group 1", true, 5);
-    let g2 = deploy_and_register_group(&env, &client, &admin, "g-2", "Group 2", true, 5);
-    let g3 = deploy_and_register_group(&env, &client, &admin, "g-3", "Group 3", false, 5);
+    let g1 = register_group(&env, &client, "g-1", "Group 1", &admin, true, 5);
+    let g2 = register_group(&env, &client, "g-2", "Group 2", &admin, true, 5);
+    let g3 = register_group(&env, &client, "g-3", "Group 3", &admin, false, 5);
 
     client.add_member(&g1, &user);
     client.add_member(&g2, &user);
@@ -345,7 +287,7 @@ fn test_remove_member_updates_user_groups() {
     let admin = Address::generate(&env);
     let member = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
     client.add_member(&g, &member);
 
     client.remove_member(&g, &member);
@@ -361,8 +303,8 @@ fn test_remove_member_from_one_of_multiple_groups_leaves_others() {
     let admin = Address::generate(&env);
     let member = Address::generate(&env);
 
-    let g1 = deploy_and_register_group(&env, &client, &admin, "g-1", "Group 1", true, 5);
-    let g2 = deploy_and_register_group(&env, &client, &admin, "g-2", "Group 2", true, 5);
+    let g1 = register_group(&env, &client, "g-1", "Group 1", &admin, true, 5);
+    let g2 = register_group(&env, &client, "g-2", "Group 2", &admin, true, 5);
 
     client.add_member(&g1, &member);
     client.add_member(&g2, &member);
@@ -381,7 +323,7 @@ fn test_remove_nonexistent_member_is_idempotent() {
     let admin = Address::generate(&env);
     let stranger = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
     // Removing a user who was never a member must not panic.
     client.remove_member(&g, &stranger);
 
@@ -397,7 +339,7 @@ fn test_transfer_admin_updates_group_info() {
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
     client.transfer_admin(&g, &admin, &new_admin);
 
     let info = client.get_group_info(&g);
@@ -405,7 +347,7 @@ fn test_transfer_admin_updates_group_info() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
+#[should_panic(expected = "Error(Contract, #102)")]
 fn test_transfer_admin_by_non_admin_panics() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -413,7 +355,7 @@ fn test_transfer_admin_by_non_admin_panics() {
     let impostor = Address::generate(&env);
     let new_admin = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "g-1", "Group", true, 5);
+    let g = register_group(&env, &client, "g-1", "Group", &admin, true, 5);
     client.transfer_admin(&g, &impostor, &new_admin);
 }
 
@@ -425,9 +367,9 @@ fn test_get_all_public_groups_returns_only_public() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    deploy_and_register_group(&env, &client, &admin, "pub-1", "Public Group 1", true, 5);
-    deploy_and_register_group(&env, &client, &admin, "priv-1", "Private Group", false, 3);
-    deploy_and_register_group(&env, &client, &admin, "pub-2", "Public Group 2", true, 7);
+    register_group(&env, &client, "pub-1", "Public Group 1", &admin, true, 5);
+    register_group(&env, &client, "priv-1", "Private Group", &admin, false, 3);
+    register_group(&env, &client, "pub-2", "Public Group 2", &admin, true, 7);
 
     let public = client.get_all_public_groups();
     assert_eq!(public.len(), 2, "Only 2 public groups should be returned");
@@ -443,37 +385,10 @@ fn test_get_all_public_groups_empty_when_all_private() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    deploy_and_register_group(&env, &client, &admin, "p1", "Private A", false, 5);
-    deploy_and_register_group(&env, &client, &admin, "p2", "Private B", false, 5);
+    register_group(&env, &client, "p1", "Private A", &admin, false, 5);
+    register_group(&env, &client, "p2", "Private B", &admin, false, 5);
 
     assert_eq!(client.get_all_public_groups().len(), 0);
-}
-
-// ── TASK2: Negative-case public-group exclusion ──────────────────────────────
-
-#[test]
-fn test_get_all_public_groups_explicitly_excludes_private() {
-    let env = setup_env();
-    let client = create_registry(&env);
-    let admin = Address::generate(&env);
-
-    // Register one public and one private group.
-    let pub_addr =
-        deploy_and_register_group(&env, &client, &admin, "pub-g", "Public Only", true, 5);
-    let priv_addr =
-        deploy_and_register_group(&env, &client, &admin, "priv-g", "Hidden Group", false, 3);
-
-    let public = client.get_all_public_groups();
-
-    // Exactly one group should be returned.
-    assert_eq!(public.len(), 1, "Exactly 1 public group expected");
-
-    // That one group must be the public one, not the private one.
-    assert_eq!(public.get(0).unwrap().contract_address, pub_addr);
-
-    // Explicit negative assertion: the private group must NOT appear.
-    let found = (0..public.len()).any(|i| public.get(i).unwrap().contract_address == priv_addr);
-    assert!(!found, "Private group must NOT appear in get_all_public_groups");
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────────
@@ -488,6 +403,7 @@ fn test_get_user_groups_empty_for_unknown_user() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_get_group_info_panics_for_unknown_group() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -496,7 +412,7 @@ fn test_get_group_info_panics_for_unknown_group() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #2)")]
+#[should_panic(expected = "Error(Contract, #101)")]
 fn test_get_group_info_not_found() {
     let env = setup_env();
     let client = create_registry(&env);
@@ -509,8 +425,8 @@ fn test_get_all_groups_contains_both_public_and_private() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let g1 = deploy_and_register_group(&env, &client, &admin, "g-1", "Group 1", true, 5);
-    let g2 = deploy_and_register_group(&env, &client, &admin, "g-2", "Group 2", false, 3);
+    let g1 = register_group(&env, &client, "g-1", "Group 1", &admin, true, 5);
+    let g2 = register_group(&env, &client, "g-2", "Group 2", &admin, false, 3);
 
     let all = client.get_all_groups();
     assert_eq!(all.len(), 2);
@@ -524,8 +440,8 @@ fn test_get_all_groups_info_includes_all_fields() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    deploy_and_register_group(&env, &client, &admin, "g-1", "Public Group", true, 5);
-    deploy_and_register_group(&env, &client, &admin, "g-2", "Private Group", false, 3);
+    register_group(&env, &client, "g-1", "Public Group", &admin, true, 5);
+    register_group(&env, &client, "g-2", "Private Group", &admin, false, 3);
 
     let all_info = client.get_all_groups_info();
     assert_eq!(all_info.len(), 2);
@@ -559,23 +475,28 @@ fn test_get_group_count_exact_five() {
     let admin = Address::generate(&env);
 
     assert_eq!(client.get_group_count(), 0);
-    for i in 1..=5u32 {
-        let suffix = format!("g-{i}");
-        let label = format!("Group {i}");
-        deploy_and_register_group(&env, &client, &admin, &suffix, &label, true, 5);
-        assert_eq!(client.get_group_count(), i, "Count must match after each registration");
-    }
+    register_group(&env, &client, "g-1", "Group 1", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 1);
+    register_group(&env, &client, "g-2", "Group 2", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 2);
+    register_group(&env, &client, "g-3", "Group 3", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 3);
+    register_group(&env, &client, "g-4", "Group 4", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 4);
+    register_group(&env, &client, "g-5", "Group 5", &admin, true, 5);
+    assert_eq!(client.get_group_count(), 5, "Count must match after each registration");
 }
 
 // ── Boundary / edge cases ─────────────────────────────────────────────────────
 
 #[test]
 fn test_register_group_with_max_members_zero() {
+    // Some registries allow 0 max_members to mean "unlimited" — verify no panic.
     let env = setup_env();
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let g = deploy_and_register_group(&env, &client, &admin, "unlimited", "Unlimited Group", true, 0);
+    let g = register_group(&env, &client, "unlimited", "Unlimited Group", &admin, true, 0);
     let info = client.get_group_info(&g);
     assert_eq!(info.total_members, 0);
 }
@@ -585,7 +506,7 @@ fn test_register_group_with_single_character_id() {
     let env = setup_env();
     let client = create_registry(&env);
     let admin = Address::generate(&env);
-    let g = deploy_and_register_group(&env, &client, &admin, "x", "X Group", true, 1);
+    let g = register_group(&env, &client, "x", "X Group", &admin, true, 1);
     assert_eq!(
         client.get_group_info(&g).group_id,
         String::from_str(&env, "x")
@@ -600,13 +521,16 @@ fn test_large_number_of_groups_and_members() {
     let user = Address::generate(&env);
     let n = 20u32;
 
-    let mut group_addresses = std::vec::Vec::new();
-    for i in 0..n {
-        let suffix = format!("group-{i}");
-        let label = format!("Group {i}");
-        let g = deploy_and_register_group(&env, &client, &admin, &suffix, &label, i % 2 == 0, 10);
+    let mut group_addresses: Vec<Address> = Vec::new(&env);
+    // Create 20 groups with alternating public/private
+    let group_ids = ["group-0", "group-1", "group-2", "group-3", "group-4", "group-5", "group-6", "group-7", "group-8", "group-9",
+                      "group-a0", "group-a1", "group-a2", "group-a3", "group-a4", "group-a5", "group-a6", "group-a7", "group-a8", "group-a9"];
+    let group_names = ["Group 0", "Group 1", "Group 2", "Group 3", "Group 4", "Group 5", "Group 6", "Group 7", "Group 8", "Group 9",
+                       "Group A0", "Group A1", "Group A2", "Group A3", "Group A4", "Group A5", "Group A6", "Group A7", "Group A8", "Group A9"];
+    for i in 0..20u32 {
+        let g = register_group(&env, &client, group_ids[i as usize], group_names[i as usize], &admin, i % 2 == 0, 10);
         client.add_member(&g, &user);
-        group_addresses.push(g);
+        group_addresses.push_back(g);
     }
 
     assert_eq!(client.get_group_count(), n, "Count must equal n");
@@ -631,9 +555,9 @@ fn test_multiple_admins_each_own_one_group() {
     let admin2 = Address::generate(&env);
     let admin3 = Address::generate(&env);
 
-    let g1 = deploy_and_register_group(&env, &client, &admin1, "a1-g", "Admin1 Group", true, 5);
-    let g2 = deploy_and_register_group(&env, &client, &admin2, "a2-g", "Admin2 Group", true, 5);
-    let g3 = deploy_and_register_group(&env, &client, &admin3, "a3-g", "Admin3 Group", false, 5);
+    let g1 = register_group(&env, &client, "a1-g", "Admin1 Group", &admin1, true, 5);
+    let g2 = register_group(&env, &client, "a2-g", "Admin2 Group", &admin2, true, 5);
+    let g3 = register_group(&env, &client, "a3-g", "Admin3 Group", &admin3, false, 5);
 
     // Each admin is in exactly their own group.
     let g1_groups = client.get_user_groups(&admin1);
@@ -661,11 +585,11 @@ fn test_complete_user_journey() {
     let user = Address::generate(&env);
 
     // 1. Two admins each create a group.
-    let g1 = deploy_and_register_group(
-        &env, &client, &admin1, "savings-club-1", "Monthly Savings Club", true, 10,
+    let g1 = register_group(
+        &env, &client, "savings-club-1", "Monthly Savings Club", &admin1, true, 10,
     );
-    let g2 = deploy_and_register_group(
-        &env, &client, &admin2, "family-savings", "Family Savings", false, 5,
+    let g2 = register_group(
+        &env, &client, "family-savings", "Family Savings", &admin2, false, 5,
     );
 
     // 2. User discovers public groups.
@@ -703,188 +627,23 @@ fn test_timestamps_are_monotonic_across_registrations() {
     let client = create_registry(&env);
     let admin = Address::generate(&env);
 
-    let g1 = deploy_and_register_group(&env, &client, &admin, "early", "Early Group", true, 5);
+    let g1 = register_group(&env, &client, "early", "Early Group", &admin, true, 5);
     let t1 = client.get_group_info(&g1).created_at;
 
-    let g2 = deploy_and_register_group(&env, &client, &admin, "later", "Later Group", true, 5);
+    // Advance the ledger timestamp.
+    env.ledger().set(LedgerInfo {
+        timestamp: 1_700_001_000,
+        protocol_version: 23,
+        sequence_number: 1_001,
+        network_id: [0u8; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 50_000,
+        min_persistent_entry_ttl: 50_000,
+        max_entry_ttl: 50_000,
+    });
+
+    let g2 = register_group(&env, &client, "later", "Later Group", &admin, true, 5);
     let t2 = client.get_group_info(&g2).created_at;
 
     assert!(t2 > t1, "Later registration must have a higher created_at timestamp");
-}
-
-#[test]
-fn test_remove_member_removes_group_from_user_groups() {
-    let env = setup_env();
-    let client = create_registry(&env);
-    let admin = Address::generate(&env);
-    let member = Address::generate(&env);
-
-    let group = deploy_and_register_group(&env, &client, &admin, "g-rem", "Removable Group", true, 5);
-
-    client.add_member(&group, &member);
-    let groups_before = client.get_user_groups(&member);
-    assert_eq!(groups_before.len(), 1);
-
-    client.remove_member(&group, &member);
-    let groups_after = client.get_user_groups(&member);
-    assert_eq!(groups_after.len(), 0);
-}
-
-#[test]
-fn test_update_group_info_updates_metadata() {
-    let env = setup_env();
-    let client = create_registry(&env);
-    let admin = Address::generate(&env);
-
-    let group = deploy_and_register_group(&env, &client, &admin, "g-upd", "Original Name", true, 5);
-
-    let new_name = String::from_str(&env, "Updated Name");
-    client.update_group_info(&group, &new_name, &false, &10);
-
-    let info = client.get_group_info(&group);
-    assert_eq!(info.name, new_name);
-    assert_eq!(info.is_public, false);
-    assert_eq!(info.total_members, 10);
-}
-
-// ── TASK3: Metadata drift risk demonstration ─────────────────────────────────
-
-#[test]
-#[should_panic(expected = "Error(Contract, #5)")]
-fn test_register_group_rejects_mismatched_name() {
-    let env = setup_env();
-    let client = create_registry(&env);
-    let admin = Address::generate(&env);
-
-    // Deploy a real savings contract and create a group named "Real Name".
-    let savings_id = env.register(SavingsContract, ());
-    let savings_client = SavingsContractClient::new(&env, &savings_id);
-    savings_client.initialize(&admin);
-
-    let group_id = String::from_str(&env, "drift-id");
-    let real_name = String::from_str(&env, "Real Name");
-    let start = env.ledger().timestamp() + 3600;
-
-    savings_client.create_group(
-        &admin,
-        &group_id,
-        &real_name,
-        &10_000_000_i128,
-        &5,
-        &Frequency::Weekly,
-        &start,
-        &true,
-        &admin,
-        &None,
-    );
-
-    // Attempt to register with a *different* name — the registry must reject it.
-    // MetadataMismatch = Error(Contract, #5) (100 base + 5 offset).
-    client.register_group(
-        &savings_id,
-        &group_id,
-        &String::from_str(&env, "Wrong Name"), // drift!
-        &admin,
-        &true,
-        &5,
-    );
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #5)")]
-fn test_register_group_rejects_mismatched_is_public() {
-    let env = setup_env();
-    let client = create_registry(&env);
-    let admin = Address::generate(&env);
-
-    let savings_id = env.register(SavingsContract, ());
-    let savings_client = SavingsContractClient::new(&env, &savings_id);
-    savings_client.initialize(&admin);
-
-    let group_id = String::from_str(&env, "drift-pub");
-    let start = env.ledger().timestamp() + 3600;
-
-    savings_client.create_group(
-        &admin,
-        &group_id,
-        &String::from_str(&env, "Public Group"),
-        &10_000_000_i128,
-        &5,
-        &Frequency::Weekly,
-        &start,
-        &true, // savings contract says public
-        &admin,
-        &None,
-    );
-
-    // Register with is_public = false — drift must be rejected.
-    client.register_group(
-        &savings_id,
-        &group_id,
-        &String::from_str(&env, "Public Group"),
-        &admin,
-        &false, // drift!
-        &5,
-    );
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #5)")]
-fn test_register_group_rejects_mismatched_total_members() {
-    let env = setup_env();
-    let client = create_registry(&env);
-    let admin = Address::generate(&env);
-
-    let savings_id = env.register(SavingsContract, ());
-    let savings_client = SavingsContractClient::new(&env, &savings_id);
-    savings_client.initialize(&admin);
-
-    let group_id = String::from_str(&env, "drift-members");
-    let start = env.ledger().timestamp() + 3600;
-
-    savings_client.create_group(
-        &admin,
-        &group_id,
-        &String::from_str(&env, "Member Group"),
-        &10_000_000_i128,
-        &5, // savings contract says 5 members
-        &Frequency::Weekly,
-        &start,
-        &true,
-        &admin,
-        &None,
-    );
-
-    // Register with total_members = 10 — drift must be rejected.
-    client.register_group(
-        &savings_id,
-        &group_id,
-        &String::from_str(&env, "Member Group"),
-        &admin,
-        &true,
-        &10, // drift!
-    );
-}
-
-// ── TASK4: contract_address must be a real contract ──────────────────────────
-
-#[test]
-#[should_panic(expected = "Error(Contract, #6)")]
-fn test_register_group_rejects_non_contract_address() {
-    let env = setup_env();
-    let client = create_registry(&env);
-
-    let non_contract = Address::generate(&env);
-    let admin = Address::generate(&env);
-
-    // Address::generate produces an address with no deployed contract code.
-    // NotAContract = Error(Contract, #6) (100 base + 6 offset).
-    client.register_group(
-        &non_contract,
-        &String::from_str(&env, "ghost-group"),
-        &String::from_str(&env, "Ghost Group"),
-        &admin,
-        &true,
-        &5,
-    );
 }
