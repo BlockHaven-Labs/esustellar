@@ -1,0 +1,7 @@
+{
+  "contract": "savings",
+  "version": "0.1.0",
+  "exported_at": "PLACEHOLDER",
+  "wasm_file": "esustellar_savings.wasm",
+  "note": "Run scripts/export-contract-specs.sh to generate actual spec from WASM"
+}
