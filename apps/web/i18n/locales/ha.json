@@ -1,0 +1,12 @@
+{
+  "nav": {
+    "dashboard": "Allon Baiwa",
+    "browse": "Bincika Kungiyoyi",
+    "create": "Kirkiri Kungiya"
+  },
+  "common": {
+    "save": "Ajiye",
+    "cancel": "Soke",
+    "loading": "Ana Lodi..."
+  }
+}
