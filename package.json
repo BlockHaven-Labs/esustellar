@@ -48,7 +48,7 @@
     "axobject-query": "^4.1.0",
     "balanced-match": "^1.0.2",
     "baseline-browser-mapping": "^2.9.11",
-    "brace-expansion": "^1.1.12",
+    "brace-expansion": "^5.0.9",
     "braces": "^3.0.3",
     "browserslist": "^4.28.1",
     "call-bind": "^1.0.8",
