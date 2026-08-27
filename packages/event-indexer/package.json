@@ -1,0 +1,22 @@
+{
+  "name": "@esustellar/event-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Off-chain event indexer for EsuStellar contract events",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "index": "tsx src/index.ts",
+    "build": "tsc",
+    "query": "tsx src/query.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}
