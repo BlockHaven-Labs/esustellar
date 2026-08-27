@@ -40,7 +40,7 @@
     "expo-local-authentication": "~14.0.1",
     "expo-localization": "~15.0.3",
     "expo-notifications": "~0.28.19",
-    "expo-router": "~3.5.0",
+    "expo-router": "~57.0.15",
     "expo-secure-store": "~13.0.2",
     "expo-status-bar": "~1.12.1",
     "expo-task-manager": "~11.8.2",
