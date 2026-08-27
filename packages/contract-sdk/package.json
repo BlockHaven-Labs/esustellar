@@ -1,0 +1,19 @@
+{
+  "name": "@esustellar/contract-sdk",
+  "version": "1.0.0",
+  "description": "Typed TypeScript SDK for EsuStellar Soroban smart contracts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^14.4.3",
+    "@esustellar/shared": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT"
+}
