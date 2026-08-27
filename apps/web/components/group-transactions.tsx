@@ -149,10 +149,10 @@ export function GroupTransactions({ groupId }: GroupTransactionsProps) {
         ) : (
           <div className="space-y-3">
             {transactions.map((tx, index) => (
-              <div key={index} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="flex items-center gap-3">
+              <div key={index} className="flex items-center justify-between gap-2 rounded-lg border border-border p-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
                       tx.type === "payout" ? "bg-primary/10" : "bg-warning/10"
                     }`}
                   >
@@ -162,8 +162,8 @@ export function GroupTransactions({ groupId }: GroupTransactionsProps) {
                       <ArrowUpRight className="h-5 w-5 text-warning" />
                     )}
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">
                       {tx.type === "payout"
                         ? `Payout to ${shortAddress(tx.address)}`
                         : `Contribution from ${shortAddress(tx.address)}`}
@@ -175,7 +175,7 @@ export function GroupTransactions({ groupId }: GroupTransactionsProps) {
                     </div>
                   </div>
                 </div>
-                <span className={`font-semibold ${tx.type === "payout" ? "text-primary" : "text-foreground"}`}>
+                <span className={`shrink-0 font-semibold ${tx.type === "payout" ? "text-primary" : "text-foreground"}`}>
                   {tx.type === "payout" ? "+" : ""}
                   {tx.amount} XLM
                 </span>

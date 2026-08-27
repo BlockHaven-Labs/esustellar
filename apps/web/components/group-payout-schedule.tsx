@@ -52,7 +52,7 @@ export function GroupPayoutSchedule({ group }: GroupPayoutScheduleProps) {
             {schedule.map((item) => (
               <div
                 key={item.round}
-                className={`flex items-center justify-between rounded-lg border p-2 ${
+                className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 ${
                   item.status === "current"
                     ? "border-primary/30 bg-primary/5"
                     : item.isYou
