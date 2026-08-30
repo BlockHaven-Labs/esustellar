@@ -32,7 +32,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: package-lock.json
 
       # Install root workspace deps (shared packages)
       - name: Install root dependencies
