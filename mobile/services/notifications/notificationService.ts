@@ -118,3 +118,28 @@ export async function scheduleSilentNotification(
   });
 }
 
+/**
+ * How many days before a round deadline the contribution reminder fires.
+ */
+export const CONTRIBUTION_REMINDER_LEAD_DAYS = 1;
+
+/**
+ * Schedule a local reminder for an upcoming contribution deadline.
+ * The deadline is computed client-side from on-chain round data.
+ */
+export async function scheduleContributionReminder(opts: {
+  groupId: string;
+  roundName?: string;
+  deadline: number;
+}): Promise<string | null> {
+  const dueInSeconds = Math.max(0, Math.floor((opts.deadline - Date.now()) / 1000));
+  return scheduleLocalNotification({
+    title: 'Contribution period ending soon',
+    body:
+      `${opts.roundName ?? 'This round'}'s contribution closes in ` +
+      `${CONTRIBUTION_REMINDER_LEAD_DAYS} day. Save now to avoid a late fee.`,
+    data: { groupId: opts.groupId, type: 'contribution-deadline-reminder' },
+    seconds: Math.max(60, dueInSeconds - CONTRIBUTION_REMINDER_LEAD_DAYS * 24 * 60 * 60),
+  });
+}
+
