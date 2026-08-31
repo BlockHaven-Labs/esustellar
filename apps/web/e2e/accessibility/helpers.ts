@@ -85,6 +85,68 @@ export async function auditPage(
 }
 
 /**
+ * Mock a connected Freighter wallet so pages that gate content behind
+ * `isConnected` render their real (post-connect) UI in CI, where no browser
+ * extension is installed.
+ *
+ * Freighter's extension communicates with the page via window.postMessage
+ * (source: "FREIGHTER_EXTERNAL_MSG_REQUEST" / "FREIGHTER_EXTERNAL_MSG_RESPONSE",
+ * correlated by a "messagedId" field - see @stellar/freighter-api's
+ * extensionMessaging helper). This replays that protocol with static
+ * responses. Must be called before page.goto().
+ */
+const MOCK_PUBLIC_KEY = "GTESTWALLETPUBLICKEYMOCKEDFORACCESSIBILITYTESTINGXXXXXXX";
+
+export async function mockConnectedWallet(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ publicKey }) => {
+      // Short-circuits @stellar/freighter-api's hasFreighterHint()/isConnected() checks.
+      (window as unknown as { freighter: boolean }).freighter = true;
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window) return;
+        const data = event.data as { source?: string; messageId?: number; type?: string };
+        if (data?.source !== "FREIGHTER_EXTERNAL_MSG_REQUEST") return;
+
+        const base = { source: "FREIGHTER_EXTERNAL_MSG_RESPONSE", messagedId: data.messageId };
+        let payload: Record<string, unknown> = {};
+        switch (data.type) {
+          case "REQUEST_ACCESS":
+          case "REQUEST_PUBLIC_KEY":
+            payload = { publicKey };
+            break;
+          case "REQUEST_CONNECTION_STATUS":
+          case "REQUEST_ALLOWED_STATUS":
+            payload = { isConnected: true, isAllowed: true };
+            break;
+          case "REQUEST_NETWORK":
+            payload = {
+              network: "TESTNET",
+              networkPassphrase: "Test SDF Network ; September 2015",
+            };
+            break;
+          case "REQUEST_NETWORK_DETAILS":
+            payload = {
+              networkDetails: {
+                network: "TESTNET",
+                networkPassphrase: "Test SDF Network ; September 2015",
+                networkUrl: "https://horizon-testnet.stellar.org",
+                sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+              },
+            };
+            break;
+          default:
+            return;
+        }
+
+        window.postMessage({ ...base, ...payload }, window.location.origin);
+      });
+    },
+    { publicKey: MOCK_PUBLIC_KEY }
+  );
+}
+
+/**
  * Assert that no WCAG 2.1 AA violations are present.
  * Provides a readable failure message that lists every violation found.
  */

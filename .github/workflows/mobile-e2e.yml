@@ -59,9 +59,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: mobile/package-lock.json
 
       - name: Install dependencies
+        working-directory: .
         run: npm ci
 
       # applesimutils is required by Detox for iOS simulator control
@@ -117,9 +117,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: mobile/package-lock.json
 
       - name: Install dependencies
+        working-directory: .
         run: npm ci
 
       - name: Set up Java 17 (required by Gradle)

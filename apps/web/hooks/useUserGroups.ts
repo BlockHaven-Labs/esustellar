@@ -219,6 +219,7 @@ export function useUserGroups() {
   }, [isConnected, publicKey, registry, savings])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch on mount
     fetchUserGroups()
   }, [fetchUserGroups])
 

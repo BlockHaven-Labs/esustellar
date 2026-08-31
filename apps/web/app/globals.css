@@ -5,7 +5,10 @@
 
 :root {
   /* Primary Green (Trust & Growth) */
-  --primary: #10b981;
+  /* emerald-700, not emerald-500: white text on emerald-500 (#10b981) is
+     only 2.53:1, below the WCAG AA 4.5:1 minimum for normal text - fails
+     on every default button and text-primary usage across the app. */
+  --primary: #047857;
   --primary-foreground: #ffffff;
   --primary-light: #34d399;
   --primary-dark: #059669;

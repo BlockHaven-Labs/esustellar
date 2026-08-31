@@ -17,11 +17,13 @@ import {
   EmptyState,
   ErrorState,
   LoadingSkeleton,
+  StaleCacheIndicator,
   TextInput,
 } from '../../../components/ui';
 import { useDebounce } from '../../../hooks/useDebounce';
 import { useRefresh } from '../../../hooks/useRefresh';
 import { formatXLM } from '../../../utils/stellar';
+import { readGroupsCache, isCacheStale } from '../../../src/lib/cache/groupsCache';
 
 type GroupStatus = 'Active' | 'Open' | 'Paused' | 'Closed' | 'Pending';
 type Group = {
@@ -168,34 +170,53 @@ export default function GroupsPage() {
   const { t } = useTranslation();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [loading, setLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [cacheUpdatedAt, setCacheUpdatedAt] = useState(0);
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  /**
+   * On mount: load last-known group state from AsyncStorage immediately so
+   * the user sees something useful right away (Issue #893 — offline-first).
+   */
+  useEffect(() => {
+    readGroupsCache().then((cached) => {
+      if (cached && cached.data.length > 0) {
+        setGroups(cached.data as Group[]);
+        setCacheUpdatedAt(cached.fetchedAt);
+        // We have cached data — skip the full-page loading skeleton
+        setLoading(false);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchGroups = useCallback(
     async ({ showFullLoader = true } = {}) => {
-      if (showFullLoader) {
+      if (showFullLoader && groups.length === 0) {
         setLoading(true);
       }
+      setIsFetching(true);
       setError(null);
 
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
       if (Math.random() < 0.3) {
         setError(t('groups.errors.fetchFailed'));
-        if (showFullLoader) {
-          setLoading(false);
-        }
+        setLoading(false);
+        setIsFetching(false);
         return;
       }
 
+      const now = Date.now();
       setGroups(MOCK_GROUPS);
-      if (showFullLoader) {
-        setLoading(false);
-      }
+      setCacheUpdatedAt(now);
+      setLoading(false);
+      setIsFetching(false);
     },
-    [t],
+    [t, groups.length],
   );
 
   useEffect(() => {
@@ -292,7 +313,18 @@ export default function GroupsPage() {
       ) : error ? (
         <ErrorState message={error} onRetry={fetchGroups} />
       ) : (
-        <FlatList<Group>
+        <>
+          {/* Issue #893: stale-data indicator — visible while a background
+              refresh is running or data is older than the 5-minute TTL */}
+          <StaleCacheIndicator
+            dataUpdatedAt={cacheUpdatedAt}
+            isFetching={isFetching || refreshing}
+            visible={
+              (isFetching || refreshing) ||
+              (cacheUpdatedAt > 0 && isCacheStale(cacheUpdatedAt))
+            }
+          />
+          <FlatList<Group>
           data={filteredGroups}
           keyExtractor={(item: Group) => item.id}
           renderItem={renderGroup}
@@ -321,6 +353,7 @@ export default function GroupsPage() {
             />
           }
         />
+        </>
       )}
     </SafeAreaView>
   );

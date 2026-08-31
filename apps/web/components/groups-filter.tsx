@@ -15,7 +15,7 @@ export function GroupsFilter() {
 
       <div className="flex gap-3 flex-wrap">
         <Select defaultValue="all">
-          <SelectTrigger className="w-[140px] bg-card border-border">
+          <SelectTrigger aria-label="Filter by status" className="w-[140px] bg-card border-border">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -27,7 +27,7 @@ export function GroupsFilter() {
         </Select>
 
         <Select defaultValue="all">
-          <SelectTrigger className="w-[140px] bg-card border-border">
+          <SelectTrigger aria-label="Filter by frequency" className="w-[140px] bg-card border-border">
             <SelectValue placeholder="Frequency" />
           </SelectTrigger>
           <SelectContent>

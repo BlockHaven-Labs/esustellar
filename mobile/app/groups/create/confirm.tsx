@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,14 +7,19 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   I18nManager,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { triggerHapticFeedback } from "../../../utils/haptics";
+import { groupCreationService } from "../../../services/contracts/createGroup";
+import type { GroupValidationError } from "../../../services/contracts/createGroup";
+import { useAuthStore } from "../../../store/authStore";
 
 export default function ConfirmGroupScreen() {
   const router = useRouter();
+  const { wallet } = useAuthStore();
   const params = useLocalSearchParams<{
     groupName: string;
     description: string;
@@ -24,28 +29,104 @@ export default function ConfirmGroupScreen() {
   }>();
 
   const [loading, setLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<GroupValidationError[]>([]);
 
   const groupName = params.groupName ?? "";
   const description = params.description ?? "";
   const maxMembers = Number(params.maxMembers ?? 0);
   const contributionAmount = Number(params.contributionAmount ?? 0);
-  const payoutFrequency = params.payoutFrequency ?? "monthly";
+  const payoutFrequency = (params.payoutFrequency ?? "monthly") as
+    | "weekly"
+    | "bi-weekly"
+    | "monthly"
+    | "quarterly";
   const totalPool = contributionAmount * maxMembers;
 
+  // ── Contract-level validation (Issue #890) ─────────────────────────────────
+  // Run the same validation the contract enforces so errors surface before
+  // the user submits the transaction.
+  useEffect(() => {
+    if (!wallet?.publicKey) return;
+
+    const params = {
+      name: groupName,
+      description,
+      contributionAmount,
+      payoutFrequency,
+      maxMembers,
+      rules: [],           // rules not collected in this flow yet; use empty array
+      creatorAddress: wallet.publicKey,
+    };
+
+    const errors = groupCreationService.validateGroupParams(params);
+    setValidationErrors(errors);
+  }, [groupName, description, contributionAmount, payoutFrequency, maxMembers, wallet]);
+
   const handleCreate = async () => {
+    if (!wallet?.publicKey) {
+      Alert.alert(
+        "Wallet Required",
+        "You must connect a Stellar wallet before creating a group.",
+        [{ text: "Connect Wallet", onPress: () => router.push("/wallet/connect") }, { text: "Cancel" }]
+      );
+      return;
+    }
+
+    // Re-run validation immediately before submitting
+    const creationParams = {
+      name: groupName,
+      description,
+      contributionAmount,
+      payoutFrequency,
+      maxMembers,
+      rules: [],
+      creatorAddress: wallet.publicKey,
+    };
+
+    const errors = groupCreationService.validateGroupParams(creationParams);
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      Alert.alert(
+        "Invalid Group Settings",
+        errors.map((e) => `• ${e.message}`).join("\n"),
+        [{ text: "Go Back", onPress: () => router.back() }]
+      );
+      return;
+    }
+
     setLoading(true);
+    triggerHapticFeedback.success();
+
     try {
-      console.log("Creating group:", { groupName, description, maxMembers, contributionAmount, payoutFrequency });
-      triggerHapticFeedback.success();
-      // Navigate to the new group detail screen on success
-      const newGroupId = "new-group-" + Date.now();
-      router.replace(`/groups/${newGroupId}`);
-    } catch {
-      // handle error
+      const result = await groupCreationService.createGroup(creationParams);
+
+      if (result.success) {
+        triggerHapticFeedback.success();
+        router.replace({
+          pathname: "/groups/create/success",
+          params: {
+            groupId: result.groupId ?? "new-group-" + Date.now(),
+            groupName,
+            inviteCode: "ESU-" + Math.random().toString(36).slice(2, 10).toUpperCase(),
+          },
+        });
+      } else {
+        triggerHapticFeedback.warning();
+        Alert.alert(
+          "Group Creation Failed",
+          result.error ?? "An unexpected error occurred. Please try again.",
+          [{ text: "OK" }]
+        );
+      }
+    } catch (err) {
+      triggerHapticFeedback.warning();
+      Alert.alert("Error", "Failed to create group. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
   };
+
+  const hasValidationErrors = validationErrors.length > 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -67,10 +148,25 @@ export default function ConfirmGroupScreen() {
           <Row label="Group Name" value={groupName} />
           <Row label="Description" value={description} />
           <Row label="Max Members" value={String(maxMembers)} />
-          <Row label="Contribution" value={`$${contributionAmount}`} />
+          <Row label="Contribution" value={`${contributionAmount} XLM`} />
           <Row label="Payout Frequency" value={payoutFrequency} />
-          <Row label="Total Pool" value={`$${totalPool}`} />
+          <Row label="Total Pool" value={`${totalPool} XLM`} />
         </View>
+
+        {/* Contract-level validation errors (Issue #890) */}
+        {hasValidationErrors && (
+          <View style={styles.validationErrors}>
+            <View style={styles.validationHeader}>
+              <Ionicons name="alert-circle-outline" size={18} color="#EF4444" />
+              <Text style={styles.validationHeaderText}>Please fix the following issues:</Text>
+            </View>
+            {validationErrors.map((err) => (
+              <Text key={err.field + err.message} style={styles.validationError}>
+                • {err.message}
+              </Text>
+            ))}
+          </View>
+        )}
 
         <View style={styles.disclaimer}>
           <Ionicons name="information-circle-outline" size={18} color="#F59E0B" />
@@ -80,9 +176,14 @@ export default function ConfirmGroupScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.createButton, loading && styles.createButtonDisabled]}
+          style={[
+            styles.createButton,
+            (loading || hasValidationErrors) && styles.createButtonDisabled,
+          ]}
           onPress={handleCreate}
-          disabled={loading}
+          disabled={loading || hasValidationErrors}
+          accessibilityRole="button"
+          accessibilityLabel="Create Group"
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
@@ -134,6 +235,30 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   rowLabel: { fontSize: 14, color: "#64748B", flex: 1 },
   rowValue: { fontSize: 14, color: "#fff", fontWeight: "500", flex: 2, textAlign: I18nManager.isRTL ? "left" : "right" },
+  validationErrors: {
+    backgroundColor: "#2D1B1B",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderStartWidth: 3,
+    borderStartColor: "#EF4444",
+  },
+  validationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  validationHeaderText: {
+    color: "#FCA5A5",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  validationError: {
+    color: "#FCA5A5",
+    fontSize: 13,
+    lineHeight: 20,
+  },
   disclaimer: {
     flexDirection: "row",
     alignItems: "center",
