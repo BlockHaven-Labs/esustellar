@@ -73,7 +73,7 @@ export function StatsSection() {
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           {statsToShow.map((stat, index) => (
             <div key={index} className="text-center">
-              <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-400 md:text-4xl">{stat.value}</p>
+              <p className="text-3xl font-bold text-primary md:text-4xl">{stat.value}</p>
               <p className="mt-1 text-sm text-muted-foreground">{stat.label}</p>
             </div>
           ))}

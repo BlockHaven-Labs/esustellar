@@ -33,7 +33,7 @@ export function HeroSection() {
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button size="lg" className="bg-background text-emerald-700 hover:bg-background/90 font-semibold" asChild>
+              <Button size="lg" className="bg-background text-primary hover:bg-background/90 font-semibold" asChild>
                 <Link href="/create">
                   Start a Savings Group
                   <ArrowRight className="ml-2 h-4 w-4" />

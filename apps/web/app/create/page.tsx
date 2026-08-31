@@ -181,7 +181,7 @@ export default function CreateGroupForm() {
                 <p className="text-sm text-muted-foreground text-center">
                   Don&apos;t have a wallet?{" "}
                   <a href="https://www.freighter.app" target="_blank" rel="noopener noreferrer"
-                     className="text-primary hover:underline">Download Freighter</a>
+                     className="text-primary underline underline-offset-2">Download Freighter</a>
                 </p>
               </CardContent>
             </Card>
@@ -197,6 +197,7 @@ export default function CreateGroupForm() {
       <Header />
       <main className="flex-1 bg-background py-8 md:py-12">
         <div className="container mx-auto px-4 max-w-2xl">
+    <form onSubmit={(e) => e.preventDefault()} aria-label="Create savings group">
     <Card className="border-border bg-card">
       <CardHeader>
         <CardTitle>Create Savings Group</CardTitle>
@@ -327,16 +328,16 @@ export default function CreateGroupForm() {
         {/* Navigation */}
         <div className="mt-8 flex justify-between">
           {step > 0 ? (
-            <Button variant="outline" onClick={handleBack} disabled={isLoading}>
+            <Button type="button" variant="outline" onClick={handleBack} disabled={isLoading}>
               <ChevronLeft className="mr-2 h-4 w-4" /> Back
             </Button>
           ) : <div />}
           {step < STEPS.length - 1 ? (
-            <Button onClick={handleNext} disabled={isLoading}>
+            <Button type="button" onClick={handleNext} disabled={isLoading}>
               Next <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={isLoading || !contract.isReady} size="lg">
+            <Button type="button" onClick={handleSubmit} disabled={isLoading || !contract.isReady} size="lg">
               {isLoading ? (
                 <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Creating Group...</>
               ) : (
@@ -347,6 +348,7 @@ export default function CreateGroupForm() {
         </div>
       </CardContent>
     </Card>
+    </form>
         </div>
       </main>
       <Footer />
