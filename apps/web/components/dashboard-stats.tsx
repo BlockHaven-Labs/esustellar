@@ -72,6 +72,7 @@ export function DashboardStats() {
 
   useEffect(() => {
     if (!isConnected || !publicKey) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs status with external wallet connection state
       setStatus("no-wallet")
       return
     }
@@ -349,24 +350,6 @@ export function DashboardStats() {
             <p className="text-sm text-muted-foreground">Connect wallet to view stats</p>
           </CardContent>
         </Card>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {statsItems.map((stat, index) => (
-            <Card key={index} className="border-border bg-card opacity-50">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
-                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground">{stat.change}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       </div>
     )
   }

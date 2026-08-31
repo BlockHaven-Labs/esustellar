@@ -78,7 +78,7 @@ export default function GroupsPage() {
             <div className="mt-8 text-sm text-muted-foreground">Loading groups…</div>
           ) : error ? (
             <div
-              className="mt-8 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+              className="mt-8 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-red-700 dark:text-red-400"
               role="alert"
             >
               Could not load groups: {error}

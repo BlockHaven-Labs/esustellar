@@ -5,7 +5,7 @@ import { ArrowRight, Shield, Users, TrendingUp } from "lucide-react"
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary-dark to-stellar py-20 md:py-32">
+    <section className="relative overflow-hidden bg-primary-dark bg-gradient-to-br from-primary via-primary-dark to-stellar py-20 md:py-32">
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute top-10 left-10 h-64 w-64 rounded-full bg-white blur-3xl" />
@@ -16,7 +16,7 @@ export function HeroSection() {
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-8 items-center">
           {/* Content */}
           <div className="text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-1.5 text-sm font-medium text-white mb-6">
+            <div className="inline-flex items-center gap-2 rounded-full bg-black/20 px-4 py-1.5 text-sm font-medium text-white mb-6">
               <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
               Built on Stellar Blockchain
             </div>
@@ -67,10 +67,10 @@ export function HeroSection() {
               title="Low Fees"
               description="Stellar's minimal transaction costs keep more money in your pocket"
             />
-            <div className="hidden xl:flex items-center justify-center rounded-xl border border-white/20 bg-white/10 p-6 backdrop-blur-sm">
+            <div className="hidden xl:flex items-center justify-center rounded-xl border border-white/20 bg-black/20 p-6 backdrop-blur-sm">
               <div className="text-center">
                 <p className="text-3xl font-bold text-white">500+</p>
-                <p className="text-sm text-white/70">Active Savers</p>
+                <p className="text-sm text-white">Active Savers</p>
               </div>
             </div>
           </div>
@@ -90,12 +90,12 @@ function FeatureCard({
   description: string
 }) {
   return (
-    <div className="rounded-xl border border-white/20 bg-white/10 p-6 backdrop-blur-sm">
+    <div className="rounded-xl border border-white/20 bg-black/20 p-6 backdrop-blur-sm">
       <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white/20">
         <Icon className="h-5 w-5 text-white" />
       </div>
       <h3 className="font-semibold text-white">{title}</h3>
-      <p className="mt-1 text-sm text-white/70">{description}</p>
+      <p className="mt-1 text-sm text-white">{description}</p>
     </div>
   )
 }

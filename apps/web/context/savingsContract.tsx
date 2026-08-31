@@ -280,7 +280,13 @@ export function SavingsContractProvider({
         nativeToScVal(groupId, { type: "string" }),
         nativeToScVal(round, { type: "u32" }),
       );
-      return (scValToNative(res) as any[]).map((c) => ({
+      type RawContribution = {
+        member: string;
+        amount?: number | bigint | string;
+        round: number;
+        timestamp?: number | bigint | string;
+      };
+      return (scValToNative(res) as RawContribution[]).map((c) => ({
         member: c.member,
         amount: BigInt(c.amount ?? 0),
         round: c.round,
@@ -297,7 +303,13 @@ export function SavingsContractProvider({
         nativeToScVal(groupId, { type: "string" }),
         nativeToScVal(round, { type: "u32" }),
       );
-      return (scValToNative(res) as any[]).map((p) => ({
+      type RawPayout = {
+        recipient: string;
+        amount?: number | bigint | string;
+        round: number;
+        timestamp?: number | bigint | string;
+      };
+      return (scValToNative(res) as RawPayout[]).map((p) => ({
         recipient: p.recipient,
         amount: BigInt(p.amount ?? 0),
         round: p.round,
@@ -327,8 +339,8 @@ export function SavingsContractProvider({
           nativeToScVal(address, { type: "address" }),
         );
         return scValToNative(res) as string[];
-      } catch (err: any) {
-        if (err.message?.includes("non-existent contract function")) return [];
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message.includes("non-existent contract function")) return [];
         throw err;
       }
     },
@@ -339,8 +351,8 @@ export function SavingsContractProvider({
     try {
       const res = await simulateCall("get_all_groups");
       return scValToNative(res) as string[];
-    } catch (err: any) {
-      if (err.message?.includes("non-existent contract function")) return [];
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("non-existent contract function")) return [];
       throw err;
     }
   }, [simulateCall]);

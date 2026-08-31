@@ -54,7 +54,7 @@ jobs:
         run: npm run build:shared
 
       - name: TypeScript type check
-        run: npx tsc --noEmit --workspace=apps/web
+        run: npm exec --workspace=apps/web -- tsc --noEmit
 
   test:
     name: Unit Tests

@@ -27,6 +27,7 @@ export function NextActionCard() {
 
   useEffect(() => {
     if (!isConnected || !publicKey || !savings.isReady) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs loading state with external wallet/contract readiness
       setLoading(false);
       return;
     }

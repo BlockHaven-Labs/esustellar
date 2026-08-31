@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --import tsx --test lib/logger.test.ts __tests__/theme-toggle.test.tsx",
     "test:a11y": "playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
@@ -77,6 +78,7 @@
     "eslint-config-next": "16.3.2",
     "postcss": "^8.5",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "tw-animate-css": "1.3.3",
     "typescript": "^5"
   }

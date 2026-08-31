@@ -49,9 +49,9 @@ export function useJoinGroup(): UseJoinGroupReturn {
     try {
       setStep('joining')
       await savings.joinGroup(groupId)
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('join_group failed', { error: err instanceof Error ? err.message : String(err) })
-      setError(err.message || 'Failed to join group. Please try again.')
+      setError(err instanceof Error ? err.message : 'Failed to join group. Please try again.')
       setStep('error')
       return
     }
@@ -72,7 +72,7 @@ export function useJoinGroup(): UseJoinGroupReturn {
 
       try {
         await attemptRegister()
-      } catch (retryErr: any) {
+      } catch (retryErr: unknown) {
         logger.error('add_member failed after retry', { error: retryErr instanceof Error ? retryErr.message : String(retryErr) })
         // User HAS joined on-chain — make that clear in the error
         setError(

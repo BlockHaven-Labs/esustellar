@@ -10,10 +10,11 @@
  */
 
 import { test } from "@playwright/test";
-import { auditPage, expectNoViolations } from "./helpers";
+import { auditPage, expectNoViolations, mockConnectedWallet } from "./helpers";
 
 test.describe("Create group flow — WCAG 2.1 AA", () => {
   test("create page has no accessibility violations", async ({ page }) => {
+    await mockConnectedWallet(page);
     await page.goto("/create");
     await page.waitForSelector("main, form, [data-testid='create-group-form']", {
       state: "visible",
@@ -24,6 +25,7 @@ test.describe("Create group flow — WCAG 2.1 AA", () => {
   });
 
   test("create group form fields have proper labels", async ({ page }) => {
+    await mockConnectedWallet(page);
     await page.goto("/create");
     await page.waitForSelector("form, [role='form']", {
       state: "visible",
@@ -40,6 +42,7 @@ test.describe("Create group flow — WCAG 2.1 AA", () => {
   test("create group form shows accessible validation errors", async ({
     page,
   }) => {
+    await mockConnectedWallet(page);
     await page.goto("/create");
     // Wait for page to load
     await page.waitForSelector("main", { state: "visible" });
@@ -65,6 +68,7 @@ test.describe("Create group flow — WCAG 2.1 AA", () => {
   test("create group select and switch inputs are accessible", async ({
     page,
   }) => {
+    await mockConnectedWallet(page);
     await page.goto("/create");
     await page.waitForSelector("main", { state: "visible" });
 
