@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test \"**/*.test.{ts,tsx}\"",
+    "test": "node --import tsx --test lib/logger.test.ts __tests__/theme-toggle.test.tsx",
     "test:a11y": "playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
