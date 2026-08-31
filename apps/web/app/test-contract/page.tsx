@@ -295,7 +295,7 @@ export default function TestContractPage() {
         </Card>
 
         {/* Results */}
-        {result && (
+        {result != null && (
           <Card>
             <CardHeader>
               <CardTitle>Result</CardTitle>
