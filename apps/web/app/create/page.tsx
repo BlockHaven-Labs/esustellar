@@ -5,6 +5,8 @@ import { Wallet, AlertCircle, Loader2, ChevronRight, ChevronLeft, Check } from "
 
 import { useWallet } from "@/hooks/use-wallet";
 import { useSavingsContract, type Frequency } from "@/context/savingsContract";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 
 import {
   Card,
@@ -147,9 +149,9 @@ export default function CreateGroupForm() {
       setTotalMembers(""); setStartDate(""); setIsPrivate(false);
 
       setTimeout(() => { window.location.href = "/dashboard"; }, 5000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Error creating group", { error: err instanceof Error ? err.message : String(err) });
-      setError(err.message || "Failed to create group. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to create group. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -157,32 +159,45 @@ export default function CreateGroupForm() {
 
   if (!isConnected) {
     return (
-      <Card className="border-border bg-card">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <Wallet className="h-8 w-8 text-primary" />
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 bg-background py-8 md:py-12">
+          <div className="container mx-auto px-4 max-w-2xl">
+            <Card className="border-border bg-card">
+              <CardHeader className="text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                  <Wallet className="h-8 w-8 text-primary" />
+                </div>
+                <CardTitle>Connect Your Wallet</CardTitle>
+                <CardDescription>
+                  You must connect a Stellar wallet to create a savings group
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center gap-4">
+                <Button size="lg" onClick={connect}>
+                  <Wallet className="mr-2 h-5 w-5" />
+                  Connect Wallet
+                </Button>
+                <p className="text-sm text-muted-foreground text-center">
+                  Don&apos;t have a wallet?{" "}
+                  <a href="https://www.freighter.app" target="_blank" rel="noopener noreferrer"
+                     className="text-primary underline underline-offset-2">Download Freighter</a>
+                </p>
+              </CardContent>
+            </Card>
           </div>
-          <CardTitle>Connect Your Wallet</CardTitle>
-          <CardDescription>
-            You must connect a Stellar wallet to create a savings group
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center gap-4">
-          <Button size="lg" onClick={connect}>
-            <Wallet className="mr-2 h-5 w-5" />
-            Connect Wallet
-          </Button>
-          <p className="text-sm text-muted-foreground text-center">
-            Don&apos;t have a wallet?{" "}
-            <a href="https://www.freighter.app" target="_blank" rel="noopener noreferrer"
-               className="text-primary hover:underline">Download Freighter</a>
-          </p>
-        </CardContent>
-      </Card>
+        </main>
+        <Footer />
+      </div>
     );
   }
 
   return (
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1 bg-background py-8 md:py-12">
+        <div className="container mx-auto px-4 max-w-2xl">
+    <form onSubmit={(e) => e.preventDefault()} aria-label="Create savings group">
     <Card className="border-border bg-card">
       <CardHeader>
         <CardTitle>Create Savings Group</CardTitle>
@@ -242,10 +257,10 @@ export default function CreateGroupForm() {
             </div>
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>
-                <Label>Private Group</Label>
+                <Label htmlFor="isPrivate">Private Group</Label>
                 <p className="text-sm text-muted-foreground">Only invited members can join</p>
               </div>
-              <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
+              <Switch id="isPrivate" checked={isPrivate} onCheckedChange={setIsPrivate} />
             </div>
           </div>
         )}
@@ -268,7 +283,7 @@ export default function CreateGroupForm() {
             <div className="space-y-2">
               <Label>Contribution Frequency *</Label>
               <Select value={frequency} onValueChange={(val) => setFrequency(val as Frequency)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Contribution frequency"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Daily">Daily</SelectItem>
                   <SelectItem value="Weekly">Weekly</SelectItem>
@@ -313,16 +328,16 @@ export default function CreateGroupForm() {
         {/* Navigation */}
         <div className="mt-8 flex justify-between">
           {step > 0 ? (
-            <Button variant="outline" onClick={handleBack} disabled={isLoading}>
+            <Button type="button" variant="outline" onClick={handleBack} disabled={isLoading}>
               <ChevronLeft className="mr-2 h-4 w-4" /> Back
             </Button>
           ) : <div />}
           {step < STEPS.length - 1 ? (
-            <Button onClick={handleNext} disabled={isLoading}>
+            <Button type="button" onClick={handleNext} disabled={isLoading}>
               Next <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={isLoading || !contract.isReady} size="lg">
+            <Button type="button" onClick={handleSubmit} disabled={isLoading || !contract.isReady} size="lg">
               {isLoading ? (
                 <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Creating Group...</>
               ) : (
@@ -333,5 +348,10 @@ export default function CreateGroupForm() {
         </div>
       </CardContent>
     </Card>
+    </form>
+        </div>
+      </main>
+      <Footer />
+    </div>
   );
 }
