@@ -18,42 +18,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    defaults:
-      run:
-        working-directory: apps/web
-
     steps:
-      # ── Checkout ────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Node.js setup ───────────────────────────────────────────────────
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: apps/web/package-lock.json
 
-      # ── Install dependencies ─────────────────────────────────────────────
       - name: Install dependencies
         run: npm ci
 
-      # ── Install Playwright browsers ──────────────────────────────────────
+      - name: Build shared packages
+        run: npm run build:shared
+
       - name: Install Playwright browsers
+        working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
-      # ── Run E2E tests ────────────────────────────────────────────────────
       - name: Run E2E tests
+        working-directory: apps/web
         run: npm run test:e2e
         env:
           CI: "true"
-          # Provide a placeholder for the contract env var so the app boots.
           NEXT_PUBLIC_CONTRACT_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
           NEXT_PUBLIC_REGISTRY_CONTRACT_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
 
-      # ── Upload Playwright report on failure ───────────────────────────────
-      - name: Upload Playwright report
+      - name: Upload Playwright report on failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
