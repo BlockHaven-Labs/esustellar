@@ -350,7 +350,7 @@ export function DashboardStats() {
             <p className="text-sm text-muted-foreground">Connect wallet to view stats</p>
           </CardContent>
         </Card>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-hidden="true">
           {statsItems.map((stat, index) => (
             <Card key={index} className="border-border bg-card opacity-50">
               <CardContent className="p-6">
