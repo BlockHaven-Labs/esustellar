@@ -82,6 +82,59 @@ export const freighterMockScript = (publicKey: string, passphrase: string) => `
 `;
 
 /**
+ * A robust Freighter mock that fully connects the wallet by replying to the
+ * postMessage protocol used by @stellar/freighter-api's extensionMessaging
+ * (REQUEST_ACCESS / REQUEST_PUBLIC_KEY / REQUEST_CONNECTION_STATUS /
+ * REQUEST_ALLOWED_STATUS / REQUEST_NETWORK / REQUEST_NETWORK_DETAILS).
+ *
+ * Unlike freighterMockScript (which only auto-answers the ping handshake so
+ * the extension registers as "installed" but never returns a public key),
+ * this mock actually simulates a connected wallet so pages that gate content
+ * behind `isConnected` (e.g. the /create wizard) render their real UI.
+ *
+ * Must be injected before page.goto() via addInitScript.
+ */
+export const mockConnectedWalletScript = (publicKey: string, passphrase: string) => `
+  window.freighter = true;
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    const data = event.data;
+    if (!data || data.source !== "FREIGHTER_EXTERNAL_MSG_REQUEST") return;
+
+    const base = { source: "FREIGHTER_EXTERNAL_MSG_RESPONSE", messagedId: data.messageId };
+    let payload = {};
+    switch (data.type) {
+      case "REQUEST_ACCESS":
+      case "REQUEST_PUBLIC_KEY":
+        payload = { publicKey: ${JSON.stringify(publicKey)} };
+        break;
+      case "REQUEST_CONNECTION_STATUS":
+      case "REQUEST_ALLOWED_STATUS":
+        payload = { isConnected: true, isAllowed: true };
+        break;
+      case "REQUEST_NETWORK":
+        payload = { network: "TESTNET", networkPassphrase: ${JSON.stringify(passphrase)} };
+        break;
+      case "REQUEST_NETWORK_DETAILS":
+        payload = {
+          networkDetails: {
+            network: "TESTNET",
+            networkPassphrase: ${JSON.stringify(passphrase)},
+            networkUrl: "https://horizon-testnet.stellar.org",
+            sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+          },
+        };
+        break;
+      default:
+        return;
+    }
+
+    window.postMessage({ ...base, ...payload }, window.location.origin);
+  });
+`;
+
+/**
  * Seed data for a valid create-group form submission.
  *
  * Using a date one year in the future ensures the "must be future date"

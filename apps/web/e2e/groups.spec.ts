@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { freighterMockScript, MOCK_PUBLIC_KEY, TESTNET_PASSPHRASE, MOCK_GROUPS } from "./fixtures";
 
 /**
  * groups.spec.ts
@@ -8,41 +7,12 @@ import { freighterMockScript, MOCK_PUBLIC_KEY, TESTNET_PASSPHRASE, MOCK_GROUPS }
  *
  * Scenarios covered:
  *  1. Page loads with the correct heading.
- *  2. When the registry contract returns groups, group cards render.
- *  3. Each card has a visible "Join Group" / "View Details" button.
- *  4. Clicking a card navigates to the group detail page.
- *  5. Empty state renders when no groups are returned.
+ *  2. The filter bar / main content area renders.
+ *  3. Loading state is shown before data arrives.
+ *  4. Empty state renders when no groups are returned.
+ *  5. Header + nav links render.
+ *  6. Navigation to /groups via the nav link works.
  */
-
-/**
- * Stub the Soroban RPC so that getAllPublicGroups() returns our mock data
- * without hitting the real testnet.
- *
- * The registry contract client calls JSON-RPC at SOROBAN_RPC_URL.  We
- * return a minimal success response; the higher-level SDK will either
- * interpret it or throw — either outcome is fine for UI-level tests that
- * only care about the rendered DOM.
- *
- * For tests that need rendered cards we also inject the mock groups
- * directly via window.__mockGroups and override the React context via a
- * script that runs before hydration.
- */
-function injectGroupsMock(page: import("@playwright/test").Page) {
-  // Route Soroban RPC calls to a stub.
-  page.route("**/soroban-testnet.stellar.org/**", (route) => {
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }),
-    });
-  });
-
-  // Expose mock data on window so any custom hook that reads from it
-  // (or a future test helper) can access it.
-  return page.addInitScript((groups: typeof MOCK_GROUPS) => {
-    (window as unknown as Record<string, unknown>).__mockGroups = groups;
-  }, MOCK_GROUPS);
-}
 
 test.describe("Groups list page", () => {
   test("page renders the Browse Savings Groups heading", async ({ page }) => {
@@ -95,7 +65,8 @@ test.describe("Groups list page", () => {
     await page.goto("/groups");
 
     await expect(page.getByRole("link", { name: /esustellar/i }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /create group/i })).toBeVisible();
+    // "Create Group" exists in both the header nav and the footer — use .first().
+    await expect(page.getByRole("link", { name: /create group/i }).first()).toBeVisible();
   });
 
   test("wallet button is present on groups page header", async ({ page }) => {
@@ -108,7 +79,7 @@ test.describe("Groups list page", () => {
   test("navigating to groups page via nav link works", async ({ page }) => {
     await page.goto("/");
 
-    await page.getByRole("link", { name: /browse groups/i }).click();
+    await page.getByRole("link", { name: /browse groups/i }).first().click();
     await page.waitForURL("**/groups");
     await expect(page.getByRole("heading", { name: /browse savings groups/i })).toBeVisible();
   });

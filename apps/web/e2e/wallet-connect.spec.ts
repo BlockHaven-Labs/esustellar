@@ -15,8 +15,12 @@ test.describe("Wallet connection", () => {
   test("Connect Wallet button is visible in the header on the homepage", async ({ page }) => {
     await page.goto("/");
 
-    // The header renders a WalletButton — locate it by its default label text.
-    const walletButton = page.getByRole("button", { name: /connect wallet/i });
+    // The header renders a WalletButton — with no extension installed it
+    // defaults to "Install Freighter", otherwise "Connect Wallet". Locate it
+    // by either label text.
+    const walletButton = page
+      .getByRole("banner")
+      .getByRole("button", { name: /connect wallet|install freighter/i });
     await expect(walletButton).toBeVisible();
   });
 
@@ -52,7 +56,9 @@ test.describe("Wallet connection", () => {
   });
 
   test("Wallet button is present in mobile menu", async ({ page }) => {
-    // Narrow viewport to trigger the mobile hamburger menu.
+    // Narrow viewport to trigger the mobile hamburger menu. At this size the
+    // desktop header CTA (hidden md:flex) is not rendered, so the only wallet
+    // button is the one inside the mobile sheet.
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
 
@@ -60,18 +66,19 @@ test.describe("Wallet connection", () => {
     const menuButton = page.getByRole("button", { name: /toggle menu/i });
     await menuButton.click();
 
-    // The mobile nav sheet should contain a wallet button.
-    const sheetWalletBtn = page.locator("[data-radix-popper-content-wrapper] button, [data-state='open'] button").filter({ hasText: /connect wallet|install freighter/i }).first();
-    // Fallback: any button with wallet text that's visible.
-    const walletBtnFallback = page.getByRole("button", { name: /connect wallet|install freighter/i }).nth(1);
-    await expect(walletBtnFallback).toBeVisible({ timeout: 5_000 });
+    const sheetWalletBtn = page
+      .getByRole("button", { name: /connect wallet|install freighter/i })
+      .first();
+    await expect(sheetWalletBtn).toBeVisible({ timeout: 5_000 });
   });
 
   test("Navigation links are visible on the homepage", async ({ page }) => {
     await page.goto("/");
 
-    await expect(page.getByRole("link", { name: /browse groups/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /create group/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /dashboard/i })).toBeVisible();
+    // "Browse Groups" appears in the header nav, hero, and footer — use the
+    // first (header) occurrence to avoid a strict-mode conflict.
+    await expect(page.getByRole("link", { name: /browse groups/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /create group/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /dashboard/i }).first()).toBeVisible();
   });
 });

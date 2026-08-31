@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { freighterMockScript, MOCK_PUBLIC_KEY, TESTNET_PASSPHRASE, MOCK_GROUP_ID } from "./fixtures";
+import {
+  freighterMockScript,
+  mockConnectedWalletScript,
+  MOCK_PUBLIC_KEY,
+  TESTNET_PASSPHRASE,
+  MOCK_GROUP_ID,
+} from "./fixtures";
 
 /**
  * contribute.spec.ts
@@ -152,10 +158,10 @@ test.describe("Contribute journey (mocked chain)", () => {
 
     // Step 1: Land on homepage.
     await page.goto("/");
-    await expect(page.getByRole("link", { name: /browse groups/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /browse groups/i }).first()).toBeVisible();
 
     // Step 2: Navigate to groups list.
-    await page.getByRole("link", { name: /browse groups/i }).click();
+    await page.getByRole("link", { name: /browse groups/i }).first().click();
     await page.waitForURL("**/groups");
     await expect(page.getByRole("heading", { name: /browse savings groups/i })).toBeVisible();
 
@@ -168,12 +174,13 @@ test.describe("Contribute journey (mocked chain)", () => {
   });
 
   test("create group flow: navigate to /create when wallet connected", async ({ page }) => {
-    await page.addInitScript(freighterMockScript(MOCK_PUBLIC_KEY, TESTNET_PASSPHRASE));
+    await page.addInitScript(mockConnectedWalletScript(MOCK_PUBLIC_KEY, TESTNET_PASSPHRASE));
 
     // Navigate to create page.
     await page.goto("/create");
 
-    // Form should render (wallet is "connected" via mock).
-    await expect(page.getByText(/connect your wallet|group details/i)).toBeVisible({ timeout: 10_000 });
+    // The wizard should render (wallet is "connected" via mock).
+    await expect(page.getByText(/create savings group/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel(/group name/i)).toBeVisible({ timeout: 10_000 });
   });
 });
