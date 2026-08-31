@@ -3,7 +3,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import TutorialWalkthrough from '@/components/onboarding/TutorialWalkthrough';
 import { ThemeProvider } from '@/context/ThemeContext';
@@ -94,7 +94,7 @@ describe('TutorialWalkthrough', () => {
     // Tap Finish
     fireEvent.press(getByTestId('tutorial-next'));
 
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     const completeVal = await AsyncStorage.getItem('tutorialComplete');
     expect(completeVal).toBe('true');
   });
@@ -108,7 +108,7 @@ describe('TutorialWalkthrough', () => {
 
     fireEvent.press(getByTestId('tutorial-skip'));
 
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     const completeVal = await AsyncStorage.getItem('tutorialComplete');
     expect(completeVal).toBe('true');
   });

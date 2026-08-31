@@ -36,3 +36,17 @@ if (!config.API_URL) {
 }
 
 export const env = config;
+
+/**
+ * Resolve the active environment from the EXPO_PUBLIC env value, falling back
+ * to NODE_ENV. Any unknown/missing value defaults to "development".
+ */
+export function resolveEnvironment(
+  expoEnv: string | undefined,
+  nodeEnv: string | undefined
+): Environment {
+  const valid: Environment[] = ['development', 'staging', 'production'];
+  if (expoEnv && (valid as string[]).includes(expoEnv)) return expoEnv as Environment;
+  if (nodeEnv && (valid as string[]).includes(nodeEnv)) return nodeEnv as Environment;
+  return 'development';
+}

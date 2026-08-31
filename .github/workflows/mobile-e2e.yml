@@ -1,0 +1,62 @@
+name: Mobile Unit Tests (Jest)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-e2e.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-e2e.yml'
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch/PR to save runner minutes.
+concurrency:
+  group: mobile-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Mobile unit tests (Jest).
+  #
+  # Lightweight alternative to the previous Detox native E2E workflow. The
+  # mobile app is a standalone (non-workspace) npm project, so we install its
+  # own dependencies and run the Jest unit suite. Native Detox E2E runs remain
+  # a local developer workflow.
+  # ────────────────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Mobile (Jest unit tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The mobile project has its own dependency tree (it is not part of the
+      # root npm workspaces) and relies on --legacy-peer-deps to resolve peer
+      # conflicts, so cache by package.json hash rather than a committed lockfile.
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-mobile-npm-${{ hashFiles('mobile/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-mobile-npm-
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Run unit tests
+        run: npm test

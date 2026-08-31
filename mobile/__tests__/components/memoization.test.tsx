@@ -7,6 +7,7 @@ import { TransactionItem } from '@/components/transactions/TransactionItem';
 import { NotificationItem as TimelineNotificationItem } from '@/components/notifications/NotificationItem';
 import { NotificationItem as StoreNotificationItem } from '@/components/NotificationItem';
 import { useNotificationsStore } from '@/stores/notificationsStore';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 /*
  * Memoization is verified by counting how many times each component's render
@@ -164,6 +165,7 @@ describe('memoized component render stability', () => {
 
   it('keeps store NotificationItem from re-rendering when the parent rerenders with stable props', () => {
     const [SpyStoreNotificationItem, spy] = makeRenderSpy(StoreNotificationItem);
+    const client = new QueryClient();
     const createdAt = new Date().toISOString();
     const unreadItem = { id: '1', title: 'Welcome', message: 'Thanks for joining!', read: false, createdAt };
     const readItem = { id: '1', title: 'Welcome', message: 'Thanks for joining!', read: true, createdAt };
@@ -175,10 +177,12 @@ describe('memoized component render stability', () => {
       tick: number;
       read?: boolean;
     }) => (
-      <View>
-        <Text>{tick}</Text>
-        <SpyStoreNotificationItem item={read ? readItem : unreadItem} />
-      </View>
+      <QueryClientProvider client={client}>
+        <View>
+          <Text>{tick}</Text>
+          <SpyStoreNotificationItem item={read ? readItem : unreadItem} />
+        </View>
+      </QueryClientProvider>
     );
 
     const { rerender } = render(<Parent tick={0} />);
