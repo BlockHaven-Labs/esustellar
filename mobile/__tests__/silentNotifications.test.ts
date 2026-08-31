@@ -5,17 +5,18 @@
 import * as Notifications from 'expo-notifications';
 import { silentNotificationHandler } from '../services/notifications/silent';
 import { queryClient } from '../services/queryClient';
-import { useAuthStore } from '../../store/authStore';
-import { useNotificationsStore } from '../../stores/notificationsStore';
+import { useAuthStore } from '@/store/authStore';
+import { useNotificationsStore } from '@/stores/notificationsStore';
+import { notificationsApi } from '@/services/api/notificationsApi';
 
 // Mock the APIs and stores
-jest.mock('../queryClient');
-jest.mock('../../store/authStore');
-jest.mock('../../stores/notificationsStore');
-jest.mock('../api/groupsApi');
-jest.mock('../api/transactionsApi');
-jest.mock('../api/notificationsApi');
-jest.mock('../logger');
+jest.mock('../services/queryClient');
+jest.mock('@/store/authStore');
+jest.mock('@/stores/notificationsStore');
+jest.mock('@/services/api/groupsApi');
+jest.mock('@/services/api/transactionsApi');
+jest.mock('@/services/api/notificationsApi');
+jest.mock('@/services/logger');
 
 describe('SilentNotificationHandler', () => {
   beforeEach(() => {
@@ -98,6 +99,14 @@ describe('SilentNotificationHandler', () => {
     beforeEach(() => {
       (useAuthStore.getState as jest.Mock).mockReturnValue({
         wallet: { publicKey: 'test-address' },
+      });
+      (notificationsApi.getUserNotifications as jest.Mock).mockResolvedValue({
+        success: true,
+        data: [],
+        message: 'ok',
+      });
+      (useNotificationsStore.getState as jest.Mock).mockReturnValue({
+        setNotifications: jest.fn(),
       });
     });
 
