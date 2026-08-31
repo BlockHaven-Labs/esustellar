@@ -75,13 +75,13 @@ export function MyGroups() {
                 Create New
               </Link>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <Button variant="outline" size="sm" onClick={() => refetch()} aria-label="Refresh groups">
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
         </CardHeader>
         <CardContent className="text-center py-8">
-          <p className="text-destructive mb-4">{error}</p>
+          <p className="text-red-700 dark:text-red-400 mb-4">{error}</p>
           <Button variant="outline" onClick={() => refetch()}>
             Retry
           </Button>
@@ -109,7 +109,7 @@ export function MyGroups() {
         </CardHeader>
         <CardContent className="text-center py-8">
           <p className="text-muted-foreground">
-            You haven't joined any groups yet
+            You haven&apos;t joined any groups yet
           </p>
           <p className="text-sm text-muted-foreground mt-2">
             Join a savings group to start saving with your community

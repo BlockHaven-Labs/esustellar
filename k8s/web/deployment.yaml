@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esustellar-web
+  labels:
+    app: esustellar-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: esustellar-web
+  template:
+    metadata:
+      labels:
+        app: esustellar-web
+    spec:
+      containers:
+        - name: web
+          image: esustellar/web:latest
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          env:
+            - name: NEXT_TELEMETRY_DISABLED
+              value: "1"
+            - name: STELLAR_NETWORK
+              value: "testnet"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30

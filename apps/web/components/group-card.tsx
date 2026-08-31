@@ -31,9 +31,12 @@ export function GroupCard({ group }: GroupCardProps) {
   return (
     <Card className="border-border bg-card hover:border-primary/30 transition-colors">
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-lg text-foreground">{group.name}</CardTitle>
-          <Badge variant="outline" className={statusColors[group.status as keyof typeof statusColors]}>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="min-w-0 flex-1 truncate text-lg text-foreground">{group.name}</CardTitle>
+          <Badge
+            variant="outline"
+            className={`shrink-0 ${statusColors[group.status as keyof typeof statusColors]}`}
+          >
             {group.status}
           </Badge>
         </div>

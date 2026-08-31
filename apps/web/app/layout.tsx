@@ -5,6 +5,9 @@ import { Analytics } from "@vercel/analytics/next"
 import { WalletProvider } from "@/hooks/use-wallet"
 import { SavingsContractProvider } from "@/context/savingsContract"
 import { RegistryContractProvider } from "@/context/registryContract"
+import { I18nProvider } from "@/context/I18nProvider"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -47,15 +50,20 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased`}>
-        <WalletProvider>
-          <RegistryContractProvider>
-            <SavingsContractProvider>
-              {children}
-            </SavingsContractProvider>
-          </RegistryContractProvider>
-        </WalletProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="esustellar-theme" disableTransitionOnChange>
+          <WalletProvider>
+  <RegistryContractProvider>
+    <SavingsContractProvider>
+      <I18nProvider>
+        {children}
+      </I18nProvider>
+    </SavingsContractProvider>
+  </RegistryContractProvider>
+</WalletProvider>
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

@@ -1,5 +1,8 @@
 use crate::{Error, Frequency, GroupStatus, MemberStatus, SavingsContract, SavingsContractClient};
 use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Events, Ledger},
+    Address, Env, String, Symbol, TryFromVal,
     testutils::{Address as _, Events as _, Ledger},
     symbol_short, Address, Env, IntoVal, String, Symbol,
 };
@@ -1020,6 +1023,17 @@ fn test_get_user_groups_page() {
     assert_eq!(page.len(), 2);
 }
 
+// ── Event decoding assertions for all five event types (#created, #joined, #contrib, #payout, #round_end) ──
+
+#[test]
+fn test_decode_created_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "event-created-grp");
+    let name = String::from_str(&env, "Event Created Group");
+    let contribution_amount = 100_000_000i128;
+    let total_members = 3u32;
 // ============================================================
 // #750: Event-topic assertion tests
 // Verify that every group-scoped event carries group_id as its
@@ -1060,6 +1074,8 @@ fn test_event_created_topics_and_data() {
         &name,
         &contribution_amount,
         &total_members,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
         &Frequency::Monthly,
         &(env.ledger().timestamp() + 86400),
         &true,
@@ -1067,6 +1083,79 @@ fn test_event_created_topics_and_data() {
         &None,
     );
 
+    let all_events = env.events().all();
+    let mut found = false;
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("created") {
+                    let (decoded_gid, decoded_amount, decoded_members) =
+                        <(String, i128, u32)>::try_from_val(&env, &data)
+                            .expect("created event data should decode to (String, i128, u32)");
+                    assert_eq!(decoded_gid, group_id);
+                    assert_eq!(decoded_amount, contribution_amount);
+                    assert_eq!(decoded_members, total_members);
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+    assert!(found, "created event must be emitted and decodable");
+}
+
+#[test]
+fn test_decode_joined_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "event-joined-grp");
+    let name = String::from_str(&env, "Event Joined Group");
+
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &100_000_000,
+        &3,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
+        &None,
+    );
+
+    let member2 = Address::generate(&env);
+    client.join_group(&member2, &group_id);
+
+    let all_events = env.events().all();
+    let mut found = false;
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("joined") {
+                    if let Ok((decoded_member, decoded_count)) =
+                        <(Address, u32)>::try_from_val(&env, &data)
+                    {
+                        if decoded_member == member2 && decoded_count == 2 {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(found, "joined event for member2 must be emitted and decodable with count 2");
+}
+
+#[test]
+fn test_decode_contrib_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (admin, m1, _m2, _, client, group_id) = setup_full_group(&env);
     let (_, topics, _data) =
         find_event(&env, symbol_short!("created"));
 
@@ -1142,6 +1231,36 @@ fn test_event_contrib_topics_and_data() {
         li.timestamp = group.start_timestamp + 1;
     });
 
+    client.contribute(&m1, &group_id);
+
+    let all_events = env.events().all();
+    let mut found = false;
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("contrib") {
+                    let (decoded_gid, decoded_member, decoded_amount, decoded_round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("contrib event data should decode to (String, Address, i128, u32)");
+                    if decoded_member == m1 {
+                        assert_eq!(decoded_gid, group_id);
+                        assert_eq!(decoded_amount, 100_000_000);
+                        assert_eq!(decoded_round, 1);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    assert!(found, "contrib event for m1 must be emitted and decodable");
+}
+
+#[test]
+fn test_decode_payout_and_round_end_events() {
+    let env = Env::default();
+    env.mock_all_auths();
     client.contribute(&admin, &group_id);
 
     let (_, topics, _data) =
@@ -1166,10 +1285,76 @@ fn test_event_payout_topics_and_data() {
         li.timestamp = group.start_timestamp + 1;
     });
 
+    // All members contribute in round 1
     client.contribute(&admin, &group_id);
     client.contribute(&m1, &group_id);
     client.contribute(&m2, &group_id);
 
+    let all_events = env.events().all();
+    let mut found_payout = false;
+    let mut found_round_end = false;
+
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("payout") {
+                    let (decoded_gid, decoded_recipient, decoded_amount, decoded_round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("payout event data should decode to (String, Address, i128, u32)");
+                    assert_eq!(decoded_gid, group_id);
+                    assert_eq!(decoded_round, 1);
+                    assert!(decoded_amount > 0);
+                    assert!(decoded_recipient == admin || decoded_recipient == m1 || decoded_recipient == m2);
+                    found_payout = true;
+                } else if topic_sym == symbol_short!("round_end") {
+                    let decoded_round = u32::try_from_val(&env, &data)
+                        .expect("round_end event data should decode to u32");
+                    assert_eq!(decoded_round, 1);
+                    found_round_end = true;
+                }
+            }
+        }
+    }
+
+    assert!(found_payout, "payout event must be emitted and decodable");
+    assert!(found_round_end, "round_end event must be emitted and decodable");
+}
+
+#[test]
+fn test_all_five_event_types_decoded_in_full_lifecycle() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, client) = create_test_group(&env);
+    let group_id = String::from_str(&env, "lifecycle-evt-grp");
+    let name = String::from_str(&env, "Lifecycle Event Test Group");
+    let contribution_amount = 100_000_000i128;
+    let total_members = 3u32;
+
+    // 1. Create group -> emits 'created' (and admin 'joined')
+    client.create_group(
+        &admin,
+        &group_id,
+        &name,
+        &contribution_amount,
+        &total_members,
+        &Frequency::Weekly,
+        &(env.ledger().timestamp() + 100),
+        &true,
+        &admin,
+        &None,
+    );
+
+    // 2. Join members -> emits 'joined'
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    client.join_group(&m1, &group_id);
+    client.join_group(&m2, &group_id);
+
+    // 3. Move timestamp to active start and contribute -> emits 'contrib', 'payout', and 'round_end'
+    env.ledger().with_mut(|li| {
+        li.timestamp = 100_000 + 101;
     let (_, topics, _data) =
         find_event(&env, symbol_short!("payout"));
 
@@ -1339,6 +1524,67 @@ fn test_event_round_end_topics() {
     client.contribute(&admin, &group_id);
     client.contribute(&m1, &group_id);
     client.contribute(&m2, &group_id);
+
+    let all_events = env.events().all();
+
+    let mut created_count = 0u32;
+    let mut joined_count = 0u32;
+    let mut contrib_count = 0u32;
+    let mut payout_count = 0u32;
+    let mut round_end_count = 0u32;
+
+    for event in all_events.iter() {
+        let (_contract, topics, data) = event;
+        if let Some(topic_val) = topics.get(0) {
+            if let Ok(topic_sym) = Symbol::try_from_val(&env, &topic_val) {
+                if topic_sym == symbol_short!("created") {
+                    let (gid, amount, members) =
+                        <(String, i128, u32)>::try_from_val(&env, &data)
+                            .expect("created event data decode");
+                    assert_eq!(gid, group_id);
+                    assert_eq!(amount, contribution_amount);
+                    assert_eq!(members, total_members);
+                    created_count += 1;
+                } else if topic_sym == symbol_short!("joined") {
+                    if let Ok((member, count)) = <(Address, u32)>::try_from_val(&env, &data) {
+                        assert!(count >= 1 && count <= 3);
+                        assert!(member == admin || member == m1 || member == m2);
+                        joined_count += 1;
+                    }
+                } else if topic_sym == symbol_short!("contrib") {
+                    let (gid, member, amount, round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("contrib event data decode");
+                    assert_eq!(gid, group_id);
+                    assert_eq!(amount, contribution_amount);
+                    assert_eq!(round, 1);
+                    assert!(member == admin || member == m1 || member == m2);
+                    contrib_count += 1;
+                } else if topic_sym == symbol_short!("payout") {
+                    let (gid, recipient, amount, round) =
+                        <(String, Address, i128, u32)>::try_from_val(&env, &data)
+                            .expect("payout event data decode");
+                    assert_eq!(gid, group_id);
+                    assert_eq!(round, 1);
+                    assert!(amount > 0);
+                    assert!(recipient == admin || recipient == m1 || recipient == m2);
+                    payout_count += 1;
+                } else if topic_sym == symbol_short!("round_end") {
+                    let round = u32::try_from_val(&env, &data)
+                        .expect("round_end event data decode");
+                    assert_eq!(round, 1);
+                    round_end_count += 1;
+                }
+            }
+        }
+    }
+
+    assert!(created_count >= 1, "Must have decoded at least 1 'created' event");
+    assert!(joined_count >= 3, "Must have decoded at least 3 'joined' events");
+    assert_eq!(contrib_count, 3, "Must have decoded exactly 3 'contrib' events");
+    assert_eq!(payout_count, 1, "Must have decoded exactly 1 'payout' event");
+    assert_eq!(round_end_count, 1, "Must have decoded exactly 1 'round_end' event");
+}
 
     let (_, topics, _data) =
         find_event(&env, symbol_short!("round_end"));

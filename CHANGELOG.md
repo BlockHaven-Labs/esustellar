@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Real token escrow / locked custody support in smart contracts.
 - Configurable on-chain dispute resolution and arbitration workflows.
-- Decentralized multi-sig admin controls.
+- Decentralized multi-sig admin controls..
 
 ---
 

@@ -8,3 +8,4 @@ export { LoadingSkeleton } from './LoadingSkeleton';
 export { Divider } from './Divider';
 export { SectionHeader } from './SectionHeader';
 export { default as Button } from './Button';
+export { default as StaleCacheIndicator } from './StaleCacheIndicator';

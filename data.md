@@ -9,7 +9,7 @@ The infra folder includes:
 <!-- - `.github/workflows/` — CI/CD pipelines
 - `docs/` — architecture, deployment, runbooks, standards -->
 
-## Branch Protection
+## Branch Protections
 
 The `main` branch is protected with enforced rules:
 - **Required status checks**: Docker CI and E2E Status Gate must pass

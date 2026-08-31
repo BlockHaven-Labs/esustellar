@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu } from "lucide-react"
 import { Logo } from "@/components/logo"
 import { WalletButton } from "@/components/wallet-button"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const navLinks = [
   { href: "/groups", label: "Browse Groups" },
@@ -40,6 +41,7 @@ export function Header() {
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center gap-3">
+          <ThemeToggle />
           <WalletButton variant="outline" size="sm" />
         </div>
 
@@ -63,6 +65,10 @@ export function Header() {
                   {link.label}
                 </Link>
               ))}
+              <div className="flex items-center gap-3 mt-2">
+                <ThemeToggle />
+                <span className="text-sm text-muted-foreground">Toggle theme</span>
+              </div>
               <WalletButton
                 className="mt-4 bg-primary text-primary-foreground hover:bg-primary-dark"
                 onClick={() => setIsOpen(false)}
