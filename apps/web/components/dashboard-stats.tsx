@@ -72,6 +72,7 @@ export function DashboardStats() {
 
   useEffect(() => {
     if (!isConnected || !publicKey) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs status with external wallet connection state
       setStatus("no-wallet")
       return
     }

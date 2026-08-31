@@ -147,9 +147,9 @@ export default function CreateGroupForm() {
       setTotalMembers(""); setStartDate(""); setIsPrivate(false);
 
       setTimeout(() => { window.location.href = "/dashboard"; }, 5000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Error creating group", { error: err instanceof Error ? err.message : String(err) });
-      setError(err.message || "Failed to create group. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to create group. Please try again.");
     } finally {
       setIsLoading(false);
     }

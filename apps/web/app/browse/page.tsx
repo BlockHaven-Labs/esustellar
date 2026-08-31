@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, Filter, ArrowRight, Users, Coins, Calendar } from "lucide-react";
 import Link from "next/link";
 
@@ -32,11 +32,7 @@ export default function BrowsePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<GroupStatusFilter>("all");
 
-  useEffect(() => {
-    fetchGroups();
-  }, []);
-
-  const fetchGroups = async () => {
+  const fetchGroups = useCallback(async () => {
     try {
       setLoading(true);
       const publicGroups = await registry.getAllPublicGroups();
@@ -46,7 +42,12 @@ export default function BrowsePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [registry]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch on mount; fetchGroups syncs loading/groups state from the contract
+    fetchGroups();
+  }, [fetchGroups]);
 
   const filteredGroups = groups.filter((group) => {
     const matchesSearch =

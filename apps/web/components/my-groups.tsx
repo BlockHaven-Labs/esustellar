@@ -109,7 +109,7 @@ export function MyGroups() {
         </CardHeader>
         <CardContent className="text-center py-8">
           <p className="text-muted-foreground">
-            You haven't joined any groups yet
+            You haven&apos;t joined any groups yet
           </p>
           <p className="text-sm text-muted-foreground mt-2">
             Join a savings group to start saving with your community

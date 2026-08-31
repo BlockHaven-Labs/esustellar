@@ -14,7 +14,7 @@ export default function TestContractPage() {
   const contract = useSavingsContract()
   const wallet = useWallet()
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<unknown>(null)
   const [error, setError] = useState<string | null>(null)
   const [testGroupId, setTestGroupId] = useState('test-group-1')
 
@@ -26,8 +26,8 @@ export default function TestContractPage() {
       const group = await contract.getGroupById(testGroupId)
       setResult(group)
       logger.info('Group fetched', { group })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error fetching group', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -41,8 +41,8 @@ export default function TestContractPage() {
       const groups = await contract.getAllGroups()
       setResult(groups)
       logger.info('All Groups fetched', { groups })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error fetching all groups', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -56,8 +56,8 @@ export default function TestContractPage() {
       const members = await contract.getMembersByGroup(testGroupId)
       setResult(members)
       logger.info('Members fetched', { members })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error fetching members', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -75,8 +75,8 @@ export default function TestContractPage() {
       const member = await contract.getMemberByGroup(wallet.publicKey, testGroupId)
       setResult(member)
       logger.info('Member fetched', { member })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error fetching member', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -90,8 +90,8 @@ export default function TestContractPage() {
       const contributions = await contract.getRoundContributionsByGroup(testGroupId, 1)
       setResult(contributions)
       logger.info('Contributions fetched', { contributions })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error fetching contributions', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -109,8 +109,8 @@ export default function TestContractPage() {
       const groups = await contract.getUserGroups(wallet.publicKey)
       setResult(groups)
       logger.info('User groups fetched', { groups })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error fetching user groups', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -146,8 +146,8 @@ export default function TestContractPage() {
       setTestGroupId(params.groupId)
       setResult(`Group created successfully! Active Group ID updated to: ${params.groupId}`)
       logger.info('Group created', { groupId: params.groupId })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error creating group', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -166,8 +166,8 @@ export default function TestContractPage() {
       await contract.joinGroup(testGroupId)
       setResult('Joined group successfully!')
       logger.info('Joined group', { groupId: testGroupId })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error joining group', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)
@@ -186,8 +186,8 @@ export default function TestContractPage() {
       await contract.contribute(testGroupId)
       setResult('Contribution successful!')
       logger.info('Contribution submitted', { groupId: testGroupId })
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
       logger.error('Error contributing', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       setLoading(false)

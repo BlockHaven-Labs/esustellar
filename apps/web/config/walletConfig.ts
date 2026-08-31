@@ -46,13 +46,10 @@ async function pingFreighter(timeoutMs: number): Promise<boolean> {
 
   return new Promise((resolve) => {
     const messageId = Date.now() + Math.random()
-    let timeoutId: number | undefined
 
     const cleanup = () => {
       window.removeEventListener("message", handleMessage)
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
-      }
+      window.clearTimeout(timeoutId)
     }
 
     const handleMessage = (event: MessageEvent) => {
@@ -81,7 +78,7 @@ async function pingFreighter(timeoutMs: number): Promise<boolean> {
       window.location.origin,
     )
 
-    timeoutId = window.setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       cleanup()
       resolve(false)
     }, timeoutMs)
