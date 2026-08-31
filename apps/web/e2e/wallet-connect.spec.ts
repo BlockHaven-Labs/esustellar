@@ -24,8 +24,8 @@ test.describe("Wallet connection", () => {
     // Explicitly make sure Freighter is NOT present.
     await page.addInitScript(() => {
       // Ensure no freighter hints exist.
-      delete (window as any).freighter;
-      delete (window as any).freighterApi;
+      delete (window as unknown as Record<string, unknown>).freighter;
+      delete (window as unknown as Record<string, unknown>).freighterApi;
     });
 
     await page.goto("/");

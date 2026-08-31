@@ -40,7 +40,7 @@ function injectGroupsMock(page: import("@playwright/test").Page) {
   // Expose mock data on window so any custom hook that reads from it
   // (or a future test helper) can access it.
   return page.addInitScript((groups: typeof MOCK_GROUPS) => {
-    (window as any).__mockGroups = groups;
+    (window as unknown as Record<string, unknown>).__mockGroups = groups;
   }, MOCK_GROUPS);
 }
 

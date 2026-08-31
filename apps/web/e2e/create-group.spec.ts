@@ -46,7 +46,7 @@ async function stubContractCalls(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
     // Patch fetch so any Soroban RPC simulation / submit call resolves.
     const _origFetch = window.fetch.bind(window);
-    (window as any).fetch = async function (input: RequestInfo, init?: RequestInit) {
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : (input as Request).url;
       if (url.includes("soroban") || url.includes("stellar.org")) {
         return new Response(
