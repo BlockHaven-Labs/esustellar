@@ -6,7 +6,7 @@ import Link from "next/link";
 
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { useRegistryContract } from "@/context/registryContract";
+import { useRegistryContract, GroupInfo } from "@/context/registryContract";
 import { useWallet } from "@/hooks/use-wallet";
 
 import {
@@ -23,15 +23,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type GroupStatusFilter = "all" | "Open" | "Active" | "Completed";
-
-interface GroupInfo {
-  group_id: string;
-  name: string;
-  admin: string;
-  is_public: boolean;
-  total_members: number;
-  created_at: string;
-}
 
 export default function BrowsePage() {
   const { isConnected, connect } = useWallet();
@@ -155,7 +146,7 @@ export default function BrowsePage() {
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Calendar className="h-4 w-4" />
-                        <span>Created {new Date(group.created_at).toLocaleDateString()}</span>
+                        <span>Created {new Date(group.created_at * 1000).toLocaleDateString()}</span>
                       </div>
                       <Link href={`/group/${group.group_id}`}>
                         <Button variant="outline" className="w-full mt-2">

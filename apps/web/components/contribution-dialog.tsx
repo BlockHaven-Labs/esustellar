@@ -55,7 +55,7 @@ export function ContributionDialog({
       // Optimistic UI: immediately show pending state
       setTxState("pending");
 
-      await contract.contribute({ groupId });
+      await contract.contribute(groupId);
 
       setTxState("success");
 
