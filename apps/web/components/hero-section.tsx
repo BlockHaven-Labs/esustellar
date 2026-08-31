@@ -70,7 +70,7 @@ export function HeroSection() {
             <div className="hidden xl:flex items-center justify-center rounded-xl border border-white/20 bg-black/20 p-6 backdrop-blur-sm">
               <div className="text-center">
                 <p className="text-3xl font-bold text-white">500+</p>
-                <p className="text-sm text-white/90">Active Savers</p>
+                <p className="text-sm text-white">Active Savers</p>
               </div>
             </div>
           </div>
@@ -95,7 +95,7 @@ function FeatureCard({
         <Icon className="h-5 w-5 text-white" />
       </div>
       <h3 className="font-semibold text-white">{title}</h3>
-      <p className="mt-1 text-sm text-white/90">{description}</p>
+      <p className="mt-1 text-sm text-white">{description}</p>
     </div>
   )
 }
