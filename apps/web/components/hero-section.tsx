@@ -5,7 +5,7 @@ import { ArrowRight, Shield, Users, TrendingUp } from "lucide-react"
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary-dark to-stellar py-20 md:py-32">
+    <section className="relative overflow-hidden bg-primary-dark bg-gradient-to-br from-primary via-primary-dark to-stellar py-20 md:py-32">
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute top-10 left-10 h-64 w-64 rounded-full bg-white blur-3xl" />
@@ -33,7 +33,7 @@ export function HeroSection() {
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button size="lg" className="bg-background text-primary hover:bg-background/90 font-semibold" asChild>
+              <Button size="lg" className="bg-background text-emerald-700 hover:bg-background/90 font-semibold" asChild>
                 <Link href="/create">
                   Start a Savings Group
                   <ArrowRight className="ml-2 h-4 w-4" />
