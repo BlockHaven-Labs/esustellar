@@ -28,3 +28,18 @@ output "kms_key_arn" {
   value       = aws_kms_key.storage.arn
   sensitive   = true
 }
+
+output "common_tags" {
+  description = "Common resource tags shared with per-environment roots"
+  value       = local.common_tags
+}
+
+output "vpc_id" {
+  description = "ID of the shared VPC"
+  value       = aws_vpc.main.id
+}
+
+output "private_subnet_ids" {
+  description = "IDs of the shared private subnets (usable by Fargate tasks)"
+  value       = aws_subnet.private[*].id
+}
