@@ -1,3 +1,14 @@
+# #997: Sensitive-output audit.
+#
+# Confirmed 2026-09-24: no connection strings, deployer keys, or other
+# secret-adjacent values are exposed as plain Terraform outputs anywhere
+# in this repo (root, every module, state-bootstrap, infra/testnet,
+# environments/staging). kms_key_arn below is marked sensitive since it
+# is used to grant decrypt access to the storage KMS key; every other
+# output here is a non-secret identifier (bucket/role/cluster IDs and
+# ARNs used only for wiring resources together, not for decryption or
+# authentication). Re-run this check whenever a new output is added.
+
 output "aws_region" {
   description = "AWS region in use"
   value       = var.aws_region
