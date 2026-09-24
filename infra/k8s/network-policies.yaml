@@ -9,6 +9,20 @@ spec:
     - Ingress
   ingress: []
 ---
+# Default-deny egress: pods may only reach the explicit allow rules below
+# (DNS + the web's outbound 443/80 + monitoring namespace). A compromised pod
+# cannot exfiltrate data to or reach arbitrary external hosts.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-egress
+  namespace: esustellar
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress: []
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

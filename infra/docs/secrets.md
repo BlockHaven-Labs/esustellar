@@ -75,7 +75,7 @@ secrets after running `scripts/generate-workflows.sh` and committing its output.
 
 ## Rotating Secrets
 
-- **`DEPLOYER_SECRET_KEY`** — rotate with `infra/scripts/rotate-deployer-keypair.sh`, then run `infra/scripts/deploy/validate-env.sh` to confirm the new key is picked up.
+- **`DEPLOYER_SECRET_KEY`** — rotate with `infra/scripts/rotate-deployer-keypair.sh`, then run `infra/scripts/deploy/validate-env.sh --check-deployer-key` to confirm the new key is picked up and has the expected `S…` Stellar secret-key format.
 - **`VERCEL_TOKEN`** — revoke the old token in the Vercel dashboard before adding the new one.
 - **`GHCR_TOKEN`** — the replacement PAT needs `write:packages` and `read:packages`.
 - **`INFRACOST_API_KEY`** — regenerate in the Infracost dashboard; the old key stops working immediately.

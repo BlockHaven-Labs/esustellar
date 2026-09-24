@@ -25,6 +25,7 @@ const state = {};
 for (const { name } of networks) {
   state[name] = { balance: 0, up: 0, error: '' };
 }
+let exporterUp = 1;
 
 async function fetchBalance(net) {
   const { name, horizon } = net;
@@ -48,6 +49,10 @@ async function fetchAll() {
 
 function metrics() {
   const lines = [];
+
+  lines.push('# HELP balance_exporter_up Whether the balance exporter process is running');
+  lines.push('# TYPE balance_exporter_up gauge');
+  lines.push(`balance_exporter_up ${exporterUp}`);
 
   for (const { name } of networks) {
     const { balance, up, error } = state[name];

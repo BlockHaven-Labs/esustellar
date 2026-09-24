@@ -1,3 +1,8 @@
+# #1019: The explicit Certificate below is the authoritative source of TLS
+# state. The Ingress does NOT carry a cert-manager.io/cluster-issuer annotation
+# (removed to avoid cert-manager trying to manage the same esustellar-web-tls
+# secret via annotation-driven auto-Certificates). Overlays patch this
+# Certificate's dnsNames/secretName for per-environment subdomains.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

@@ -154,6 +154,12 @@ out of git.
 | `GRAFANA_ADMIN_PASSWORD` | Every 180 days |
 | `ALERTMANAGER_SLACK_WEBHOOK_URL` | On personnel change |
 
+Rotation deadlines for the date-based secrets above are tracked in
+[`infra/secrets/last-rotated.yml`](./last-rotated.yml) and checked daily by
+the [Secret Rotation Check](../../.github/workflows/secret-rotation-check.yml)
+workflow, which opens a tracking issue once a secret is within its warning
+window. Update `last-rotated.yml` immediately after rotating a secret.
+
 ## What Must NEVER Be Committed
 
 - `.env` files

@@ -1,13 +1,12 @@
 # Terraform Infrastructure
 
-This directory contains the root Terraform configuration for EsuStellar cloud
-resources on AWS, plus the reusable modules it is built from.
+This directory contains the shared root Terraform configuration for EsuStellar cloud resources on AWS, plus the reusable modules and the `state-bootstrap/` root that creates the remote state bucket and lock table.
 
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.6.0
 - AWS account with credentials configured (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` or an assumed role)
-- Remote state bucket and lock table created once per account — see [state-bootstrap/README.md](state-bootstrap/README.md)
+- S3 bucket (`esustellar-terraform-state`) and DynamoDB lock table (`terraform-locks`) created once per AWS account by `state-bootstrap/` — see [state-bootstrap/README.md](state-bootstrap/README.md)
 
 ## Directory Layout
 
@@ -15,13 +14,15 @@ resources on AWS, plus the reusable modules it is built from.
 infra/terraform/
 ├── backend.tf      # S3 remote backend (partial config — see backend/)
 ├── backend/        # Per-environment backend configs (distinct state keys)
+├── backend-config.tf.example  # Copy-paste TEMPLATE for new environment roots — never a live .tf
 ├── providers.tf    # AWS provider version constraints
-├── main.tf         # Resource definitions
+├── main.tf         # Resource definitions (uploads bucket, KMS key, VPC + subnets)
 ├── variables.tf    # Input variables
-├── outputs.tf      # Output values
+├── outputs.tf      # Output values (incl. common_tags / vpc_id / private_subnet_ids)
 ├── modules/        # Reusable modules (vpc, iam, ecr, cdn, dns, ssl)
-├── state-bootstrap/# One-time bootstrap: state bucket + lock table
+├── scripts/        # Operational scripts
 ├── Makefile        # Validation + workflow targets
+├── state-bootstrap/# One-time bootstrap: state bucket + lock table
 └── README.md       # This file
 ```
 
@@ -37,6 +38,13 @@ cp terraform.tfvars.example terraform.tfvars   # review bucket / table names
 terraform init
 terraform apply
 ```
+
+The exact bootstrap order and safeguards are documented in
+[state-bootstrap/README.md](state-bootstrap/README.md):
+
+1. `terraform init && terraform apply` inside `state-bootstrap/` (uses **local** state, chicken-and-egg — the bucket doesn't exist yet).
+2. `terraform init -reconfigure` in *this* directory → starts using S3 (`infra/terraform.tfstate`).
+3. Each environment root (`infra/testnet/`, …) points at its own S3 key.
 
 This creates:
 
@@ -66,6 +74,25 @@ terraform init -reconfigure -backend-config=backend/staging.hcl
 The full state-key map for every Terraform root in the repo is in
 [infra/docs/terraform-state.md](../docs/terraform-state.md).
 
+> ⚠️ The two-file split (`backend.tf` vs `backend-config.tf.example`) used to be a
+> common source of confusion — `backend.tf` is the **partial** backend for this
+> root, while `backend-config.tf.example` is only a **template** for brand-new
+> roots. Keeping the template as `.tf.example` also prevents Terraform from
+> compiling a duplicate backend block.
+
+## Adding a new environment root
+
+```bash
+mkdir -p infra/<env>
+cp infra/terraform/backend/testnet.hcl infra/terraform/backend/<env>.hcl
+# edit infra/terraform/backend/<env>.hcl: set the state key to <env>/terraform.tfstate
+```
+
+Or, when mirroring the older root-template flow, copy
+`infra/terraform/backend-config.tf.example` to `infra/<env>/backend.tf` and
+replace `<ENV>` with the environment name, then run
+`terraform init -backend=true -reconfigure` from that root.
+
 ## Validate
 
 ```bash
@@ -79,7 +106,9 @@ This runs:
 3. `terraform validate`
 
 Because it passes `-backend=false`, validation needs no AWS credentials and no
-access to the state bucket.
+access to the state bucket. The same checks are wired into
+`.github/workflows/terraform-drift.yml`; a scheduled job also runs
+`terraform plan` against the real backend to catch drift (see issue #998).
 
 ## Apply
 
@@ -118,3 +147,15 @@ make apply
 (`kms_key_arn`, `cloudfront_distribution_arn`, `ecs_cluster_arn`,
 `ecs_service_arns`) so that no policy is granted on `"*"`. See
 [modules/iam/variables.tf](modules/iam/variables.tf).
+
+State is stored in S3 with:
+- **Bucket:** `esustellar-terraform-state`
+- **Key:** `infra/terraform.tfstate`
+- **DynamoDB Lock Table:** `terraform-locks`
+- **Encryption:** Enabled
+
+## Related
+
+- [state-bootstrap/README.md](state-bootstrap/README.md) — bootstrap order + safeguard notes (`#1000`, `#1001`)
+- [testnet roots](../testnet/) — per-environment root using this shared module; remote backend via `backend.tf`
+- Blocked changes are detected by `.github/workflows/terraform-drift.yml` (`#998`)
