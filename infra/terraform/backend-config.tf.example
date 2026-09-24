@@ -1,0 +1,21 @@
+# Template: S3 remote backend block for NEW Terraform roots.
+#
+# This file is an EXAMPLE and MUST NOT be loaded by a running root.
+# When first added alongside a live `backend.tf`, it caused a
+# "Duplicate backend configuration" error on `terraform init`/`validate`
+# (see #1001). Keep it as `.tf.example` so it is never compiled.
+#
+# To create a new per-environment root (e.g. `infra/staging/`):
+#   1. Copy this file to `backend.tf` in the new root.
+#   2. Replace `<ENV>` with the environment name (e.g. `staging`, `testnet`).
+#   3. Ensure the state bucket + lock table were created by
+#      `infra/terraform/state-bootstrap/` (see its README).
+terraform {
+  backend "s3" {
+    bucket         = "esustellar-terraform-state"
+    key            = "<ENV>/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "esustellar-terraform-locks"
+    encrypt        = true
+  }
+}

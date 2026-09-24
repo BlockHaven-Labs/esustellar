@@ -1,0 +1,46 @@
+name: Monitoring Dashboard Validation
+
+on:
+  pull_request:
+    paths:
+      - "infra/monitoring/grafana/dashboards/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-dashboards:
+    name: Validate Grafana Dashboards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install grafana-dashboard-validator
+        run: npm install -g grafana-dashboard-validator
+
+      - name: Validate on-chain-events.json
+        run: |
+          grafana-dashboard-validator validate infra/monitoring/grafana/dashboards/on-chain-events.json
+
+      - name: Validate web-app-golden-signals.json
+        run: |
+          grafana-dashboard-validator validate infra/monitoring/grafana/dashboards/web-app-golden-signals.json
+
+      - name: Check metric references exist in alert-rules
+        run: |
+          # Extract metric names from dashboards and check they exist in alert-rules or exporter code
+          echo "Checking metric references..."
+          METRICS=$(grep -oE '(rate|increase|histogram_quantile)\([^)]+' infra/monitoring/grafana/dashboards/*.json | sed -E 's/.*\{([^}]+)\}.*/\1/' | sort -u)
+          for metric in $METRICS; do
+            base_metric=$(echo "$metric" | cut -d'{' -f1)
+            if ! grep -q "$base_metric" infra/monitoring/prometheus/alert-rules.yaml monitoring/balance-exporter/index.mjs 2>/dev/null; then
+              echo "⚠️  Warning: Metric '$base_metric' referenced in dashboard but not found in alert-rules.yaml or exporter code"
+            fi
+          done
+          echo "Metric reference check complete."

@@ -1,39 +1,53 @@
 # Terraform Infrastructure
 
-This directory contains the root Terraform configuration for EsuStellar cloud resources on AWS.
+This directory contains the shared root Terraform configuration for EsuStellar cloud resources on AWS, plus the `state-bootstrap/` root that creates the remote state bucket and lock table.
 
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.6.0
 - AWS account with credentials configured (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` or assumed role)
-- S3 bucket (`esustellar-terraform-state`) and DynamoDB lock table (`esustellar-terraform-locks`) pre-created in `us-east-1`
+- S3 bucket (`esustellar-terraform-state`) and DynamoDB lock table (`esustellar-terraform-locks`) created by `state-bootstrap/` (see below)
 
 ## Directory Layout
 
 ```
 infra/terraform/
-├── backend.tf      # S3 remote backend + DynamoDB locking
-├── providers.tf    # AWS provider version constraints
-├── main.tf         # Resource definitions
-├── variables.tf    # Input variables
-├── outputs.tf      # Output values
-├── Makefile        # Validation + workflow targets
-└── README.md       # This file
+├── backend.tf                 # Live S3 remote backend + DynamoDB locking (this root)
+├── backend-config.tf.example  # Copy-paste TEMPLATE for NEW environment roots — never a live .tf
+├── providers.tf               # AWS provider version constraints + default tags
+├── main.tf                    # Shared resources (uploads bucket, KMS key, VPC + subnets)
+├── variables.tf               # Input variables
+├── outputs.tf                 # Output values (incl. common_tags / vpc_id / private_subnet_ids)
+├── Makefile                   # Validation + workflow targets
+├── README.md                  # This file
+└── state-bootstrap/           # One-time bootstrap of the S3 bucket + DynamoDB lock table
 ```
 
-## Bootstrap (One-Time)
+## Bootstrap (one time per AWS account)
 
-Before the first `terraform init`, create the remote state bucket and lock table:
+The remote backend for every root is created by `state-bootstrap/`. The exact
+order is documented in [state-bootstrap/README.md](state-bootstrap/README.md):
+
+1. `terraform init && terraform apply` inside `state-bootstrap/` (uses **local** state, chicken-and-egg — the bucket doesn't exist yet).
+2. `terraform init -reconfigure` in *this* directory → starts using S3 (`infra/terraform.tfstate`).
+3. Each environment root (`infra/testnet/`, …) points at its own S3 key.
+
+> ⚠️ The two-file split (`backend.tf` vs `backend-config.tf`) used to be a
+> common source of confusion — `backend.tf` is the **live** backend for this
+> root, while `backend-config.tf.example` is only a **template** for brand-new
+> roots. Keeping the template as `.tf.example` also prevents Terraform from
+> compiling a duplicate backend block.
+
+## Adding a new environment root
 
 ```bash
-aws s3 mb s3://esustellar-terraform-state --region us-east-1
-aws dynamodb create-table \
-  --table-name esustellar-terraform-locks \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
+mkdir -p infra/<env>
+cp infra/terraform/backend-config.tf.example infra/<env>/backend.tf
+# edit infra/<env>/backend.tf: replace <ENV> with the environment name
+# (state key becomes <env>/terraform.tfstate)
 ```
+
+Then `terraform init -backend=true -reconfigure` from that root.
 
 ## Validate
 
@@ -46,6 +60,10 @@ This runs:
 1. `terraform fmt -check -recursive`
 2. `terraform init -backend=false`
 3. `terraform validate`
+
+The same checks are wired into `.github/workflows/terraform-drift.yml`; a
+scheduled job also runs `terraform plan` against the real backend to catch
+drift (see issue #998).
 
 ## Apply
 
@@ -64,7 +82,7 @@ make apply
 | Variable | Description | Default |
 |---|---|---|
 | `aws_region` | AWS region for resources | `us-east-1` |
-| `environment` | Deployment environment | `testnet` |
+| `environment` | Deployment environment | — (required) |
 | `project_name` | Project name prefix | `esustellar` |
 | `enable_logging` | Enable audit logging | `true` |
 | `allowed_ingress_cidrs` | Allowed inbound CIDR blocks | `["0.0.0.0/0"]` |
@@ -76,30 +94,9 @@ State is stored in S3 with:
 - **Key:** `infra/terraform.tfstate`
 - **DynamoDB Lock Table:** `esustellar-terraform-locks`
 - **Encryption:** Enabled
-# Terraform
 
-This directory contains Terraform configurations for managing EsuStellar infrastructure.
+## Related
 
-## Layout
-
-```
-terraform/
-├── README.md                # This file
-├── backend-config.tf        # Reusable remote backend config template
-└── state-bootstrap/         # Bootstrap module: S3 bucket + DynamoDB for remote state
-```
-
-## Quick Start
-
-### 1. Bootstrap remote state infrastructure
-
-See [state-bootstrap/README.md](state-bootstrap/README.md).
-
-### 2. Use the remote backend
-
-After bootstrapping, copy `backend-config.tf` into each Terraform module and update the `key` to match the environment (e.g. `testnet/terraform.tfstate`).
-
-## Prerequisites
-
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.5
-- AWS credentials configured (env vars, `~/.aws/credentials`, or IAM role)
+- [state-bootstrap/README.md](state-bootstrap/README.md) — bootstrap order + safeguard notes (`#1000`, `#1001`)
+- [testnet roots](../testnet/) — per-environment root using this shared module; remote backend via `backend.tf`
+- Blocked changes are detected by `.github/workflows/terraform-drift.yml` (`#998`)
