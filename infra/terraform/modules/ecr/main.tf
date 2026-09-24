@@ -3,7 +3,7 @@
 
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
-  repos       = ["savings", "registry"]
+  repos       = ["savings", "registry", "esustellar-web", "balance-exporter"]
 }
 
 resource "aws_ecr_repository" "this" {

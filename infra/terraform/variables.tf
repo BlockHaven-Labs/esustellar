@@ -5,7 +5,7 @@ variable "aws_region" {
 }
 
 variable "environment" {
-  description = "Deployment environment (testnet, staging, mainnet)"
+  description = "Deployment environment (testnet, staging, mainnet). No default — must be explicitly set via -var-file or -var to avoid accidentally targeting production."
   type        = string
 
   validation {
