@@ -8,9 +8,10 @@ terraform {
     }
   }
 
-
-
-  
+  # #990: separate Terraform root, so it owns a distinct state key.
+  #   terraform init -backend-config=backend/staging.hcl
+  # See infra/docs/terraform-state.md for the state-key map covering every root.
+  backend "s3" {}
 }
 
 provider "kubernetes" {

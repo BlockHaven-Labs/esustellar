@@ -4,10 +4,10 @@
 module "shared" {
   source = "../terraform"
 
-  project_name         = var.project_name
-  environment          = "testnet"
-  aws_region           = var.aws_region
-  enable_logging       = true
+  project_name          = var.project_name
+  environment           = "testnet"
+  aws_region            = var.aws_region
+  enable_logging        = true
   allowed_ingress_cidrs = var.allowed_ingress_cidrs
 }
 
@@ -67,7 +67,7 @@ resource "aws_ecs_task_definition" "web" {
 
       environment = [
         { name = "NEXT_PUBLIC_STELLAR_NETWORK", value = "testnet" },
-        { name = "NEXT_TELEMETRY_DISABLED",     value = "1" },
+        { name = "NEXT_TELEMETRY_DISABLED", value = "1" },
       ]
 
       secrets = [

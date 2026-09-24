@@ -14,7 +14,10 @@ terraform plan
 terraform apply
 ```
 
-After bootstrapping, copy the output values into the `backend "s3"` block of downstream Terraform configs (see `../backend-config.tf`).
+After bootstrapping, point each downstream Terraform root at this bucket via its
+per-environment backend config (`backend/*.hcl`). Every root uses a distinct
+state key — see [infra/docs/terraform-state.md](../../docs/terraform-state.md)
+for the full state-key map.
 
 ## Resources
 
