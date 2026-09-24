@@ -6,6 +6,24 @@ metadata:
 data:
   alert-rules.yml: |
     groups:
+      - name: esustellar-meta-monitoring
+        rules:
+          - alert: PrometheusConfigReloadFailed
+            expr: prometheus_config_last_reload_successful == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Prometheus config reload failed"
+              description: "Prometheus failed to reload its configuration. Check Alertmanager and Prometheus logs for details."
+          - alert: PrometheusNotReady
+            expr: up{job="prometheus"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Prometheus is down"
+              description: "Prometheus has been down for more than 1 minute. No alerts will be evaluated."
       - name: esustellar-web
         rules:
           - alert: WebAppDown

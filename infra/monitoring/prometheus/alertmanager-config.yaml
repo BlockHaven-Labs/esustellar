@@ -13,16 +13,25 @@ data:
         - match:
             severity: critical
           receiver: 'critical'
+        - match:
+            severity: warning
+          receiver: 'warning'
     receivers:
       - name: 'default'
         slack_configs:
-          - api_url: 'https://hooks.slack.com/services/T00/XXX/YYY'
+          - api_url: '{{ .Env.SLACK_WEBHOOK_URL }}'
             channel: '#ops-alerts'
             title: '{{ .GroupLabels.alertname }}'
             text: '{{ .CommonAnnotations.description }}'
       - name: 'critical'
         slack_configs:
-          - api_url: 'https://hooks.slack.com/services/T00/XXX/YYY'
+          - api_url: '{{ .Env.SLACK_WEBHOOK_URL }}'
             channel: '#ops-critical'
+            title: '{{ .GroupLabels.alertname }}'
+            text: '{{ .CommonAnnotations.description }}'
+      - name: 'warning'
+        slack_configs:
+          - api_url: '{{ .Env.SLACK_WEBHOOK_URL }}'
+            channel: '#ops-warnings'
             title: '{{ .GroupLabels.alertname }}'
             text: '{{ .CommonAnnotations.description }}'
