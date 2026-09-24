@@ -21,8 +21,9 @@ echo "[$(date)] Backup uploaded: ${BACKUP_BUCKET}/indexer/${TIMESTAMP}.sql.gz"
 CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d)
 echo "[$(date)] Cleaning up backups older than ${CUTOFF_DATE}..."
 
+# aws s3 ls outputs dates as YYYY-MM-DD; convert to YYYYMMDD for correct lexicographic comparison
 aws s3 ls "${BACKUP_BUCKET}/indexer/" | \
-  awk -v cutoff="$CUTOFF_DATE" '$1 < cutoff {print $4}' | \
+  awk -v cutoff="$CUTOFF_DATE" '{ gsub("-", "", $1); if ($1 < cutoff) print $4 }' | \
   grep -v '^$' | \
   xargs -I {} aws s3 rm "${BACKUP_BUCKET}/indexer/{}" || true
 
