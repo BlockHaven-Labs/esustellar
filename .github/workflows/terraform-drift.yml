@@ -1,0 +1,117 @@
+# #998: Terraform state-locking verification + drift-detection CI.
+#
+# - Validate:   runs on every PR touching infra, catches syntax/fmt breakage
+#               without needing any AWS credentials.
+# - Drift:      scheduled `terraform plan` against the live S3 backend; the
+#               job FAILS when the plan detects changes (drift) so infra never
+#               silently diverges from what's in version control.
+# - Locking:    scheduled assertion that the DynamoDB lock table actually
+#               blocks a concurrent `terraform plan`.
+#
+# The AWS-backed jobs only run on schedule/workflow_dispatch and are skipped
+# when the repository has no AWS credentials configured (secrets set).
+
+name: Terraform Drift & State Locking
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - "infra/testnet/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Format check
+        run: terraform fmt -check -recursive infra/
+
+      - name: Validate infra/terraform
+        working-directory: infra/terraform
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate -no-color
+
+      - name: Validate infra/testnet
+        working-directory: infra/testnet
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate -no-color
+
+  drift-detection:
+    name: Detect Terraform Drift
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Skip when AWS credentials are not configured
+        if: env.AWS_ACCESS_KEY_ID == ''
+        run: echo "::warning::AWS credentials not configured; skipping drift detection."
+
+      - name: Plan infra/terraform (fail on drift)
+        if: env.AWS_ACCESS_KEY_ID != ''
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false
+          terraform plan -detailed-exitcode -input=false -no-color
+        # exit code 2 from -detailed-exitcode means the plan proposes changes
+        # (drift); treat it as a failure.
+
+      - name: Plan infra/testnet (fail on drift)
+        if: env.AWS_ACCESS_KEY_ID != ''
+        working-directory: infra/testnet
+        run: |
+          terraform init -input=false
+          terraform plan -detailed-exitcode -input=false -no-color
+
+  state-locking:
+    name: Verify State Locking
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Skip when AWS credentials are not configured
+        if: env.AWS_ACCESS_KEY_ID == ''
+        run: echo "::warning::AWS credentials not configured; skipping lock verification."
+
+      - name: Verify DynamoDB state locking
+        if: env.AWS_ACCESS_KEY_ID != ''
+        working-directory: infra/terraform
+        run: ./scripts/verify-state-lock.sh infra/terraform

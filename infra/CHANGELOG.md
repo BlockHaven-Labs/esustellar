@@ -23,3 +23,20 @@ This changelog follows the infra versioning strategy defined in `docs/infra-vers
 ### Added
 - Terraform bootstrap module (`infra/terraform/state-bootstrap/`) for S3 + DynamoDB remote state
 - Reusable backend config template (`infra/terraform/backend-config.tf`)
+
+## [0.3.0] - 2026-09-23
+
+### Added
+- Remote S3 backend for the testnet root (`infra/testnet/backend.tf`) so it never silently uses local state (#1002)
+- Scheduled Terraform drift-detection + state-locking CI job (`.github/workflows/terraform-drift.yml`) (#998)
+- `verify-state-lock.sh` + `make verify-state-lock` / `make drift-check` targets (#998)
+- Shared VPC, private subnets, NAT (<-> internet gateway) in `infra/terraform` for per-environment roots (#1002)
+
+### Changed
+- `infra/terraform/backend-config.tf` renamed to `backend-config.tf.example` to prevent a duplicate backend-block compile error (#1001)
+- Lock table default aligned to `esustellar-terraform-locks` across `state-bootstrap/`, `backend-config.tf.example`, and docs (#1000, #998, #1002)
+- `state-bootstrap/README.md` rewritten with the exact bootstrap order and the `backend.tf` vs `backend-config.tf.example` split (#1001)
+
+### Fixed
+- `prevent_destroy = true` now also guards the DynamoDB lock table in `state-bootstrap/` (previously only the S3 bucket) (#1000)
+- Duplicate `ecs_cluster_arn` output in `infra/testnet/` resolved (#1002)
