@@ -50,6 +50,8 @@ data "aws_iam_policy_document" "task_permissions" {
     ]
   }
 
+  # #991: scoped to the single storage KMS key (aws_kms_key.storage) rather than
+  # "*" — a wildcard here would let the task decrypt every key in the account.
   statement {
     sid    = "KMSDecrypt"
     effect = "Allow"
@@ -57,7 +59,7 @@ data "aws_iam_policy_document" "task_permissions" {
       "kms:Decrypt",
       "kms:GenerateDataKey",
     ]
-    resources = ["*"]
+    resources = [var.kms_key_arn]
   }
 }
 
