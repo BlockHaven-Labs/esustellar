@@ -43,8 +43,8 @@ The exact bootstrap order and safeguards are documented in
 [state-bootstrap/README.md](state-bootstrap/README.md):
 
 1. `terraform init && terraform apply` inside `state-bootstrap/` (uses **local** state, chicken-and-egg — the bucket doesn't exist yet).
-2. `terraform init -reconfigure` in *this* directory → starts using S3 (`infra/terraform.tfstate`).
-3. Each environment root (`infra/testnet/`, …) points at its own S3 key.
+2. `terraform init -reconfigure -backend-config=backend/testnet.hcl` (or `staging.hcl`/`mainnet.hcl`) in *this* directory → starts using S3 (per-environment key from `backend/*.hcl`).
+3. Each environment root (`infra/testnet/`, `environments/staging/`, …) points at its own S3 key.
 
 This creates:
 
@@ -148,11 +148,11 @@ make apply
 `ecs_service_arns`) so that no policy is granted on `"*"`. See
 [modules/iam/variables.tf](modules/iam/variables.tf).
 
-State is stored in S3 with:
-- **Bucket:** `esustellar-terraform-state`
-- **Key:** `infra/terraform.tfstate`
-- **DynamoDB Lock Table:** `terraform-locks`
-- **Encryption:** Enabled
+State is stored in S3 (bucket `esustellar-terraform-state`, DynamoDB lock table
+`terraform-locks`, encryption enabled). Because this root is applied **once per
+environment**, the state key comes from the `backend/*.hcl` config you pass at
+`init` time (e.g. `infra/terraform/testnet/terraform.tfstate`); see
+[infra/docs/terraform-state.md](../docs/terraform-state.md) for the full map.
 
 ## Related
 

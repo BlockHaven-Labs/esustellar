@@ -26,17 +26,17 @@ Therefore **this root is always run with local state first**, and only after the
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│ 2. Infra root             infra/terraform/backend.tf               │
-│    terraform init -reconfigure                                   │
-│    terraform plan / apply  →  S3 backend, bucket "esustellar-     │
-│    terraform-state", key "infra/terraform.tfstate"                │
+│ 2. Infra root             infra/terraform/backend.tf (partial)        │
+│    terraform init -reconfigure -backend-config=backend/testnet.hcl  │
+│    terraform plan / apply  →  S3 backend, bucket "esustellar-        │
+│    terraform-state", per-env key from backend/*.hcl                 │
 └────────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│ 3. Per-environment roots  (e.g. infra/testnet/backend.tf)          │
-│    Each root declares its OWN backend.tf with a distinct key like  │
-│    "testnet/terraform.tfstate" (see ../backend-config.tf.example). │
+│ 3. Per-environment roots  (e.g. infra/testnet/backend.tf)           │
+│    Each root uses the SAME partial backend, supplied via its own    │
+│    backend/<env>.hcl (see ../backend-config.tf.example template).   │
 └────────────────────────────────────────────────────────────────────┘
 ```
 

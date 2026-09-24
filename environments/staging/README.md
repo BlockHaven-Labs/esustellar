@@ -18,7 +18,7 @@ environments/staging/
 
 ```bash
 cd environments/staging
-terraform init
+terraform init -backend-config=backend/staging.hcl
 terraform plan
 terraform apply
 ```
