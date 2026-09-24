@@ -53,11 +53,11 @@
     "react-native-svg": "15.2.0",
     "react-native-web": "~0.19.10",
     "react-native-webview": "^13.8.0",
-    "react-test-renderer": "18.2.0",
+    "react-test-renderer": "19.2.8",
     "zustand": "^4.5.2"
   },
   "overrides": {
-    "react-test-renderer": "18.2.0"
+    "react-test-renderer": "19.2.8"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
