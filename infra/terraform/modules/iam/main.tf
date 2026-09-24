@@ -122,6 +122,8 @@ data "aws_iam_policy_document" "cicd_permissions" {
     ]
   }
 
+  # #992: scoped to this project's distribution instead of "*", which allowed
+  # the CI/CD role to invalidate any distribution in the account.
   statement {
     sid    = "CloudFrontInvalidation"
     effect = "Allow"
@@ -129,17 +131,40 @@ data "aws_iam_policy_document" "cicd_permissions" {
       "cloudfront:CreateInvalidation",
       "cloudfront:GetInvalidation",
     ]
-    resources = ["*"]
+    resources = [var.cloudfront_distribution_arn]
   }
 
+  # #992: scoped to this project's services, and further constrained to the
+  # project's cluster, instead of "*" (which allowed updating any ECS service
+  # in the account).
   statement {
-    sid    = "ECSUpdateService"
+    sid    = "ECSServiceDeploy"
     effect = "Allow"
     actions = [
       "ecs:UpdateService",
       "ecs:DescribeServices",
-      "ecs:DescribeTaskDefinition",
+    ]
+    resources = var.ecs_service_arns
+
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [var.ecs_cluster_arn]
+    }
+  }
+
+  # #992: ecs:RegisterTaskDefinition and ecs:DescribeTaskDefinition are account-
+  # level actions — AWS does not support resource-level permissions for them, so
+  # "*" is the only valid resource. They are kept in their own statement so the
+  # wildcard is visibly limited to these two actions rather than silently
+  # covering ecs:UpdateService as well.
+  # Ref: https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelasticcontainerservice.html
+  statement {
+    sid    = "ECSTaskDefinitionRegistration"
+    effect = "Allow"
+    actions = [
       "ecs:RegisterTaskDefinition",
+      "ecs:DescribeTaskDefinition",
     ]
     resources = ["*"]
   }
