@@ -1,6 +1,11 @@
+# #1000: Bootstrap configuration for the remote-state S3 bucket + DynamoDB lock table.
+#
+# NOTE: the lock table name MUST match ../backend.tf and
+# ../backend-config.tf.example (esustellar-terraform-locks). If these drift
+# apart, downstream `terraform init` will fail to find the lock table.
 aws_region         = "us-east-1"
 state_bucket_name  = "esustellar-terraform-state"
-lock_table_name    = "terraform-locks"
+lock_table_name    = "esustellar-terraform-locks"
 tags = {
   Environment = "production"
   Project     = "esustellar"

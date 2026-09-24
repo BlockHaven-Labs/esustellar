@@ -25,7 +25,7 @@ This document lists all secrets that must be configured in the repository
 
 ## Rotating Secrets
 
-- **DEPLOYER_SECRET_KEY**: Run `infra/scripts/deploy/validate-env.sh` after rotation to confirm the new key is picked up.
+- **DEPLOYER_SECRET_KEY**: After rotation, run `infra/scripts/deploy/validate-env.sh --check-deployer-key` to confirm the new key is picked up and has the expected `S…` Stellar secret-key format.
 - **VERCEL_TOKEN**: Revoke the old token in the Vercel dashboard before adding the new one.
 - **GHCR_PAT**: Ensure the new token retains the `write:packages` and `read:packages` scopes.
 

@@ -6,6 +6,34 @@ metadata:
 data:
   alert-rules.yml: |
     groups:
+- name: esustellar-meta-monitoring
+        rules:
+          - alert: PrometheusConfigReloadFailed
+            expr: prometheus_config_last_reload_successful == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Prometheus config reload failed"
+              description: "Prometheus failed to reload its configuration. Check Alertmanager and Prometheus logs for details."
+          - alert: PrometheusNotReady
+            expr: up{job="prometheus"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Prometheus is down"
+              description: "Prometheus has been down for more than 1 minute. No alerts will be evaluated."
+      - name: esustellar-balance-exporter
+        rules:
+          - alert: BalanceExporterDown
+            expr: balance_exporter_up == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Deployer balance exporter is down"
+              description: "The deployer-balance-exporter process has been down for more than 2 minutes. This is distinct from DeployerAccountUnreachable which indicates Horizon is unreachable."
       - name: esustellar-web
         rules:
           - alert: WebAppDown
@@ -24,6 +52,9 @@ data:
             annotations:
               summary: "High error rate on web app"
               description: "Error rate is above 5% for the last 5 minutes."
+      # The metrics `deployer_account_balance_threshold_warning`, `deployer_account_balance_threshold_critical`,
+# and `deployer_account_up` are computed by the balance-exporter (monitoring/balance-exporter/index.mjs).
+# See also the esustellar-balance-exporter group for BalanceExporterDown alert (exporter process health).
       - name: esustellar-deployer-balance
         rules:
           - alert: DeployerBalanceWarning
