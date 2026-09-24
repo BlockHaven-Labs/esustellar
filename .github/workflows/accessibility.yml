@@ -72,7 +72,7 @@ jobs:
       # Always upload the JSON report so findings are preserved even on failure
       - name: Upload a11y report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: a11y-report
           path: a11y-report.json
@@ -81,7 +81,7 @@ jobs:
       # Upload Playwright test traces / screenshots on failure
       - name: Upload Playwright test results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-results
           path: apps/web/test-results/
