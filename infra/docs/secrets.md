@@ -3,6 +3,8 @@
 This document lists all secrets that must be configured in the repository
 **Settings → Secrets and variables → Actions** before CI/CD workflows will work.
 
+
+
 ## Required Secrets
 
 | Secret Name | Description | Example / Where to find it |
