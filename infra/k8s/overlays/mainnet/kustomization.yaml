@@ -21,3 +21,19 @@ patches:
             value: public
           - name: STELLAR_NETWORK
             value: public
+  # #1018: mainnet owns the apex domain.
+  - target:
+      kind: Ingress
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: esustellar.io
+  # #1019: Certificate is the authoritative TLS source (no ingress annotation).
+  - target:
+      kind: Certificate
+      name: esustellar-web-tls
+    patch: |-
+      - op: replace
+        path: /spec/secretName
+        value: esustellar-web-tls
