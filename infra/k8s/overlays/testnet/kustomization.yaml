@@ -4,8 +4,10 @@ namespace: esustellar-testnet
 resources:
   - ../../base
 images:
-  - name: blockhaven/esustellar-web
+  - name: ghcr.io/blockhaven-labs/esustellar-web
     newTag: testnet-latest
+commonLabels:
+  app.kubernetes.io/version: "testnet-latest"
 replicas:
   - name: esustellar-web
     count: 1

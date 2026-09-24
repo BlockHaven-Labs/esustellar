@@ -7,6 +7,8 @@ metadata:
     app: esustellar-web
     environment: staging
 data:
+  # STAGING VALUES MUST BE POPULATED BEFORE DEPLOYMENT
+  # DO NOT COMMIT REAL CONTRACT IDs - use CI/CD secrets injection
   NEXT_PUBLIC_SAVINGS_CONTRACT_ID: ""
   NEXT_PUBLIC_REGISTRY_CONTRACT_ID: ""
   NEXT_PUBLIC_CONTRACT_ID: ""

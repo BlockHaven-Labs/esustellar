@@ -9,3 +9,4 @@ resources:
   - certificate.yaml
 commonLabels:
   app.kubernetes.io/part-of: esustellar
+  app.kubernetes.io/version: "latest"
