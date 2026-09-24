@@ -9,7 +9,6 @@ Developer Push → GitHub Actions → Build → Deploy → Smoke Test → Log Ar
 ## Prerequisite: Terraform Remote State
 
 Before deploying infrastructure with Terraform, bootstrap the remote state backend:
-  // const [loading, setLoading] = useState(true);
 ```bash
 cd infra/terraform/state-bootstrap
 cp terraform.tfvars.example terraform.tfvars
@@ -18,7 +17,7 @@ terraform init
 terraform apply
 ```
 
-This creates an S3 bucket (with versioning and encryption) and a DynamoDB table for state locking. All downstream Terraform configs use this remote backend automatically.
+This creates an S3 bucket (with versioning and encryption) and a DynamoDB table for state locking. Downstream Terraform roots use this remote backend; those with a partial `backend "s3" {}` block need `terraform init -backend-config=backend/<env>.hcl`.
 
 ## Step-by-Step
 

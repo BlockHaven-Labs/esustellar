@@ -26,17 +26,17 @@ Therefore **this root is always run with local state first**, and only after the
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│ 2. Infra root             infra/terraform/backend.tf               │
-│    terraform init -reconfigure                                   │
-│    terraform plan / apply  →  S3 backend, bucket "esustellar-     │
-│    terraform-state", key "infra/terraform.tfstate"                │
+│ 2. Infra root             infra/terraform/backend.tf (partial)        │
+│    terraform init -reconfigure -backend-config=backend/testnet.hcl  │
+│    terraform plan / apply  →  S3 backend, bucket "esustellar-        │
+│    terraform-state", per-env key from backend/*.hcl                 │
 └────────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│ 3. Per-environment roots  (e.g. infra/testnet/backend.tf)          │
-│    Each root declares its OWN backend.tf with a distinct key like  │
-│    "testnet/terraform.tfstate" (see ../backend-config.tf.example). │
+│ 3. Per-environment roots  (e.g. infra/testnet/backend.tf)           │
+│    Each root uses the SAME partial backend, supplied via its own    │
+│    backend/<env>.hcl (see ../backend-config.tf.example template).   │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,15 +57,21 @@ table, so an accidental re-apply/destroy cannot orphan the shared state.
 
 ### Step 2 — point the main infra root at S3
 
-`infra/terraform/backend.tf` is the *live* S3 backend used by that root.
-Do not edit it; just initialize:
+`infra/terraform/backend.tf` is a *partial* S3 backend used by that root,
+supplied via `backend/<env>.hcl`. Do not edit it; just initialize with the
+matching config:
 
 ```bash
 cd infra/terraform
-terraform init -reconfigure     # now talks to S3 + DynamoDB
+terraform init -reconfigure -backend-config=backend/testnet.hcl   # now talks to S3 + DynamoDB
 terraform plan
 terraform apply
 ```
+
+After bootstrapping, point each downstream Terraform root at this bucket via its
+per-environment backend config (`backend/*.hcl`). Every root uses a distinct
+state key — see [infra/docs/terraform-state.md](../../docs/terraform-state.md)
+for the full state-key map.
 
 ### Step 3 — per-environment roots
 
@@ -78,7 +84,7 @@ root, copy `../backend-config.tf.example` → `backend.tf` and replace `<ENV>`.
 | File | Role |
 |---|---|
 | `state-bootstrap/` (this root) | One-time local-state bootstrap of bucket + lock table |
-| `../backend.tf` | Live S3 backend for the `infra/terraform` root |
+| `../backend.tf` + `../backend/*.hcl` | Partial S3 backend for the `infra/terraform` root (per-environment state keys) |
 | `../backend-config.tf.example` | Copy-paste **template** for new environment roots — never a live `.tf` |
 
 ## Optionally migrating this root's own state
