@@ -48,7 +48,7 @@ jobs:
       # root npm workspaces) and relies on --legacy-peer-deps to resolve peer
       # conflicts, so cache by package.json hash rather than a committed lockfile.
       - name: Cache npm dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-mobile-npm-${{ hashFiles('mobile/package.json') }}
