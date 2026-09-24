@@ -37,10 +37,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -48,7 +48,7 @@ jobs:
       # root npm workspaces) and relies on --legacy-peer-deps to resolve peer
       # conflicts, so cache by package.json hash rather than a committed lockfile.
       - name: Cache npm dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-mobile-npm-${{ hashFiles('mobile/package.json') }}

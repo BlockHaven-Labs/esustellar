@@ -10,16 +10,15 @@ The infra folder includes:
 - `docs/` — architecture, deployment, runbooks, standards.
 
 ## Branch Protection
-  // const [loading, setLoading] = useState(true);
 
 The `main` branch is protected with enforced rules:
 - **Required status checks**: Docker CI and E2E Status Gate must pass
 - **PR reviews**: At least 1 approval required
-- **Force pushes**: Disallowed,
+- **Force pushes**: Disallowed
 
 See `docs/branch-protection.md` for detailed configuration and setup instructions.
 
-## Principles,
+## Principles
 
 1. **All infra changes must be reviewed** — no direct pushes to `main`
 2. **Docs must stay in sync with code** — update docs in the same PR

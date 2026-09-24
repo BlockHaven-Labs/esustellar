@@ -13,7 +13,7 @@ resource "aws_acm_certificate" "this" {
   }
 
   tags = {
-    Project     = "esustellar"
+    Project     = var.project_name
     Environment = var.environment
     ManagedBy   = "terraform"
   }

@@ -9,3 +9,4 @@ configMapGenerator:
   - name: prometheus-alert-rules
     files:
       - alert-rules.yaml
+      - rpc-alerts.yaml
