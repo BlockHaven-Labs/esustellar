@@ -1,6 +1,18 @@
 # EsuStellar Testnet Environment
 
-This directory contains the complete testnet workspace for Stellar Testnet contract deployments and supporting infrastructure.
+> **ARCHIVED — Kubernetes tree removed.** The `k8s/` manifests that previously
+> lived in this directory were removed (issue #1027): they duplicated
+> `infra/k8s/overlays/testnet/` and had drifted out of sync (different image
+> tag, replicas, resources, probes). `infra/k8s/overlays/testnet/` (kustomize)
+> is the canonical, maintained testnet deployment. Use it via:
+>
+> ```bash
+> kubectl kustomize infra/k8s/overlays/testnet | kubectl apply -f -
+> ```
+>
+> This directory now covers contract deployment and Docker Compose only.
+
+This directory contains the testnet workspace for Stellar Testnet contract deployments and supporting infrastructure.
 
 ## Directory Structure
 
@@ -13,12 +25,6 @@ environments/testnet/
 │   └── secrets.example   # Secrets template
 ├── scripts/               # Deployment and utility scripts
 │   └── deploy.sh         # Contract deployment script
-├── k8s/                   # Kubernetes manifests
-│   ├── namespace.yaml    # Kubernetes namespace
-│   ├── configmap.yaml    # Application configuration
-│   ├── secret.yaml       # Kubernetes secrets template
-│   ├── deployment.yaml   # Application deployment
-│   └── service.yaml      # Service configuration
 └── deployment-info.json   # Deployment metadata (created after deploy)
 ```
 
@@ -27,7 +33,7 @@ environments/testnet/
 - Docker & Docker Compose
 - Stellar CLI (`cargo install stellar-cli --features opt`)
 - Node.js 20+
-- kubectl (for Kubernetes deployment)
+- kubectl (for Kubernetes deployment via `infra/k8s/overlays/testnet/`)
 - Access to Stellar Testnet
 
 ## Quick Start
@@ -67,23 +73,11 @@ The web application will be available at `http://localhost:3000`
 
 ### 4. Deploy to Kubernetes
 
+Archived — use the canonical kustomize overlay instead (see the note at the
+top of this file):
+
 ```bash
-cd environments/testnet/k8s
-
-# Create namespace
-kubectl apply -f namespace.yaml
-
-# Apply configuration (update contract IDs first)
-kubectl apply -f configmap.yaml
-
-# Apply secrets (update with actual values first)
-kubectl apply -f secret.yaml
-
-# Deploy application
-kubectl apply -f deployment.yaml
-
-# Create service
-kubectl apply -f service.yaml
+kubectl kustomize infra/k8s/overlays/testnet | kubectl apply -f -
 ```
 
 ## Configuration
@@ -119,42 +113,24 @@ The `scripts/deploy.sh` script handles the complete contract deployment process:
 
 ## Kubernetes Deployment
 
-### Namespace
+**Archived (issue #1027).** This directory's Kubernetes manifests were
+removed in favour of `infra/k8s/overlays/testnet/`, which is the canonical,
+maintained configuration and is referenced by CI and the infrastructure docs.
 
-Creates the `esustellar-testnet` namespace with appropriate labels.
+Authoritative testnet Kubernetes resources:
 
-### ConfigMap
-
-Contains non-sensitive configuration including:
-- Network settings
-- RPC endpoints
-- Contract IDs (update after deployment)
-
-### Secret
-
-Contains sensitive data (base64-encoded):
-- Node environment
-- Stellar seeds
-- Custom RPC credentials
-
-### Deployment
-
-Deploys the web application with:
-- 1 replica (testnet)
-- Resource limits
-- Health checks
-- Rolling update strategy
-
-### Service
-
-Exposes the application via LoadBalancer on port 80.
+- **Namespace**: `esustellar-testnet` (declared in `k8s/namespaces/testnet.yaml`)
+- **ConfigMap / Secret**: `k8s/config/testnet-configmap.yaml`,
+  `k8s/config/testnet-secret.yaml`
+- **Deployment / Service / Ingress / HPA / Certificate**:
+  `infra/k8s/base/*` assembled via `infra/k8s/overlays/testnet/kustomization.yaml`
 
 ## Post-Deployment
 
 After deploying contracts:
 
 1. **Verify Deployment**: Check `deployment-info.json` for contract IDs
-2. **Update ConfigMap**: Update `k8s/configmap.yaml` with deployed contract IDs
+2. **Update ConfigMap**: Update `k8s/config/testnet-configmap.yaml` with deployed contract IDs
 3. **Test Contracts**: Use Stellar explorers to verify contract deployment
 4. **Monitor Logs**: Check application logs for any connection issues
 
@@ -198,13 +174,16 @@ docker compose down -v
 
 ### Remove Kubernetes Resources
 
+The archived `environments/testnet/k8s` manifests are gone. To delete the
+testnet cluster resources that were previously created from them, tear down
+by resource kind (or via the canonical overlay):
+
 ```bash
-cd environments/testnet/k8s
-kubectl delete -f service.yaml
-kubectl delete -f deployment.yaml
-kubectl delete -f secret.yaml
-kubectl delete -f configmap.yaml
-kubectl delete -f namespace.yaml
+kubectl delete -n esustellar-testnet service esustellar-web
+kubectl delete -n esustellar-testnet deployment esustellar-web
+kubectl delete -n esustellar-testnet secret esustellar-secrets
+kubectl delete -n esustellar-testnet configmap esustellar-config
+kubectl delete namespace esustellar-testnet
 ```
 
 ## Related Documentation

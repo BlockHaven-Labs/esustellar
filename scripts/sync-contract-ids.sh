@@ -109,9 +109,12 @@ if [ -f "$TESTNET_ENV" ]; then
 fi
 
 # ──────────────────────────────────────────────
-# 5. environments/testnet/k8s/configmap.yaml
+# 5. k8s/config/testnet-configmap.yaml
+#    (environments/testnet/k8s/ was archived — issue #1027; the canonical
+#     testnet Kubernetes tree is infra/k8s/overlays/testnet/, which sources
+#     this configmap.)
 # ──────────────────────────────────────────────
-CONFIGMAP="$ROOT_DIR/environments/testnet/k8s/configmap.yaml"
+CONFIGMAP="$ROOT_DIR/k8s/config/testnet-configmap.yaml"
 if [ -f "$CONFIGMAP" ]; then
   echo "Updating $CONFIGMAP ..."
   sed -i "s|NEXT_PUBLIC_SAVINGS_CONTRACT_ID: \".*\"|NEXT_PUBLIC_SAVINGS_CONTRACT_ID: \"$SAVINGS_CONTRACT_ID\"|" "$CONFIGMAP"

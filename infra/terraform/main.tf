@@ -38,6 +38,7 @@ resource "aws_s3_bucket_public_access_block" "uploads" {
   restrict_public_buckets = true
 }
 
+# KMS key for storage encryption (S3, EBS volumes, etc.)
 resource "aws_kms_key" "storage" {
   description             = "KMS key for ${local.name_prefix} storage encryption"
   deletion_window_in_days = 7
