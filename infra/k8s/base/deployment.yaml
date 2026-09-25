@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: blockhaven/esustellar-web:latest
+          image: ghcr.io/blockhaven-labs/esustellar-web:latest
           ports:
             - containerPort: 3000
               name: http

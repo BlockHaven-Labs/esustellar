@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: esustellar/web:testnet
+          image: ghcr.io/blockhaven-labs/esustellar-web:testnet-latest
           ports:
             - containerPort: 3000
           envFrom:

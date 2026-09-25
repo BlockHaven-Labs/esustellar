@@ -26,6 +26,17 @@ Therefore **this root is always run with local state first**, and only after the
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
+│ 2. Infra root             infra/terraform/backend.tf               │
+│    terraform init -reconfigure                                   │
+│    terraform plan / apply  →  S3 backend, bucket "esustellar-     │
+│    terraform-state", key "infra/terraform.tfstate"                │
+└────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ 3. Per-environment roots  (e.g. infra/testnet/backend.tf)          │
+│    Each root declares its OWN backend.tf with a distinct key like  │
+│    "testnet/terraform.tfstate" (see ../backend-config.tf.example). │
 │ 2. Infra root             infra/terraform/backend.tf (partial)        │
 │    terraform init -reconfigure -backend-config=backend/testnet.hcl  │
 │    terraform plan / apply  →  S3 backend, bucket "esustellar-        │
@@ -57,6 +68,12 @@ table, so an accidental re-apply/destroy cannot orphan the shared state.
 
 ### Step 2 — point the main infra root at S3
 
+`infra/terraform/backend.tf` is the *live* S3 backend used by that root.
+Do not edit it; just initialize:
+
+```bash
+cd infra/terraform
+terraform init -reconfigure     # now talks to S3 + DynamoDB
 `infra/terraform/backend.tf` is a *partial* S3 backend used by that root,
 supplied via `backend/<env>.hcl`. Do not edit it; just initialize with the
 matching config:

@@ -78,6 +78,8 @@ jobs:
         if: env.AWS_ACCESS_KEY_ID != ''
         working-directory: infra/terraform
         run: |
+          terraform init -input=false
+          terraform plan -detailed-exitcode -input=false -no-color
           # This root uses a partial backend (backend "s3" {}) initialised per
           # environment via backend/*.hcl, so check every environment's state key.
           set -euo pipefail
@@ -99,6 +101,8 @@ jobs:
         if: env.AWS_ACCESS_KEY_ID != ''
         working-directory: infra/testnet
         run: |
+          terraform init -input=false
+          terraform plan -detailed-exitcode -input=false -no-color
           set -euo pipefail
           for cfg in backend/*.hcl; do
             echo "==> Drift check with ${cfg}"

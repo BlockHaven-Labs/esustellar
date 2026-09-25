@@ -39,6 +39,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> [1/5] Initializing root: ${ROOT} (remote S3 backend)"
+terraform -chdir="${ROOT}" init -input=false -backend=true -reconfigure
 if [ -n "${BACKEND_CONFIG}" ]; then
   terraform -chdir="${ROOT}" init -input=false -backend=true -reconfigure -backend-config="${BACKEND_CONFIG}"
 else

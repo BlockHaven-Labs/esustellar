@@ -12,6 +12,42 @@ This directory contains the shared root Terraform configuration for EsuStellar c
 
 ```
 infra/terraform/
+├── backend.tf                 # Live S3 remote backend + DynamoDB locking (this root)
+├── backend-config.tf.example  # Copy-paste TEMPLATE for NEW environment roots — never a live .tf
+├── providers.tf               # AWS provider version constraints + default tags
+├── main.tf                    # Shared resources (uploads bucket, KMS key, VPC + subnets)
+├── variables.tf               # Input variables
+├── outputs.tf                 # Output values (incl. common_tags / vpc_id / private_subnet_ids)
+├── Makefile                   # Validation + workflow targets
+├── README.md                  # This file
+└── state-bootstrap/           # One-time bootstrap of the S3 bucket + DynamoDB lock table
+```
+
+## Bootstrap (one time per AWS account)
+
+The remote backend for every root is created by `state-bootstrap/`. The exact
+order is documented in [state-bootstrap/README.md](state-bootstrap/README.md):
+
+1. `terraform init && terraform apply` inside `state-bootstrap/` (uses **local** state, chicken-and-egg — the bucket doesn't exist yet).
+2. `terraform init -reconfigure` in *this* directory → starts using S3 (`infra/terraform.tfstate`).
+3. Each environment root (`infra/testnet/`, …) points at its own S3 key.
+
+> ⚠️ The two-file split (`backend.tf` vs `backend-config.tf`) used to be a
+> common source of confusion — `backend.tf` is the **live** backend for this
+> root, while `backend-config.tf.example` is only a **template** for brand-new
+> roots. Keeping the template as `.tf.example` also prevents Terraform from
+> compiling a duplicate backend block.
+
+## Adding a new environment root
+
+```bash
+mkdir -p infra/<env>
+cp infra/terraform/backend-config.tf.example infra/<env>/backend.tf
+# edit infra/<env>/backend.tf: replace <ENV> with the environment name
+# (state key becomes <env>/terraform.tfstate)
+```
+
+Then `terraform init -backend=true -reconfigure` from that root.
 ├── backend.tf      # S3 remote backend (partial config — see backend/)
 ├── backend/        # Per-environment backend configs (distinct state keys)
 ├── backend-config.tf.example  # Copy-paste TEMPLATE for new environment roots — never a live .tf
@@ -105,6 +141,9 @@ This runs:
 2. `terraform init -backend=false -input=false`
 3. `terraform validate`
 
+The same checks are wired into `.github/workflows/terraform-drift.yml`; a
+scheduled job also runs `terraform plan` against the real backend to catch
+drift (see issue #998).
 Because it passes `-backend=false`, validation needs no AWS credentials and no
 access to the state bucket. The same checks are wired into
 `.github/workflows/terraform-drift.yml`; a scheduled job also runs
@@ -132,6 +171,13 @@ make apply
 | `enable_logging` | Enable audit logging | `true` |
 | `allowed_ingress_cidrs` | Allowed inbound CIDR blocks | `["0.0.0.0/0"]` |
 
+## Remote Backend
+
+State is stored in S3 with:
+- **Bucket:** `esustellar-terraform-state`
+- **Key:** `infra/terraform.tfstate`
+- **DynamoDB Lock Table:** `esustellar-terraform-locks`
+- **Encryption:** Enabled
 ## Modules
 
 | Module | Purpose |

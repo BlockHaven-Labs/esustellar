@@ -4,8 +4,10 @@ namespace: esustellar
 resources:
   - ../../base
 images:
-  - name: blockhaven/esustellar-web
+  - name: ghcr.io/blockhaven-labs/esustellar-web
     newTag: mainnet-latest
+commonLabels:
+  app.kubernetes.io/version: "mainnet-latest"
 replicas:
   - name: esustellar-web
     count: 3
