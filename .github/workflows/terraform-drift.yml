@@ -80,6 +80,20 @@ jobs:
         run: |
           terraform init -input=false
           terraform plan -detailed-exitcode -input=false -no-color
+          # This root uses a partial backend (backend "s3" {}) initialised per
+          # environment via backend/*.hcl, so check every environment's state key.
+          set -euo pipefail
+          for cfg in backend/*.hcl; do
+            echo "==> Drift check with ${cfg}"
+            terraform init -input=false -reconfigure -backend-config="${cfg}"
+            if ! terraform plan -detailed-exitcode -input=false -no-color; then
+              code=$?
+              if [ "$code" -eq 2 ]; then
+                echo "DRIFT DETECTED (${cfg})"; exit 1
+              fi
+              exit "$code"
+            fi
+          done
         # exit code 2 from -detailed-exitcode means the plan proposes changes
         # (drift); treat it as a failure.
 
@@ -89,6 +103,18 @@ jobs:
         run: |
           terraform init -input=false
           terraform plan -detailed-exitcode -input=false -no-color
+          set -euo pipefail
+          for cfg in backend/*.hcl; do
+            echo "==> Drift check with ${cfg}"
+            terraform init -input=false -reconfigure -backend-config="${cfg}"
+            if ! terraform plan -detailed-exitcode -input=false -no-color; then
+              code=$?
+              if [ "$code" -eq 2 ]; then
+                echo "DRIFT DETECTED (${cfg})"; exit 1
+              fi
+              exit "$code"
+            fi
+          done
 
   state-locking:
     name: Verify State Locking
@@ -114,4 +140,9 @@ jobs:
       - name: Verify DynamoDB state locking
         if: env.AWS_ACCESS_KEY_ID != ''
         working-directory: infra/terraform
+        env:
+          BACKEND_CONFIG: backend/mainnet.hcl
+          LOCK_TABLE_NAME: terraform-locks
+          STATE_BUCKET_NAME: esustellar-terraform-state
+          STATE_KEY: infra/terraform/mainnet/terraform.tfstate
         run: ./scripts/verify-state-lock.sh infra/terraform

@@ -23,3 +23,34 @@ patches:
             value: testnet
           - name: STELLAR_NETWORK
             value: testnet
+  # #1018: testnet claims testnet.esustellar.io (DNS module creates
+  # ${environment}.${domain_name}).
+  - target:
+      kind: Ingress
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: testnet.esustellar.io
+      - op: replace
+        path: /spec/tls/0/hosts
+        value:
+          - testnet.esustellar.io
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: esustellar-web-tls-testnet
+  # #1019: Certificate is the authoritative TLS source (no ingress annotation).
+  - target:
+      kind: Certificate
+      name: esustellar-web-tls
+    patch: |-
+      - op: replace
+        path: /spec/commonName
+        value: testnet.esustellar.io
+      - op: replace
+        path: /spec/secretName
+        value: esustellar-web-tls-testnet
+      - op: replace
+        path: /spec/dnsNames
+        value:
+          - testnet.esustellar.io

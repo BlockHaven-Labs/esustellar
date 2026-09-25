@@ -18,6 +18,11 @@ REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 LOCK_TABLE="${LOCK_TABLE_NAME:-esustellar-terraform-locks}"
 BUCKET="${STATE_BUCKET_NAME:-esustellar-terraform-state}"
 STATE_KEY="${STATE_KEY:-infra/terraform.tfstate}"
+# Optional: when the root uses a partial backend (backend "s3" {}), supply the
+# per-environment config (e.g. BACKEND_CONFIG=backend/mainnet.hcl) so that
+# `terraform init` knows the bucket/key/lock table. LOCK_TABLE_NAME, STATE_KEY
+# and STATE_BUCKET_NAME must then match the values in that config.
+BACKEND_CONFIG="${BACKEND_CONFIG:-}"
 
 LOCK_ID="${BUCKET}/${STATE_KEY}"
 PLAN_LOG="$(mktemp)"
@@ -35,6 +40,11 @@ trap cleanup EXIT
 
 echo "==> [1/5] Initializing root: ${ROOT} (remote S3 backend)"
 terraform -chdir="${ROOT}" init -input=false -backend=true -reconfigure
+if [ -n "${BACKEND_CONFIG}" ]; then
+  terraform -chdir="${ROOT}" init -input=false -backend=true -reconfigure -backend-config="${BACKEND_CONFIG}"
+else
+  terraform -chdir="${ROOT}" init -input=false -backend=true -reconfigure
+fi
 
 echo "==> [2/5] Confirming no lock is currently held on ${LOCK_ID}"
 if aws dynamodb get-item \

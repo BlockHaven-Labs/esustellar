@@ -7,8 +7,6 @@ echo "=================================================="
 
 # Check presence of required files
 FILES=(
-  "monitoring/loki-config.yaml"
-  "monitoring/promtail-config.yaml"
   "infra/monitoring/loki/loki-config.yaml"
   "infra/monitoring/promtail/promtail-config.yaml"
   "infra/monitoring/grafana/datasources/datasources.yaml"

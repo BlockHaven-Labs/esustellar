@@ -23,3 +23,34 @@ patches:
             value: testnet
           - name: STELLAR_NETWORK
             value: testnet
+  # #1018: staging claims staging.esustellar.io (DNS module creates
+  # ${environment}.${domain_name}).
+  - target:
+      kind: Ingress
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: staging.esustellar.io
+      - op: replace
+        path: /spec/tls/0/hosts
+        value:
+          - staging.esustellar.io
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: esustellar-web-tls-staging
+  # #1019: Certificate is the authoritative TLS source (no ingress annotation).
+  - target:
+      kind: Certificate
+      name: esustellar-web-tls
+    patch: |-
+      - op: replace
+        path: /spec/commonName
+        value: staging.esustellar.io
+      - op: replace
+        path: /spec/secretName
+        value: esustellar-web-tls-staging
+      - op: replace
+        path: /spec/dnsNames
+        value:
+          - staging.esustellar.io

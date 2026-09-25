@@ -6,7 +6,7 @@
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   is_ipv6_enabled     = true
-  default_root_object = ""
+  default_root_object = "" # Empty: Next.js app handles routing server-side via ALB origin; no static index.html at root
   price_class         = var.price_class
   aliases             = [var.domain_name]
 
