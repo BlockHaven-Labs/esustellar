@@ -122,6 +122,9 @@ resource "aws_route_table_association" "private" {
 }
 
 # --- VPC Flow Logs ---
+# Confirmed enabled by default (var.enable_flow_logs defaults to true in
+# variables.tf), not merely planned: the resources below are created
+# whenever a caller doesn't explicitly pass enable_flow_logs = false.
 
 resource "aws_flow_log" "this" {
   count                = var.enable_flow_logs ? 1 : 0
@@ -169,7 +172,13 @@ data "aws_iam_policy_document" "flow_log_permissions" {
       "logs:DescribeLogGroups",
       "logs:DescribeLogStreams",
     ]
-    resources = ["*"]
+    # Scoped to this VPC's own flow-log group (and its streams) instead of
+    # "*", so the flow-log role can't read/write CloudWatch Logs data
+    # belonging to any other log group in the account.
+    resources = [
+      aws_cloudwatch_log_group.flow_log[0].arn,
+      "${aws_cloudwatch_log_group.flow_log[0].arn}:*",
+    ]
   }
 }
 
