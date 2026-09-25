@@ -4,7 +4,7 @@ metadata:
   name: alertmanager
   namespace: esustellar-monitoring
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: alertmanager
@@ -13,15 +13,30 @@ spec:
       labels:
         app: alertmanager
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: alertmanager
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: alertmanager
           image: prom/alertmanager:v0.27.0
           args:
             - '--config.file=/etc/alertmanager/alertmanager.yml'
             - '--storage.path=/alertmanager'
+            - '--cluster.listen-address=0.0.0.0:9094'
+            # Headless service DNS name resolves to every replica's pod IP,
+            # so Alertmanager discovers all cluster peers from this one entry.
+            - '--cluster.peer=alertmanager-cluster.esustellar-monitoring.svc.cluster.local:9094'
           ports:
             - containerPort: 9093
               name: am-http
+            - containerPort: 9094
+              name: am-cluster
           env:
             - name: SLACK_WEBHOOK_URL
               valueFrom:
@@ -47,5 +62,20 @@ spec:
   ports:
     - port: 9093
       targetPort: am-http
+  selector:
+    app: alertmanager
+---
+# Headless service used for Alertmanager gossip-cluster peer discovery
+# (StatefulSet-style stable DNS names referenced by --cluster.peer above).
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-cluster
+  namespace: esustellar-monitoring
+spec:
+  clusterIP: None
+  ports:
+    - port: 9094
+      targetPort: am-cluster
   selector:
     app: alertmanager
