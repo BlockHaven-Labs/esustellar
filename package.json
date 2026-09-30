@@ -182,7 +182,7 @@
     "json5": "^2.2.3",
     "jsx-ast-utils": "^3.3.5",
     "keyv": "^4.5.4",
-    "language-subtag-registry": "^0.3.23",
+    "language-subtag-registry": "^0.4.2",
     "language-tags": "^1.0.9",
     "levn": "^0.4.1",
     "lightningcss": "^1.30.2",
