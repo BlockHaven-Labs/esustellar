@@ -281,7 +281,7 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.50.0",
     "unbox-primitive": "^1.1.0",
-    "undici-types": "^6.21.0",
+    "undici-types": "^8.11.2",
     "unrs-resolver": "^1.11.1",
     "update-browserslist-db": "^1.2.3",
     "uri-js": "^4.4.1",
