@@ -177,3 +177,41 @@ for leaked references.
 2. `.gitignore` includes `.env*`
 3. Workflows reference GitHub Secrets, not hardcoded values
 4. Once Sealed Secrets is live: `kubeseal --validate -f infra/secrets/`
+
+## Environment template files
+
+Two `.env.example` files exist and serve different purposes:
+
+| File | Purpose |
+| ---- | ------- |
+| `.env.example` (repo root) | Minimal variables for `docker compose up` (TLS cert paths, compose settings). |
+| `infra/secrets/templates/.env.example` | Complete reference of every variable used across the monorepo (Stellar, web app, deployment, registry, monitoring, CI/CD). |
+
+They are intentionally not merged: the root file is the quick-start for local
+Docker, the templates file is the authoritative secrets reference. When a new
+variable is introduced, add it to the templates file; add it to the root file
+only if `docker-compose.yml` needs it.
+
+## In-flight transactions during deployer key rotation
+
+`rotate-deployer-keypair.sh` keeps the old key as `deployer-old` (grace period),
+so transactions already signed with the old key remain valid until they
+confirm or expire (Stellar transactions carry a `maxTime`). Before rotating:
+
+1. Make sure no deployment workflow is running (`gh run list --workflow deploy`).
+2. Wait for any submitted-but-unconfirmed transaction to settle or reach its `maxTime`.
+3. Rotate, update `DEPLOYER_SECRET_KEY` in CI/CD, then remove `deployer-old` after the grace period.
+
+Do not remove `deployer-old` while any transaction signed by it may still be pending.
+
+## `validate-env.sh` and `DEPLOYER_SECRET_KEY`
+
+`infra/scripts/deploy/validate-env.sh` checks the frontend contract IDs by
+default. `DEPLOYER_SECRET_KEY` is only required (and format-checked) when the
+script is run with `--check-deployer-key` or `CHECK_DEPLOYER_KEY=1`.
+
+## Secret scanning
+
+The [Secret Scanning](../../.github/workflows/secret-scanning.yml) workflow runs
+gitleaks on every PR and push to `main` that touches `infra/`, `environments/`
+or `k8s/`.
