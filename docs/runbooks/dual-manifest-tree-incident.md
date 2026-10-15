@@ -6,11 +6,12 @@ against each other.
 
 ## Diagnose
 1. `kubectl get all -n <namespace> -o json | jq -r '.items[].metadata.labels'`
-   and compare against `kustomize build infra/k8s/overlays/<env>` and
-   `kustomize build k8s/overlays/<env>` output to see which resources
-   came from which tree.
+   and compare against `kustomize build infra/k8s/overlays/<env>` and the
+   flat manifests in `k8s/` (`k8s/deployments/<env>.yaml`, `k8s/web/`; the
+   legacy tree has no kustomize overlays) to see which resources came from
+   which tree.
 2. `kubectl diff -k infra/k8s/overlays/<env>` and
-   `kubectl diff -k k8s/overlays/<env>` to see which tree the live
+   `kubectl diff -f k8s/deployments/<env>.yaml` to see which tree the live
    state currently matches more closely.
 
 ## Recover
