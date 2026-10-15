@@ -30,3 +30,11 @@ terraform apply
   still exercising multi-replica behaviour.
 - Secrets are not managed here — supply them via the existing secrets tooling
   under `infra/secrets/`.
+
+## Kubernetes manifests
+
+This Terraform workspace has no `k8s/` directory. The application workloads for
+staging (Deployment, Service, Ingress, HPA) are defined in
+`infra/k8s/overlays/staging` (Kustomize, on top of `infra/k8s/base`) and applied
+with `kubectl apply -k infra/k8s/overlays/staging`. The namespace and config map
+created here must exist before applying that overlay.

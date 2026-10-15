@@ -177,3 +177,14 @@ for leaked references.
 2. `.gitignore` includes `.env*`
 3. Workflows reference GitHub Secrets, not hardcoded values
 4. Once Sealed Secrets is live: `kubeseal --validate -f infra/secrets/`
+
+## Deployer key rotation safeguards
+
+`infra/scripts/rotate-deployer-keypair.sh`:
+
+- never prints the new secret key to stdout; it is written to a mode-600 temp file that is shredded on exit;
+- verifies the new key (address match) before touching the old key;
+- keeps the previous key as `deployer-old` for a 24h grace period so CI/CD secret updates can be rolled back.
+
+If updating `DEPLOYER_SECRET_KEY` in CI/CD fails, restore with
+`stellar keys add deployer --secret-key <old secret>` from `deployer-old`.
