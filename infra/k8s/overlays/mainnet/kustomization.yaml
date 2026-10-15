@@ -8,10 +8,22 @@ images:
     newTag: mainnet-latest
 commonLabels:
   app.kubernetes.io/version: "mainnet-latest"
+# The replicas transformer only sets the Deployment's replica count. The base
+# HorizontalPodAutoscaler (minReplicas: 2) would otherwise scale mainnet below
+# this baseline once its scale-down window expires, so the HPA floor is patched
+# to match below (#1103). Keep `count` and the HPA minReplicas in sync.
 replicas:
   - name: esustellar-web
     count: 3
 patches:
+  # #1103: HPA floor must equal the intended mainnet baseline capacity.
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
   - target:
       kind: Deployment
       name: esustellar-web
