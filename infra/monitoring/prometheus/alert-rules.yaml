@@ -27,7 +27,10 @@ data:
       - name: esustellar-balance-exporter
         rules:
           - alert: BalanceExporterDown
-            expr: balance_exporter_up == 0
+            expr: |
+              balance_exporter_up == 0
+              or up{job="esustellar-deployer-balance"} == 0
+              or absent(up{job="esustellar-deployer-balance"})
             for: 2m
             labels:
               severity: critical
