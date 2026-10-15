@@ -1,3 +1,6 @@
+# #1228: the namespaceSelector values below (esustellar-monitoring) match the
+# namespace used by infra/monitoring/* manifests. #1227: deny-all-egress plus the
+# allow-dns-egress / allow-only-api-egress policies form the default-deny egress set.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
