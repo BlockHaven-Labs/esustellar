@@ -5,6 +5,8 @@ metadata:
   namespace: esustellar
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+# #1224: esustellar.io is the mainnet default; each overlay patches the host and
+# TLS hosts/secretName (staging.esustellar.io, testnet.esustellar.io).
 spec:
   ingressClassName: nginx
   tls:

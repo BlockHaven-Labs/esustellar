@@ -11,6 +11,9 @@ commonLabels:
 replicas:
   - name: esustellar-web
     count: 2
+# #1223: staging intentionally targets the Stellar testnet (there is no separate
+# staging network); it differs from the testnet overlay by namespace, replicas,
+# hostname and TLS secret, not by network.
 patches:
   - target:
       kind: Deployment
