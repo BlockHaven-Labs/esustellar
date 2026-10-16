@@ -1,0 +1,23 @@
+# Issue #1262: static security scan of Terraform on every PR.
+name: Terraform Security Scan
+on:
+  pull_request:
+    paths: ["infra/terraform/**", "infra/testnet/**", "environments/**/*.tf"]
+permissions:
+  contents: read
+jobs:
+  trivy-config:
+    name: trivy config (${{ matrix.root }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [infra/terraform, infra/testnet, environments/staging]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: ${{ matrix.root }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
