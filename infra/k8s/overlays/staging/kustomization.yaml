@@ -26,6 +26,17 @@ patches:
             value: testnet
           - name: STELLAR_NETWORK
             value: testnet
+  # #1111: staging runs 2 replicas, so it can sit between the two postures —
+  # closer to mainnet's fast readiness (10s period, 3 failures, i.e. the base
+  # values) but with a longer liveness grace period than mainnet because
+  # staging clusters are smaller and scale from zero more often.
+  - target:
+      kind: Deployment
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/initialDelaySeconds
+        value: 45
   # #1018: staging claims staging.esustellar.io (DNS module creates
   # ${environment}.${domain_name}).
   - target:
