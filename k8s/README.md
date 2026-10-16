@@ -17,7 +17,7 @@ of these is migrated or confirmed unused in the live clusters:
 |---|---|
 | `config/*-configmap.yaml`, `config/*-secret.yaml` | Define `esustellar-config` and `esustellar-secrets`. The `infra/k8s` base Deployment instead reads ConfigMap `esustellar-web-config` and Secret `esustellar-web-secrets`, which are **not defined anywhere in this repo**. Confirm which names exist in each cluster before consolidating. |
 | `namespaces/*.yaml` | `infra/k8s` overlays set a `namespace:` but contain no `Namespace` resource. |
-| `monitoring/` | Only Kubernetes-deployable Loki and Promtail manifests, plus the balance-exporter manifest that `infra/monitoring/prometheus/kustomization.yaml` still pulls in. See `monitoring/README.md`. |
+| `monitoring/` | Only Kubernetes-deployable Loki and Promtail manifests. The balance-exporter manifest was moved to `infra/monitoring/prometheus/` in #1122. See `monitoring/README.md`. |
 
 `scripts/sync-contract-ids.sh` and `infra/scripts/validate-configmaps.py` still
 read or write `config/`. `.github/workflows/secret-scanning.yml` scans this tree

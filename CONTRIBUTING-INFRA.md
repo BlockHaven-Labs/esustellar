@@ -18,6 +18,18 @@ The `main` branch is protected with enforced rules:
 
 See `docs/branch-protection.md` for detailed configuration and setup instructions.
 
+### Required reviewers by path (CODEOWNERS)
+
+`.github/CODEOWNERS` narrows "at least 1 approval" to an owner with infra
+context for every path that changes running infrastructure: `infra/`, `k8s/`,
+`monitoring/`, `environments/`, `.github/workflows/`, `infracost.yml`,
+`Dockerfile` and `docker-compose.yml`. CODEOWNERS only *requests* a review —
+to enforce it, enable **Require review from Code Owners** on the `main` branch
+protection rule (see `docs/branch-protection.md`).
+
+When you touch any of those paths, expect an infra-knowledgeable reviewer to be
+requested automatically; do not treat a generic "1 approval" as sufficient.
+
 ## Principles
 
 1. **All infra changes must be reviewed** — no direct pushes to `main`

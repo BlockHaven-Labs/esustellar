@@ -1,0 +1,60 @@
+# CODEOWNERS — BlockHaven-Labs/esustellar
+#
+# Why this file exists (#1123)
+# ---------------------------
+# `CONTRIBUTING-INFRA.md` states "All infra changes must be reviewed — no direct
+# pushes to main", and `docs/branch-protection.md` enforces "at least 1 approval"
+# on `main`. That generic rule routes an infra PR to whoever reviews fastest,
+# not to someone with infra context: a Terraform module change or a
+# `NetworkPolicy` edit can be approved by a reviewer with no AWS/k8s
+# experience and nothing in the merge process objects.
+#
+# The rules below make the required-reviewer set explicit for every path that
+# changes running infrastructure.
+#
+# How to turn these rules into *enforced* review
+# ------------------------------------------------
+# CODEOWNERS on its own only requests a review. To make it mandatory, the
+# `main` branch protection rule must list these owners under
+# "Require review from Code Owners". Pair this file with that setting — see
+# `docs/branch-protection.md`.
+#
+# On the owner team
+# -----------------
+# The org currently has no `infra-platform` team, so `@BlockHaven-Labs/infra-platform`
+# below would be a silently-ignored no-op (GitHub cannot resolve an unknown team
+# to a reviewer). Until that team is created, the active owners are the two
+# accounts that hold write access to this repository. When the team is created:
+#   1. add @BlockHaven-Labs/infra-platform to every block below, and
+#   2. remove the individual-owner lines.
+#
+# Refs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for anything not matched by a more specific rule below.
+*                       @phertyameen @A6dulmalik
+
+# ── Canonical infrastructure (Terraform, Kubernetes, monitoring, backups) ──
+/infra/                 @phertyameen @A6dulmalik
+/infracost.yml          @phertyameen @A6dulmalik
+/CONTRIBUTING-INFRA.md  @phertyameen @A6dulmalik
+
+# ── CI/CD pipelines — these can deploy and exfiltrate secrets ──
+/.github/workflows/     @phertyameen @A6dulmalik
+/.github/dependabot.yml @phertyameen @A6dulmalik
+/.github/CODEOWNERS     @phertyameen @A6dulmalik
+
+# ── Legacy/duplicate trees: any edit here can resurrect the two-tree conflict
+#    documented in docs/runbooks/dual-manifest-tree-incident.md ──
+/k8s/                   @phertyameen @A6dulmalik
+/monitoring/            @phertyameen @A6dulmalik
+/environments/          @phertyameen @A6dulmalik
+
+# ── Build/container definitions ──
+/Dockerfile             @phertyameen @A6dulmalik
+/docker-compose.yml     @phertyameen @A6dulmalik
+/nginx/                 @phertyameen @A6dulmalik
+
+# ── Secrets registry and rotation runbooks ──
+/infra/secrets/         @phertyameen @A6dulmalik
+/infra/docs/secrets.md  @phertyameen @A6dulmalik
+/docs/runbooks/deployer-keypair-rotation.md @phertyameen @A6dulmalik

@@ -4,11 +4,14 @@ namespace: esustellar-monitoring
 resources:
   - prometheus-deployment.yaml
   - alertmanager-deployment.yaml
-  # Known cross-tree reference (#1186): balance-exporter.yaml still lives in the
-  # deprecated top-level k8s/monitoring/. Because it is outside this directory,
-  # `kustomize build` fails by default and needs
-  # `--load-restrictor LoadRestrictionsNone`. Move it here, then repoint this line.
-  - ../../../k8s/monitoring/balance-exporter.yaml
+  # #1122: this used to be pulled in as ../../../k8s/monitoring/balance-exporter.yaml,
+  # i.e. from the deprecated top-level k8s/ tree — three levels up and outside this
+  # kustomization's own directory. That cross-tree reference meant `kustomize build`
+  # (and plain `kubectl kustomize`) failed with the default root-only load
+  # restrictor, and any reorganisation of either tree would have broken it
+  # silently. The manifest now lives beside the Prometheus config that scrapes it,
+  # so every path in this list is relative to this directory.
+  - balance-exporter.yaml
 configMapGenerator:
   - name: prometheus-alert-rules
     files:
