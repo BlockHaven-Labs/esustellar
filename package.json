@@ -44,7 +44,7 @@
     "ast-types-flow": "^0.0.8",
     "async-function": "^1.0.0",
     "available-typed-arrays": "^1.0.7",
-    "axe-core": "^4.11.0",
+    "axe-core": "^4.14.0",
     "axobject-query": "^4.1.0",
     "balanced-match": "^1.0.2",
     "baseline-browser-mapping": "^2.9.11",
