@@ -31,6 +31,10 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: esustellar.io
+      - op: replace
+        path: /spec/tls/0/hosts
+        value:
+          - esustellar.io
   # #1019: Certificate is the authoritative TLS source (no ingress annotation).
   - target:
       kind: Certificate
