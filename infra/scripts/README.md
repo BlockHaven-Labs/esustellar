@@ -13,6 +13,7 @@ Index of the operational scripts in this directory: what each one does and when 
 | `check-secret-rotation.py` | Checks `infra/secrets/last-rotated.yml` against each secret's rotation policy and flags any that are overdue. | On a schedule (e.g. weekly CI job) to catch missed rotations. |
 | `deploy/validate-env.sh` | Validates only the web-frontend (`NEXT_PUBLIC_*`) environment variables. Companion to `validate-infra-env.sh`, which covers everything else. | Before a frontend deploy. |
 | `rollback/rollback.sh` | Rolls back the most recent deployment. | When a post-deploy smoke test or healthcheck fails and the deploy needs to be reverted. |
+| `invalidate-cdn-cache.sh` | Invalidates the CloudFront cache for one distribution. Waits for the `esustellar-web` rollout to complete first, so the edge cannot re-cache the previous build. Resolves the distribution id from a flag, `CLOUDFRONT_DISTRIBUTION_ID`, or Terraform state. | **After every deploy**, once `kubectl rollout status` reports completion — see `docs/deployment.md` §4a. Skipping it serves a mix of old and new build assets for up to `max_ttl` (24h). |
 
 ## Adding a new script
 
