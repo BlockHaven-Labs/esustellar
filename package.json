@@ -113,7 +113,7 @@
     "file-entry-cache": "^8.0.0",
     "fill-range": "^7.1.1",
     "find-up": "^5.0.0",
-    "flat-cache": "^4.0.1",
+    "flat-cache": "^6.1.23",
     "flatted": "^3.3.3",
     "for-each": "^0.3.5",
     "function-bind": "^1.1.2",
