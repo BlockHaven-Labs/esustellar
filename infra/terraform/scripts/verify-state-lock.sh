@@ -10,10 +10,10 @@
 #   - aws cli with credentials for the account holding the state bucket/table
 #
 # Usage:
-#   ./verify-state-lock.sh [ROOT]   # ROOT defaults to infra/terraform
+#   ./verify-state-lock.sh [ROOT]   # ROOT defaults to the current directory
 set -euo pipefail
 
-ROOT="${1:-infra/terraform}"
+ROOT="${1:-.}"
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 LOCK_TABLE="${LOCK_TABLE_NAME:-esustellar-terraform-locks}"
 BUCKET="${STATE_BUCKET_NAME:-esustellar-terraform-state}"
@@ -39,7 +39,6 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> [1/5] Initializing root: ${ROOT} (remote S3 backend)"
-terraform -chdir="${ROOT}" init -input=false -backend=true -reconfigure
 if [ -n "${BACKEND_CONFIG}" ]; then
   terraform -chdir="${ROOT}" init -input=false -backend=true -reconfigure -backend-config="${BACKEND_CONFIG}"
 else
@@ -51,17 +50,18 @@ if aws dynamodb get-item \
     --region "${REGION}" \
     --table-name "${LOCK_TABLE}" \
     --key "{\"LockID\": {\"S\": \"${LOCK_ID}\"}}" \
-    --query "Item" --output text 2>/dev/null | grep -q .; then
+    --output json 2>/dev/null | jq -e '.Item.LockID.S? != null' >/dev/null; then
   echo "FAIL: a lock on ${LOCK_ID} is already present; refusing to run the test." >&2
   exit 1
 fi
 
 echo "==> [3/5] Simulating a competing operation that holds the lock"
-LOCK_INFO="{\\\"Operation\\\":\\\"plan\\\",\\\"Who\\\":\\\"verify-state-lock.sh $$\\\"}"
+LOCK_INFO="{\"Operation\":\"plan\",\"Who\":\"verify-state-lock.sh $$\"}"
+LOCK_ITEM="$(jq -cn --arg lock_id "${LOCK_ID}" --arg info "${LOCK_INFO}" '{LockID:{S:$lock_id},Info:{S:$info}}')"
 aws dynamodb put-item \
     --region "${REGION}" \
     --table-name "${LOCK_TABLE}" \
-    --item "{\"LockID\":{\"S\":\"${LOCK_ID}\"},\"Info\":{\"S\":\"${LOCK_INFO}\"}}"
+    --item "${LOCK_ITEM}"
 
 echo "==> [4/5] Running terraform plan while the lock is held (must FAIL)"
 set +e
