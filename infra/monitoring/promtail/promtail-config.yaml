@@ -1,3 +1,32 @@
+# Secret redaction (#1107).
+#
+# Defense in depth for the deployer secret key. rotate-deployer-keypair.sh
+# writes the new secret to a mode-600 file rather than stdout precisely so it
+# does not land in a shell scrollback buffer or a CI log — but that is a
+# property of the script, not of the log pipeline. If the script is ever run
+# under a Kubernetes Job, a `set -x` shell, a wrapper that echoes its
+# environment, or a plain `kubectl logs` capture, a line containing the key can
+# still reach Promtail and be indexed in Loki, where it is retained for
+# `retention_period` (720h) and readable by anyone with dashboard access.
+#
+# Loki is a log store, not a secret store, so the fix is to not put the secret
+# in it. These stages run on every line both scrape jobs below ship, declared
+# directly on each job rather than behind a `match.selector` — a selector keyed
+# on `job` is fragile here because the `local-logs` static config overwrites that
+# label with its own value, which would silently drop half the pipeline.
+#
+# Scope and limits, stated rather than implied:
+#   - The `[A-Z2-7]` class excludes `0`, `1`, `8` and `9`, which StrKey does not
+#     use. This catches canonical Stellar secret keys, not every string that
+#     happens to start with S.
+#   - The keyword rule is a backstop for the named-secret shapes that appear in
+#     this repo's env files. It is a net, not a guarantee: a secret logged
+#     without a recognisable name or shape is not caught.
+#   - Redaction is applied at ingest. A line already indexed before this config
+#     shipped is not retroactively cleaned, so this is a forward-looking fix.
+#   - This does not replace the actual control, which is that
+#     rotate-deployer-keypair.sh does not print the secret. See
+#     docs/runbooks/deployer-keypair-rotation.md.
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -10,6 +39,24 @@ clients:
 
 scrape_configs:
   - job_name: docker-containers
+    pipeline_stages:
+      # Canonical Stellar secret key (StrKey): S + 55 base32 chars.
+      - regex:
+          expression: '(?P<redacted_stellar_secret>S[A-Z2-7]{55})'
+      - replace:
+          expression: '(?P<redacted_stellar_secret>)'
+          replace: '[REDACTED_STELLAR_SECRET]'
+      # Named-secret backstop: keep the key name for debugging, drop the value.
+      - regex:
+          expression: '(?i)(secret[_ -]?key|private[_ -]?key|mnemonic|passphrase|password|token|api[_ -]?key)(\s*[:=]\s*)(\S+)'
+      - replace:
+          expression: '(?i)(secret[_ -]?key|private[_ -]?key|mnemonic|passphrase|password|token|api[_ -]?key)(\s*[:=]\s*)(\S+)'
+          replace: '$1$2[REDACTED]'
+      # Long base64 blobs are the shape a raw secret or an exported keypair
+      # takes when JSON- or env-encoded rather than printed in canonical form.
+      - replace:
+          expression: '[A-Za-z0-9+/]{60,}={0,2}'
+          replace: '[REDACTED_LONG_B64]'
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
@@ -19,7 +66,22 @@ scrape_configs:
         target_label: 'container'
       - source_labels: ['__meta_docker_container_log_stream']
         target_label: 'stream'
+
   - job_name: local-logs
+    pipeline_stages:
+      - regex:
+          expression: '(?P<redacted_stellar_secret>S[A-Z2-7]{55})'
+      - replace:
+          expression: '(?P<redacted_stellar_secret>)'
+          replace: '[REDACTED_STELLAR_SECRET]'
+      - regex:
+          expression: '(?i)(secret[_ -]?key|private[_ -]?key|mnemonic|passphrase|password|token|api[_ -]?key)(\s*[:=]\s*)(\S+)'
+      - replace:
+          expression: '(?i)(secret[_ -]?key|private[_ -]?key|mnemonic|passphrase|password|token|api[_ -]?key)(\s*[:=]\s*)(\S+)'
+          replace: '$1$2[REDACTED]'
+      - replace:
+          expression: '[A-Za-z0-9+/]{60,}={0,2}'
+          replace: '[REDACTED_LONG_B64]'
     static_configs:
       - targets:
           - localhost

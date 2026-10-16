@@ -7,6 +7,9 @@ resources:
   - ingress.yaml
   - hpa.yaml
   - certificate.yaml
+  # #1108: without this, a node drain or a cluster upgrade can evict every
+  # esustellar-web replica at once despite replicas: 2/3 implying redundancy.
+  - pdb.yaml
 commonLabels:
   app.kubernetes.io/part-of: esustellar
   app.kubernetes.io/version: "latest"

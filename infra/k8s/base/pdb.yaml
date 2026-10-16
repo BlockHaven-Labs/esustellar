@@ -1,0 +1,36 @@
+# #1108: PodDisruptionBudget for esustellar-web.
+#
+# `replicas: 2` in the base (3 for mainnet, 1 for testnet) reads as redundancy,
+# but nothing enforces it. A voluntary disruption — a cluster-autoscaler node
+# drain, a Kubernetes version upgrade, or `kubectl drain` before maintenance —
+# can evict every replica of esustellar-web in the same window if they happen to
+# be co-located, and the Deployment's own replica count gives no guarantee that
+# they are not. Without a PDB the eviction API treats the pods as interchangeable
+# and removes as many as it needs to, down to zero.
+#
+# `maxUnavailable: 1` rather than `minAvailable: 1` is deliberate:
+#
+#   - minAvailable: 1 becomes unsatisfiable as soon as mainnet is deliberately
+#     scaled to 1 (maintenance, cost, incident), which blocks all further
+#     voluntary disruptions with no way to recover except deleting this object.
+#   - maxUnavailable: 1 always leaves at least (replicas - 1) pods running, so
+#     the PDB degrades gracefully instead of wedging node maintenance forever.
+#
+# It also handles the testnet case, where replicas: 1 would make
+# minAvailable: 1 a hard block on every drain with zero tolerance for a single
+# eviction.
+#
+# A PDB constrains *voluntary* disruptions only. It does nothing for node
+# failures, OOM kills or evictions from a cluster-autoscaler scale-down that
+# ignores the eviction API — it bounds the blast radius of planned maintenance,
+# nothing more.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: esustellar-web
+  namespace: esustellar
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: esustellar-web
