@@ -176,4 +176,4 @@ for leaked references.
 1. `git status` shows no `.env` files tracked
 2. `.gitignore` includes `.env*`
 3. Workflows reference GitHub Secrets, not hardcoded values
-4. Once Sealed Secrets is live: `kubeseal --validate -f infra/secrets/`
+4. Once Sealed Secrets is live: `kubeseal --validate -f infra/secrets/` (also enforced on PRs touching `infra/secrets/` by the [Validate Sealed Secrets](../../.github/workflows/validate-sealed-secrets.yml) workflow)
