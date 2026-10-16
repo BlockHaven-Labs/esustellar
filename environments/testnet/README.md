@@ -192,3 +192,9 @@ kubectl delete namespace esustellar-testnet
 - [Infrastructure Overview](../../../docs/architecture.md)
 - [Environment Variables](../../../docs/env-vars.md)
 - [Docker Secrets](../../../docs/docker-secrets.md)
+
+## Docker Compose scope
+
+`docker-compose.yml` is for **local development only**. It is not deployed
+anywhere and is not a fourth deployment target. Deployed testnet runs on
+`infra/k8s/overlays/testnet/` (apps) and `infra/testnet/` (Terraform).
