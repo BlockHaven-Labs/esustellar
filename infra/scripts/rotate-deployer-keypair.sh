@@ -59,9 +59,13 @@ else
   read -rp "  Press ENTER once the account is funded..."
 
   echo "  🔍 Verifying mainnet account balance..."
-  BALANCE=$(stellar keys balance "$NEW_KEY" --network mainnet 2>/dev/null || echo "0")
-  if [ "$BALANCE" = "0" ] || [ -z "$BALANCE" ]; then
-    echo "  ❌ Balance check failed or account has 0 XLM. Please fund the account and re-run."
+  HORIZON_URL="${HORIZON_URL:-https://horizon.stellar.org}"
+  MIN_BALANCE_XLM="${MIN_BALANCE_XLM:-10}"
+  BALANCE=$(curl -fsS "$HORIZON_URL/accounts/$NEW_PUBLIC" 2>/dev/null \
+    | python3 -c 'import sys,json; print(next((b["balance"] for b in json.load(sys.stdin)["balances"] if b["asset_type"]=="native"), "0"))' \
+    2>/dev/null || echo "0")
+  if ! python3 -c "import sys; sys.exit(0 if float('$BALANCE') >= float('$MIN_BALANCE_XLM') else 1)"; then
+    echo "  ❌ Horizon reports $BALANCE XLM for $NEW_PUBLIC (minimum $MIN_BALANCE_XLM). Fund the account and re-run."
     exit 1
   fi
   echo "  ✅ Mainnet account funded. Current balance: $BALANCE XLM"
@@ -122,10 +126,17 @@ fi
 # Step 6: Rename new → deployer
 echo ""
 echo "Step 6: Renaming '$NEW_KEY' to '$OLD_KEY'..."
-# stellar CLI stores keys by name; re-generate under the target name using the same secret
-# This creates an identical keypair under local storage semantics (same permissions, encryption)
+# The stellar CLI has no "keys rename" command. `stellar keys add NAME --secret-key SECRET`
+# imports the existing secret under a new name, so the resulting key has the same
+# public address as the original (verified below) and is stored with the same
+# permissions/encryption as any other CLI key. Removing the old name afterwards is
+# therefore equivalent to a rename.
 if [ -n "$NEW_SECRET" ]; then
   stellar keys add "$OLD_KEY" --secret-key "$NEW_SECRET"
+  if [ "$(stellar keys address "$OLD_KEY")" != "$NEW_PUBLIC" ]; then
+    echo "  ❌ Renamed key address does not match $NEW_PUBLIC; keeping '$NEW_KEY' in place."
+    exit 1
+  fi
   stellar keys rm "$NEW_KEY"
   echo "  ✅ Keypair renamed to '$OLD_KEY'."
 else

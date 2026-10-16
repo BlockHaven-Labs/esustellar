@@ -67,7 +67,7 @@ drift-check:
 # The simulated lock's table/key must match backend/$(ENV).hcl.
 verify-state-lock:
 	BACKEND_CONFIG=backend/$(ENV).hcl \
-	LOCK_TABLE_NAME=terraform-locks \
+	LOCK_TABLE_NAME=esustellar-terraform-locks \
 	STATE_BUCKET_NAME=esustellar-terraform-state \
 	STATE_KEY=infra/terraform/$(ENV)/terraform.tfstate \
 	./scripts/verify-state-lock.sh
