@@ -2,5 +2,5 @@
 bucket         = "esustellar-terraform-state"
 key            = "infra/terraform/mainnet/terraform.tfstate"
 region         = "us-east-1"
-dynamodb_table = "terraform-locks"
+dynamodb_table = "esustellar-terraform-locks"
 encrypt        = true

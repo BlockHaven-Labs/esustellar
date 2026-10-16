@@ -8,8 +8,8 @@
 # - Locking:    scheduled assertion that the DynamoDB lock table actually
 #               blocks a concurrent `terraform plan`.
 #
-# The AWS-backed jobs only run on schedule/workflow_dispatch and are skipped
-# when the repository has no AWS credentials configured (secrets set).
+# The AWS-backed jobs only run on schedule/workflow_dispatch. Configure the
+# AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY repository secrets to enable them.
 
 name: Terraform Drift & State Locking
 
@@ -74,47 +74,35 @@ jobs:
         if: env.AWS_ACCESS_KEY_ID == ''
         run: echo "::warning::AWS credentials not configured; skipping drift detection."
 
-      - name: Plan infra/terraform (fail on drift)
+      - name: Plan infra/terraform for each environment (fail on drift)
         if: env.AWS_ACCESS_KEY_ID != ''
         working-directory: infra/terraform
         run: |
-          terraform init -input=false
-          terraform plan -detailed-exitcode -input=false -no-color
-          # This root uses a partial backend (backend "s3" {}) initialised per
-          # environment via backend/*.hcl, so check every environment's state key.
           set -euo pipefail
-          for cfg in backend/*.hcl; do
-            echo "==> Drift check with ${cfg}"
+          for environment in testnet staging mainnet; do
+            cfg="backend/${environment}.hcl"
+            echo "==> Drift check for ${environment} (${cfg})"
             terraform init -input=false -reconfigure -backend-config="${cfg}"
-            if ! terraform plan -detailed-exitcode -input=false -no-color; then
-              code=$?
-              if [ "$code" -eq 2 ]; then
-                echo "DRIFT DETECTED (${cfg})"; exit 1
-              fi
-              exit "$code"
-            fi
+            set +e
+            terraform plan -detailed-exitcode -input=false -no-color -var="environment=${environment}"
+            code=$?
+            set -e
+            if [ "$code" -eq 2 ]; then echo "DRIFT DETECTED (${environment})"; exit 1; fi
+            if [ "$code" -ne 0 ]; then exit "$code"; fi
           done
-        # exit code 2 from -detailed-exitcode means the plan proposes changes
-        # (drift); treat it as a failure.
 
       - name: Plan infra/testnet (fail on drift)
         if: env.AWS_ACCESS_KEY_ID != ''
         working-directory: infra/testnet
         run: |
-          terraform init -input=false
-          terraform plan -detailed-exitcode -input=false -no-color
           set -euo pipefail
-          for cfg in backend/*.hcl; do
-            echo "==> Drift check with ${cfg}"
-            terraform init -input=false -reconfigure -backend-config="${cfg}"
-            if ! terraform plan -detailed-exitcode -input=false -no-color; then
-              code=$?
-              if [ "$code" -eq 2 ]; then
-                echo "DRIFT DETECTED (${cfg})"; exit 1
-              fi
-              exit "$code"
-            fi
-          done
+          terraform init -input=false -reconfigure
+          set +e
+          terraform plan -detailed-exitcode -input=false -no-color
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then echo "DRIFT DETECTED (infra/testnet)"; exit 1; fi
+          if [ "$code" -ne 0 ]; then exit "$code"; fi
 
   state-locking:
     name: Verify State Locking
@@ -139,10 +127,9 @@ jobs:
 
       - name: Verify DynamoDB state locking
         if: env.AWS_ACCESS_KEY_ID != ''
-        working-directory: infra/terraform
         env:
           BACKEND_CONFIG: backend/mainnet.hcl
-          LOCK_TABLE_NAME: terraform-locks
+          LOCK_TABLE_NAME: esustellar-terraform-locks
           STATE_BUCKET_NAME: esustellar-terraform-state
           STATE_KEY: infra/terraform/mainnet/terraform.tfstate
-        run: ./scripts/verify-state-lock.sh infra/terraform
+        run: infra/terraform/scripts/verify-state-lock.sh infra/terraform
