@@ -1,6 +1,15 @@
 # #1230: Render every Kustomize overlay and assert that each Service selector
 # matches the labels of the Deployment pod template, so a label drift cannot
 # silently leave a Service with no endpoints.
+#
+# #1105: also assert that each overlay's JSON patches actually landed. Every
+# overlay patches `/spec/template/spec/containers/0/env`, which implicitly
+# depends on the base Deployment's exact shape — `containers[0]` being the web
+# container, `env` existing at that index. Insert a sidecar before the web
+# container, or rename the container, and every overlay's env patch silently
+# applies to the wrong container or is dropped by kustomize, with no error
+# anywhere until someone reads the rendered output. The rendered manifest is the
+# only place that failure is visible, so it is asserted here.
 name: K8s Overlay Validation
 
 on:
@@ -18,8 +27,23 @@ jobs:
     name: kustomize build + selector check
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         overlay: [mainnet, staging, testnet]
+        include:
+          # #1105: the values each overlay is expected to produce. mainnet and
+          # staging pin NEXT_PUBLIC_NETWORK to the network they actually target;
+          # testnet differs only in namespace/replicas/host/TLS, not network
+          # (#1223).
+          - overlay: mainnet
+            expected_network: public
+            expected_namespace: esustellar
+          - overlay: staging
+            expected_network: testnet
+            expected_namespace: esustellar-staging
+          - overlay: testnet
+            expected_network: testnet
+            expected_namespace: esustellar-testnet
     steps:
       - uses: actions/checkout@v7
 
@@ -47,3 +71,110 @@ jobs:
                   bad = 1
           sys.exit(bad)
           PY
+
+      # #1105: assert the JSON patches produced the values they were written to
+      # produce. Without this, a stale `/spec/template/spec/containers/0/env`
+      # path fails silently — the overlay still renders, just without the
+      # environment-specific values.
+      - name: Assert overlay env patches landed
+        env:
+          EXPECTED_NETWORK: ${{ matrix.expected_network }}
+          EXPECTED_NAMESPACE: ${{ matrix.expected_namespace }}
+          OVERLAY: ${{ matrix.overlay }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess, sys
+          subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyyaml"], check=True)
+          import yaml
+
+          overlay = os.environ["OVERLAY"]
+          expected_network = os.environ["EXPECTED_NETWORK"]
+          expected_namespace = os.environ["EXPECTED_NAMESPACE"]
+
+          docs = [d for d in yaml.safe_load_all(open("rendered.yaml")) if d]
+          deployments = [d for d in docs if d["kind"] == "Deployment"]
+          if not deployments:
+              sys.exit(f"[{overlay}] rendered overlay contains no Deployment")
+
+          errors = []
+          for dep in deployments:
+              name = dep["metadata"]["name"]
+              spec = dep["spec"]["template"]["spec"]
+
+              if dep["metadata"].get("namespace") != expected_namespace:
+                  errors.append(
+                      f"{name} namespace is {dep['metadata'].get('namespace')!r}, expected {expected_namespace!r}"
+                  )
+
+              containers = spec.get("containers", [])
+              if not containers:
+                  errors.append(f"{name} has no containers")
+                  continue
+
+              # The overlays patch containers/0 by index. Pin that assumption
+              # explicitly: if a sidecar is ever inserted first, the patch lands
+              # on the sidecar and the web container silently loses its
+              # environment. Failing here is the whole point of this step.
+              web = next((c for c in containers if c["name"] == "web"), None)
+              if web is None:
+                  errors.append(
+                      "no container named 'web' (found: "
+                      + ", ".join(c.get("name", "<unnamed>") for c in containers)
+                      + ")"
+                  )
+                  continue
+
+              if containers.index(web) != 0:
+                  errors.append(
+                      f"container 'web' is at index {containers.index(web)}, but every overlay patches "
+                      "containers/0 by index; the env patches would apply to the wrong container"
+                  )
+
+              env = web.get("env") or []
+              env_by_name = {e["name"]: e.get("value") for e in env}
+
+              for key in ("NEXT_PUBLIC_NETWORK", "STELLAR_NETWORK"):
+                  if key not in env_by_name:
+                      errors.append(
+                          f"{key} is missing from container 'web' — the overlay's env patch did not apply"
+                      )
+                  elif env_by_name[key] != expected_network:
+                      errors.append(
+                          f"{key}={env_by_name[key]!r}, expected {expected_network!r} — the overlay's env patch applied to the wrong container or a stale base"
+                      )
+
+              # The base also relies on envFrom; a patch that replaced the whole
+              # env list must not have removed it.
+              if "envFrom" not in web:
+                  errors.append(
+                      f"{name}: container 'web' has no envFrom — the ConfigMap/Secret injection from the base is missing"
+                  )
+
+          # #1108: the base now ships a PodDisruptionBudget. Assert it survives
+          # the overlay render, so deleting it from base/ fails here.
+          pdbs = [d for d in docs if d["kind"] == "PodDisruptionBudget"]
+          if not pdbs:
+              errors.append("rendered overlay contains no PodDisruptionBudget for esustellar-web")
+
+          for pdb in pdbs:
+              budget = pdb["spec"].get("maxUnavailable", pdb["spec"].get("minAvailable"))
+              if budget is None:
+                  errors.append(
+                      f"PodDisruptionBudget {pdb['metadata']['name']} sets neither maxUnavailable nor minAvailable"
+                  )
+
+          if errors:
+              for err in errors:
+                  print(f"::error file=rendered.yaml,overlay={overlay}::{err}")
+              print(
+                  f"::error::overlay '{overlay}' rendered, but its patches did not produce the expected output. "
+                  "Check that infra/k8s/base/deployment.yaml still has a container named 'web' at index 0 with an 'env' list."
+              )
+              sys.exit(1)
+
+          print(f"overlay '{overlay}' OK: patches applied, env and namespace as expected")
+          PY
+
+      - name: Show rendered manifests on failure
+        if: failure()
+        run: cat rendered.yaml
