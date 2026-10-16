@@ -47,6 +47,8 @@ data:
               description: "P95 latency on {{ $labels.instance }} is above 5 seconds."
 
           # Contract call failures
+          # NOTE: depends on stellar_rpc_contract_call_total / stellar_rpc_contract_call_errors_total
+          # being exported by the event indexer (packages/event-indexer); the rule stays silent until they are.
           - alert: ContractCallFailureRate
             expr: |
               (
