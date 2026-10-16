@@ -183,7 +183,7 @@
     "jsx-ast-utils": "^3.3.5",
     "keyv": "^4.5.4",
     "language-subtag-registry": "^0.3.23",
-    "language-tags": "^1.0.9",
+    "language-tags": "^2.1.0",
     "levn": "^0.4.1",
     "lightningcss": "^1.30.2",
     "locate-path": "^6.0.0",
