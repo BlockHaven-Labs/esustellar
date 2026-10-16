@@ -26,23 +26,23 @@ output "project_name" {
 
 output "kms_key_arn" {
   description = "ARN of the storage KMS key"
-  value       = aws_kms_key.storage.arn
+  value       = module.storage.kms_key_arn
   sensitive   = true
 }
 
 output "common_tags" {
-  description = "Common resource tags shared with per-environment roots"
-  value       = local.common_tags
+  description = "Common resource tags"
+  value       = module.storage.common_tags
 }
 
 output "vpc_id" {
   description = "ID of the shared VPC"
-  value       = aws_vpc.main.id
+  value       = module.vpc.vpc_id
 }
 
 output "private_subnet_ids" {
   description = "IDs of the shared private subnets (usable by Fargate tasks)"
-  value       = aws_subnet.private[*].id
+  value       = module.vpc.private_subnet_ids
 }
 
 # #1120: export the backup bucket name so backup-indexer.sh and
@@ -50,10 +50,10 @@ output "private_subnet_ids" {
 # match "${project_name}-${environment}-backups" by hand.
 output "backups_bucket" {
   description = "Name of the S3 bucket holding database backups (pg_dump artifacts from infra/backups/backup-indexer.sh)"
-  value       = aws_s3_bucket.backups.id
+  value       = module.storage.backups_bucket
 }
 
 output "backups_bucket_uri" {
   description = "BACKUP_BUCKET value in s3:// form, for direct use as the BACKUP_BUCKET environment variable"
-  value       = "s3://${aws_s3_bucket.backups.id}"
+  value       = "s3://${module.storage.backups_bucket}"
 }

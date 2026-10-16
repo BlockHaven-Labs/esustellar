@@ -15,13 +15,27 @@ infra/terraform/
 ├── backend.tf                 # Partial S3 backend; environment key supplied at init
 ├── backend-config.tf.example  # Copy-paste TEMPLATE for NEW environment roots — never a live .tf
 ├── providers.tf               # AWS provider version constraints + default tags
-├── main.tf                    # Shared resources (backup bucket, KMS key, VPC + subnets)
+├── main.tf                    # Shared storage and VPC module instances
 ├── variables.tf               # Input variables
 ├── outputs.tf                 # Output values (incl. common_tags / vpc_id / private_subnet_ids)
+├── modules/                   # Reusable storage, VPC, IAM, ECR, CDN, DNS, and SSL modules
+├── moved.tf                   # State-preserving moves from the former inline resources
 ├── Makefile                   # Validation + workflow targets
 ├── README.md                  # This file
 └── state-bootstrap/           # One-time bootstrap of the S3 bucket + DynamoDB lock table
 ```
+
+## Reusing the VPC module
+
+Both this root and `infra/testnet/` instantiate `modules/vpc` and
+`modules/storage` directly. This keeps the network and encrypted bucket
+definitions shared while each root uses its own state and environment values.
+Both VPC instances pass two AZs and one NAT gateway to preserve the existing
+network shape.
+
+The `moved.tf` files map existing inline storage and VPC resources to their
+module addresses, so applying this refactor to existing state does not
+recreate those resources. Review the plan before applying, as usual.
 
 ## Bootstrap (one time per AWS account)
 
@@ -55,7 +69,7 @@ Then `terraform init -backend=true -reconfigure` from that root.
 ├── main.tf         # Resource definitions (backup bucket, KMS key, VPC + subnets)
 ├── variables.tf    # Input variables
 ├── outputs.tf      # Output values (incl. common_tags / vpc_id / private_subnet_ids)
-├── modules/        # Reusable modules (vpc, iam, ecr, cdn, dns, ssl)
+├── modules/        # Reusable modules (storage, vpc, iam, ecr, cdn, dns, ssl)
 ├── scripts/        # Operational scripts
 ├── Makefile        # Validation + workflow targets
 ├── state-bootstrap/# One-time bootstrap: state bucket + lock table

@@ -21,8 +21,7 @@ variable "ecr_repository_arn" {
 }
 
 # #991: required so the ECS task role can never be granted kms:Decrypt on "*".
-# Pass the ARN of the storage key created in infra/terraform/main.tf
-# (`aws_kms_key.storage.arn`).
+# Pass `kms_key_arn` from the shared storage module.
 variable "kms_key_arn" {
   description = "ARN of the KMS key the ECS task may decrypt with (storage encryption key)"
   type        = string
