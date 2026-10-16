@@ -1,6 +1,13 @@
 # #1228: the namespaceSelector values below (esustellar-monitoring) match the
 # namespace used by infra/monitoring/* manifests. #1227: deny-all-egress plus the
 # allow-dns-egress / allow-only-api-egress policies form the default-deny egress set.
+#
+# Scope note (#1125): these policies govern the `esustellar` application
+# namespace only. The deployer-key-rotation workload has its own namespace
+# (`esustellar-keyops`) and its own default-deny policies in
+# infra/k8s/keyops.yaml — deliberately separate, so a rotation pod cannot inherit
+# the web ingress rules and a web pod cannot inherit key-rotation egress.
+# Nothing in this file selects pods in `esustellar-keyops`.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -1,3 +1,26 @@
+# #1128 — read this first.
+#
+# PRODUCTION RUNS ON KUBERNETES. Kubernetes (EKS) is the deployment target for
+# mainnet, staging and testnet; the canonical manifests are `infra/k8s/`
+# (Kustomize: `base/` + `overlays/{mainnet,staging,testnet}`).
+#
+# The ECS IAM roles in `infra/terraform/modules/iam/` are LEGACY and are not used
+# by any current deployment path. `VERCEL_TOKEN` and other Vercel references are
+# legacy or preview-only. The Prometheus/Grafana stack in `infra/monitoring/`
+# scrapes the Kubernetes cluster, not ECS.
+#
+# This statement exists because the repository accumulated contradictory signals
+# — IAM roles for ECS, extensive k8s manifests, and a secrets document mentioning
+# `VERCEL_TOKEN` — and an audit of this tree could not determine which one was
+# live. Every other document below should be evaluated against the statement
+# above. It restates `docs/adr/003-kubernetes-deployment-target.md`; if the two
+# ever disagree, the ADR is the decision record and this banner is the summary.
+#
+# Known exception: no ECS task definition and no RDS module are committed to this
+# repository, so "ECS" here describes IAM scaffolding rather than a running
+# service. See `infra/monitoring/ecs/README.md` for what ECS-level observability
+# would require if that path is ever revived.
+
 # Infra Overview
 
 ## Prerequisites
@@ -5,6 +28,8 @@
 - Docker & Docker Compose
 - Stellar CLI (`cargo install stellar-cli --features opt`)
 - Node.js 20+
+- kubectl + kustomize (the production path)
+- Terraform >= 1.6 (infrastructure provisioning)
 - Access to Stellar testnet/mainnet RPC
 
 ## Quickstart
