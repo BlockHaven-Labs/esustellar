@@ -95,3 +95,13 @@ monitoring/            ← DEPRECATED legacy configs (see table above)
 .github/workflows/     ← CI: web/contracts/mobile checks, Kustomize validation,
                          sealed-secret validation, Terraform cost/drift checks
 ```
+
+## `infra/testnet/` vs `environments/testnet/`
+
+- `infra/testnet/` is the **Terraform root** for testnet cloud
+  infrastructure; it wraps the shared module in `infra/terraform/`.
+- `environments/testnet/` is the **contract-deployment and local Docker
+  Compose workspace** (`scripts/deploy.sh`, `docker-compose.yml`).
+- Changing cloud resources: edit `infra/testnet/`. Deploying contracts or
+  running testnet locally: use `environments/testnet/`. App manifests live
+  in `infra/k8s/overlays/testnet/`.
