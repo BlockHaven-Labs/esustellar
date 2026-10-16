@@ -1,119 +1,68 @@
 # Terraform State Bootstrap
 
-This root creates the **S3 bucket** and **DynamoDB table** used as the remote backend for every other Terraform root in this repository.
+This Terraform root creates the S3 bucket and DynamoDB table used for remote
+state by the other Terraform roots in this repository.
 
-| Managed resource | Name (default) | Purpose |
+| Resource | Default name | Purpose |
 |---|---|---|
-| S3 bucket | `esustellar-terraform-state` | Stores all `*.tfstate` files with versioning + SSE-AES256 |
-| DynamoDB table | `esustellar-terraform-locks` | State locking so two `apply`s never run concurrently |
+| S3 bucket | `esustellar-terraform-state` | Stores versioned, encrypted Terraform state |
+| DynamoDB table | `esustellar-terraform-locks` | Coordinates state locking |
 
-These names are defined in `terraform.tfvars.example` and **must not drift** from `../backend.tf` and `../backend-config.tf.example` — otherwise downstream `terraform init` cannot find the bucket/table.
+The names are configured in `terraform.tfvars.example` and must match the
+backend configuration used by downstream roots.
 
-## Chicken-and-egg, explained
+## Bootstrap order
 
-The remote backend this root creates *cannot* be used *by* this root during its first run: a Terraform root cannot store its own state in a bucket that does not exist yet.
-
-Therefore **this root is always run with local state first**, and only after the bucket + lock table exist can every other root use the S3 backend.
-
-## Exact bootstrap order
-
-```text
-┌────────────────────────────────────────────────────────────────────┐
-│ 1. state-bootstrap root  (THIS README)                             │
-│    terraform init   →  LOCAL state (terraform.tfstate in ./)      │
-│    terraform apply  →  creates S3 bucket + DynamoDB lock table    │
-└────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ 2. Infra root             infra/terraform/backend.tf               │
-│    terraform init -reconfigure                                   │
-│    terraform plan / apply  →  S3 backend with the selected        │
-│    environment-specific key from backend/<env>.hcl                │
-└────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ 3. Per-environment roots  (e.g. infra/testnet/backend.tf)          │
-│    Each root declares its OWN backend.tf with a distinct key like  │
-│    "testnet/terraform.tfstate" (see ../backend-config.tf.example). │
-│ 2. Infra root             infra/terraform/backend.tf (partial)        │
-│    terraform init -reconfigure -backend-config=backend/testnet.hcl  │
-│    terraform plan / apply  →  S3 backend, bucket "esustellar-        │
-│    terraform-state", per-env key from backend/*.hcl                 │
-└────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ 3. Per-environment roots  (e.g. infra/testnet/backend.tf)           │
-│    Each root uses the SAME partial backend, supplied via its own    │
-│    backend/<env>.hcl (see ../backend-config.tf.example template).   │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-### Step 1 — bootstrap with local state (one time per AWS account)
+The bootstrap root has no remote backend block. Its first `terraform init`
+therefore uses the local backend and writes state to
+`state-bootstrap/terraform.tfstate`. Apply it once to create the bucket and
+lock table:
 
 ```bash
 cd infra/terraform/state-bootstrap
-cp terraform.tfvars.example terraform.tfvars   # review the bucket + lock table names
-
-terraform init            # defaults to LOCAL backend
-terraform plan
-terraform apply           # creates S3 bucket + DynamoDB table
-```
-
-This root is not run again afterwards: it is protected by
-`lifecycle { prevent_destroy = true }` on **both** the bucket and the lock
-table, so an accidental re-apply/destroy cannot orphan the shared state.
-
-### Step 2 — point the main infra root at S3
-
-`infra/terraform/backend.tf` is a *partial* S3 backend used by that root,
-supplied via `backend/<env>.hcl`. Do not edit it; just initialize with the
-matching config:
-
-```bash
-cd infra/terraform
-terraform init -reconfigure -backend-config=backend/testnet.hcl   # now talks to S3 + DynamoDB
+cp terraform.tfvars.example terraform.tfvars
+terraform init
 terraform plan
 terraform apply
 ```
 
-After bootstrapping, point each downstream Terraform root at this bucket via its
-per-environment backend config (`backend/*.hcl`). Every root uses a distinct
-state key — see [infra/docs/terraform-state.md](../../docs/terraform-state.md)
-for the full state-key map.
+Keep the local state file safe; it contains the Terraform tracking information
+for the bucket and lock table. Moving this root's state to S3 is optional and
+is not required for any other root to use remote state.
 
-### Step 3 — per-environment roots
+## After the bucket exists
 
-Each environment root carries its own `backend.tf` (e.g.
-`infra/testnet/backend.tf`, key `testnet/terraform.tfstate`). To add a new
-root, copy `../backend-config.tf.example` → `backend.tf` and replace `<ENV>`.
-
-## Which file is used when?
-
-| File | Role |
-|---|---|
-| `state-bootstrap/` (this root) | One-time local-state bootstrap of bucket + lock table |
-| `../backend.tf` + `../backend/*.hcl` | Partial S3 backend for the `infra/terraform` root (per-environment state keys) |
-| `../backend-config.tf.example` | Copy-paste **template** for new environment roots — never a live `.tf` |
-
-## Optionally migrating this root's own state
-
-After the bucket + table exist you *can* move this root's `terraform.tfstate`
-into S3 too (keeps everything consistent):
+The shared root in `infra/terraform` has a live, partial S3 backend block in
+`backend.tf`. Initialize it with the matching per-environment HCL file, which
+supplies the bucket, region, lock table, and distinct state key:
 
 ```bash
-# add a backend block (copy ../backend.tf) then:
-terraform init -migrate-state
+cd infra/terraform
+terraform init -reconfigure -backend-config=backend/testnet.hcl
+terraform plan
+terraform apply
 ```
 
-Not required for any other root to work.
+Use `backend/staging.hcl` or `backend/mainnet.hcl` for those environments.
+Each config selects its own state key. The `-reconfigure` flag configures this
+root to use S3; it does not migrate the state belonging to `state-bootstrap/`.
+
+`backend-config.tf.example` is not a live configuration file and is not loaded
+by Terraform. It is a template for a new root: copy it to that root as
+`backend.tf`, then set its environment-specific state key. The current shared
+root instead uses `backend.tf` together with `backend/<env>.hcl` at init time.
+
+See [the Terraform state map](../../docs/terraform-state.md) for the keys used
+by repository roots.
+
+## Optional migration of the bootstrap root
+
+To store the bootstrap root's own state in S3, add an S3 backend block to this
+root after the bucket and lock table exist, then run `terraform init
+-migrate-state` with the desired backend configuration. This is optional; the
+normal bootstrap sequence leaves this root's state local.
 
 ## Safeguards
 
-- `prevent_destroy = true` on the S3 bucket **and** the DynamoDB table.
-- S3 versioning + SSE-AES256 + public-access block already configured.
-- Re-running `terraform apply` against an already-bootstrapped account is
-  a no-op (resources already exist, unmodified), and `terraform destroy`
-  is refused by `prevent_destroy`.
+- `prevent_destroy = true` protects the bucket and lock table.
+- The bucket has versioning, server-side encryption, and public-access blocks.
