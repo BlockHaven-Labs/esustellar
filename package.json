@@ -140,7 +140,7 @@
     "hermes-estree": "^0.25.1",
     "hermes-parser": "^0.25.1",
     "ignore": "^5.3.2",
-    "import-fresh": "^3.3.1",
+    "import-fresh": "^4.0.1",
     "imurmurhash": "^0.1.4",
     "internal-slot": "^1.1.0",
     "is-array-buffer": "^3.0.5",
