@@ -1,0 +1,23 @@
+# Issue #1259: validate Kubernetes manifests on every PR that touches them.
+name: Infra K8s Manifest Validation
+on:
+  pull_request:
+    paths: ["infra/k8s/**", "k8s/**"]
+permissions:
+  contents: read
+jobs:
+  kubeconform:
+    name: kustomize build + kubeconform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Validate Kustomize overlays and flat manifests
+        run: |
+          for d in infra/k8s/overlays/*/; do
+            kubectl kustomize "$d" | kubeconform -ignore-missing-schemas -summary
+          done
+          kubeconform -ignore-missing-schemas -summary k8s/namespaces k8s/deployments k8s/web

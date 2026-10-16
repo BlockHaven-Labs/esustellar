@@ -1,6 +1,9 @@
 # #555: Infracost CI integration — cost estimation on pull requests.
 #
 # Requires INFRACOST_API_KEY secret to be set in the repository.
+# Advisory only: it is not a required status check. If the secret is
+# unset or revoked, the steps are skipped with a warning instead of
+# failing the PR (issue #1258).
 
 name: Infracost Cost Estimate
 
@@ -17,22 +20,31 @@ jobs:
   infracost:
     name: Infracost Cost Estimate
     runs-on: ubuntu-latest
+    env:
+      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
     steps:
+      - name: Warn when API key is unset
+        if: env.INFRACOST_API_KEY == ''
+        run: echo "::warning::INFRACOST_API_KEY is not set; skipping cost estimate."
+
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Setup Infracost
+        if: env.INFRACOST_API_KEY != ''
         uses: infracost/actions/setup@v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Generate Infracost Breakdown
+        if: env.INFRACOST_API_KEY != ''
         run: |
           infracost breakdown --path infra/terraform/ \
             --format json \
             --out-file infracost-breakdown.json
 
       - name: Annotate PR with Cost Estimate
+        if: env.INFRACOST_API_KEY != ''
         uses: infracost/actions/comment@v4
         with:
           path: infracost-breakdown.json
