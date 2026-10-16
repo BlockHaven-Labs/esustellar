@@ -17,7 +17,7 @@ ROOT="${1:-.}"
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 LOCK_TABLE="${LOCK_TABLE_NAME:-esustellar-terraform-locks}"
 BUCKET="${STATE_BUCKET_NAME:-esustellar-terraform-state}"
-STATE_KEY="${STATE_KEY:-infra/terraform.tfstate}"
+STATE_KEY="${STATE_KEY:-infra/terraform/testnet/terraform.tfstate}"
 # Optional: when the root uses a partial backend (backend "s3" {}), supply the
 # per-environment config (e.g. BACKEND_CONFIG=backend/mainnet.hcl) so that
 # `terraform init` knows the bucket/key/lock table. LOCK_TABLE_NAME, STATE_KEY
