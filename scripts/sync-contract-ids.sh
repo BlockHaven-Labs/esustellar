@@ -110,9 +110,10 @@ fi
 
 # ──────────────────────────────────────────────
 # 5. k8s/config/testnet-configmap.yaml
-#    (environments/testnet/k8s/ was archived — issue #1027; the canonical
-#     testnet Kubernetes tree is infra/k8s/overlays/testnet/, which sources
-#     this configmap.)
+#    (environments/testnet/k8s/ was archived, issue #1027. This file lives in
+#     the deprecated top-level k8s/ tree and is NOT consumed by
+#     infra/k8s/overlays/testnet/, whose base reads ConfigMap
+#     esustellar-web-config. See k8s/README.md before relying on this step.)
 # ──────────────────────────────────────────────
 CONFIGMAP="$ROOT_DIR/k8s/config/testnet-configmap.yaml"
 if [ -f "$CONFIGMAP" ]; then

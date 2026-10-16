@@ -8,10 +8,43 @@ images:
     newTag: testnet-latest
 commonLabels:
   app.kubernetes.io/version: "testnet-latest"
+# Deliberate cost/availability tradeoff (#1104): testnet runs a single replica
+# to save cost, and a pod crash or node loss means a short outage. That is
+# acceptable for testnet only; do not copy this to staging or mainnet.
+# Two things make 1 replica behave as intended:
+#   1. The base HPA has minReplicas: 2, which would silently scale testnet back
+#      up to 2, so the HPA is patched below (floor 1, ceiling 3).
+#   2. Deploys use maxUnavailable: 0 / maxSurge: 1, so the new pod must pass its
+#      readiness probe before the old one is removed (no gap during a deploy).
+# Keep `count` and the HPA minReplicas in sync.
 replicas:
   - name: esustellar-web
     count: 1
 patches:
+  # #1104: HPA floor must equal the intended testnet baseline capacity.
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 3
+  # #1104: explicit rolling update so a single replica never drops to zero
+  # ready pods mid-deploy (same values as the legacy k8s/deployments/*.yaml).
+  - target:
+      kind: Deployment
+      name: esustellar-web
+    patch: |-
+      - op: add
+        path: /spec/strategy
+        value:
+          type: RollingUpdate
+          rollingUpdate:
+            maxUnavailable: 0
+            maxSurge: 1
   - target:
       kind: Deployment
       name: esustellar-web
