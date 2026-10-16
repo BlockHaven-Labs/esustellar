@@ -11,6 +11,7 @@ Index of the operational scripts in this directory: what each one does and when 
 | `validate-infra-env.sh` | Validates the current shell environment against the variable names listed in `infra/secrets/templates/.env.example`. | Before running any script or deploy step that depends on infra secrets being present locally. |
 | `validate-k8s-manifests.sh` | Builds every `infra/k8s` overlay with kustomize and checks the output against the Kubernetes schema with kubeconform. | Before applying k8s manifest changes; intended to be wired into CI once tool availability is confirmed there. |
 | `check-secret-rotation.py` | Checks `infra/secrets/last-rotated.yml` against each secret's rotation policy and flags any that are overdue. | On a schedule (e.g. weekly CI job) to catch missed rotations. |
+| `check-terraform-variable-docs.py` | Fails if any Terraform `variable` block lacks a top-level `description`. Runs as a pre-commit hook on `*.tf`; exits 0 when all are documented. | Enforced automatically on commit. Run by hand when adding a module or root. |
 | `deploy/validate-env.sh` | Validates only the web-frontend (`NEXT_PUBLIC_*`) environment variables. Companion to `validate-infra-env.sh`, which covers everything else. | Before a frontend deploy. |
 | `rollback/rollback.sh` | Rolls back the most recent deployment. | When a post-deploy smoke test or healthcheck fails and the deploy needs to be reverted. |
 

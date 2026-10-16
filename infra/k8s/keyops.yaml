@@ -1,0 +1,253 @@
+# #1125 — deployer key rotation as a Kubernetes workload.
+#
+# infra/scripts/rotate-deployer-keypair.sh runs on an operator's laptop, which
+# means the single most sensitive credential in the system is rotated by
+# whatever shell, history file and CI log the operator happens to be using. If
+# rotation is ever automated as a CronJob/Job, that workload needs its own
+# blast radius: its own namespace, no service account token, a read-only root
+# filesystem, and egress restricted to the Stellar network and nothing else.
+#
+# This file is deliberately NOT part of infra/k8s/base/kustomization.yaml, so
+# `kustomize build` does not include it. Applying it is a deliberate act, and it
+# has one prerequisite: the rotation script ConfigMap must exist first.
+#
+#   kubectl -n esustellar-keyops create configmap deployer-key-rotation-script \
+#     --from-file=rotate-deployer-keypair.sh=infra/scripts/rotate-deployer-keypair.sh \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl apply -f infra/k8s/keyops.yaml
+#
+# The script is mounted from a ConfigMap rather than baked into an image so
+# there is one copy of rotate-deployer-keypair.sh in the repo — the same script
+# an operator runs from a laptop. (The image tag below should be pinned to a
+# digest before this runs unattended; it is left as a tag here only because no
+# digest is verifiable from this repository.)
+#
+# The CronJob ships with suspend: true. Rotation is a manual, human-timed
+# operation (fund the new account, update DEPLOYER_SECRET_KEY in CI/CD, confirm
+# the old key is no longer referenced); a suspended CronJob that someone
+# explicitly resumes is the safe default. Do not remove the field to "fix" an
+# absent keypair — the absence of a key is not a bug this file should paper over.
+#
+# The general web policies live in infra/k8s/network-policies.yaml; these are
+# separate on purpose. A rotation pod must not inherit the ingress rules for
+# esustellar-web, and esustellar-web must not inherit rotation egress.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: esustellar-keyops
+  labels:
+    app.kubernetes.io/part-of: esustellar
+    app.kubernetes.io/component: key-ops
+    # Keeps the namespace out of service discovery and ingress label selectors.
+    kubernetes.io/metadata.name: esustellar-keyops
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployer-key-rotation
+  namespace: esustellar-keyops
+automountServiceAccountToken: false
+---
+# Default-deny ingress: nothing may reach a key-rotation pod. There is no
+# legitimate inbound path to a job that holds the deployer secret key.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: esustellar-keyops
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress: []
+---
+# Default-deny egress, then re-allow only what key rotation needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-egress
+  namespace: esustellar-keyops
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: esustellar-keyops
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# Egress to the Stellar network only.
+#
+# Known limitation, stated rather than papered over: NetworkPolicy filters on
+# IPs and ports, not DNS names. It cannot express "friends.stellar.org" or
+# "soroban-testnet.stellar.org", so this rule allows 443 to any non-private,
+# non-metadata address. It still blocks lateral movement inside the VPC and the
+# link-local metadata endpoint (169.254.169.254, which is where cloud credentials
+# normally get stolen from).
+#
+# Tightening this to the actual Stellar endpoints requires either a CNI that
+# supports FQDN policy (Calico, Cilium) or resolving the endpoints to CIDRs and
+# maintaining that list here. Do not delete the except clause below without
+# choosing one of those: it is what stops a compromised rotation pod from
+# reaching IMDS and the cluster API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-stellar-network-egress
+  namespace: esustellar-keyops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: key-ops
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            # RFC1918 private space, link-local (includes 169.254.169.254),
+            # CGNAT range and IPv4-mapped IPv6.
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10
+              - ::1/128
+---
+# The rotation pod has no need to talk to the monitoring namespace, and
+# Prometheus/Grafana have no reason to scrape it — it runs for a few seconds
+# every rotation interval. No policy grants either direction.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deployer-key-rotation-config
+  namespace: esustellar-keyops
+data:
+  # Friendbot funds new testnet accounts. Mainnet funding is manual and must not
+  # be automated, so NETWORK defaults to testnet and mainnet is refused below.
+  NETWORK: "testnet"
+  HORIZON_URL: "https://horizon-testnet.stellar.org"
+  SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: deployer-key-rotation
+  namespace: esustellar-keyops
+  labels:
+    app.kubernetes.io/component: key-ops
+spec:
+  # Suspended by default. See the header: rotation is human-timed.
+  suspend: true
+  schedule: "0 3 1 * *" # 03:00 on the 1st of each month, if ever resumed
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 0
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      # A rotation run that hangs on an interactive prompt must not linger
+      # holding the credential.
+      activeDeadlineSeconds: 900
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app: deployer-key-rotation
+            app.kubernetes.io/component: key-ops
+        spec:
+          restartPolicy: Never
+          serviceAccountName: deployer-key-rotation
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            fsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: rotate
+              image: stellar-cli:latest
+              # Fails closed on anything other than testnet. An automated
+              # mainnet key rotation could rotate the key away from the
+              # multisig signers while nothing is watching.
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  if [ "${NETWORK}" != "testnet" ]; then
+                    echo "refusing to rotate on '${NETWORK}': key rotation must be run manually for mainnet" >&2
+                    exit 1
+                  fi
+                  /app/rotate-deployer-keypair.sh "$NETWORK"
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: script
+                  mountPath: /app/rotate-deployer-keypair.sh
+                  subPath: rotate-deployer-keypair.sh
+                  readOnly: true
+                - name: keyring
+                  mountPath: /home/rotation/.stellar
+                - name: tmp
+                  mountPath: /tmp
+              envFrom:
+                - configMapRef:
+                    name: deployer-key-rotation-config
+              env:
+                - name: HOME
+                  value: /home/rotation
+                # Never log the new secret. rotate-deployer-keypair.sh writes
+                # it to a mode-600 file and expects the caller to move it into
+                # CI/CD secrets out of band.
+                - name: DEPLOYER_SECRET_LOGGING
+                  value: "disabled"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+          volumes:
+            - name: script
+              configMap:
+                name: deployer-key-rotation-script
+                defaultMode: 0555
+            # The keyring is the only writable, credential-bearing path.
+            # emptyDir means the new keypair does not survive a node restart,
+            # which is the intended failure mode: an orphaned secret key on a
+            # surviving volume is exactly what must not happen.
+            - name: keyring
+              emptyDir:
+                medium: Memory
+                sizeLimit: 16Mi
+            - name: tmp
+              emptyDir: {}

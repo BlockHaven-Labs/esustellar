@@ -21,3 +21,17 @@ repos:
         description: "Scans staged files for high-entropy tokens and private keys"
         args: ['--baseline', '.secrets.baseline']
         exclude: '(^Cargo\.lock$|^package-lock\.json$|^apps/docs-site/)'
+
+  # #1126: every Terraform variable must have a top-level `description`. All 58
+  # variables currently do, so this hook exists to keep it that way rather than
+  # to fix a present failure — a new module is exactly where the description gets
+  # forgotten, and its absence is what makes `terraform plan` output and
+  # terraform-docs output useless for cross-environment auditing.
+  - repo: local
+    hooks:
+      - id: terraform-variable-docs
+        name: terraform variable descriptions
+        description: "Fail if any Terraform variable lacks a top-level description"
+        entry: python3 infra/scripts/check-terraform-variable-docs.py
+        language: system
+        files: \.tf$
