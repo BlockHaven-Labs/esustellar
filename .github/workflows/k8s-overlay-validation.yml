@@ -1,0 +1,49 @@
+# #1230: Render every Kustomize overlay and assert that each Service selector
+# matches the labels of the Deployment pod template, so a label drift cannot
+# silently leave a Service with no endpoints.
+name: K8s Overlay Validation
+
+on:
+  pull_request:
+    paths:
+      - "infra/k8s/**"
+      - "k8s/**"
+      - ".github/workflows/k8s-overlay-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  kustomize-build:
+    name: kustomize build + selector check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        overlay: [mainnet, staging, testnet]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Render overlay
+        run: kubectl kustomize infra/k8s/overlays/${{ matrix.overlay }} > rendered.yaml
+
+      - name: Assert Service selector matches Deployment labels
+        run: |
+          python3 - <<'PY'
+          import re, subprocess, sys
+          subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyyaml"], check=True)
+          import yaml
+          docs = [d for d in yaml.safe_load_all(open("rendered.yaml")) if d]
+          deployments = [d for d in docs if d["kind"] == "Deployment"]
+          services = [d for d in docs if d["kind"] == "Service"]
+          if not deployments or not services:
+              sys.exit("rendered overlay must contain a Deployment and a Service")
+          pod_labels = deployments[0]["spec"]["template"]["metadata"].get("labels", {})
+          bad = 0
+          for svc in services:
+              sel = svc["spec"].get("selector", {})
+              missing = {k: v for k, v in sel.items() if pod_labels.get(k) != v}
+              if missing:
+                  print(f"::error::Service {svc['metadata']['name']} selector {missing} not in pod labels {pod_labels}")
+                  bad = 1
+          sys.exit(bad)
+          PY
