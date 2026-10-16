@@ -3,6 +3,20 @@
 # Issue #1120 — BACKUP_BUCKET now names a bucket this repo actually provisions.
 set -euo pipefail
 
+# Optional Slack webhook for failure notifications
+SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
+
+notify_failure() {
+  local message="$1"
+  if [[ -n "${SLACK_WEBHOOK_URL}" ]]; then
+    curl -s -X POST -H "Content-Type: application/json" \
+      -d "{\"text\":\"[esustellar-backup] ${message}\"}" \
+      "${SLACK_WEBHOOK_URL}" >/dev/null 2>&1 || true
+  fi
+}
+
+trap 'notify_failure "backup-indexer.sh failed on line $LINENO with exit code $?"' ERR
+
 # #1120: the previous default was the bare literal "s3://esustellar-backups",
 # which no Terraform root declared anywhere — the first scheduled run would have
 # failed with NoSuchBucket against a bucket an operator had to create by hand,
@@ -50,9 +64,9 @@ echo "[$(date)] Backup uploaded: ${BACKUP_BUCKET}/indexer/${TIMESTAMP}.sql.gz"
 CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d)
 echo "[$(date)] Cleaning up backups older than ${CUTOFF_DATE}..."
 
-# aws s3 ls outputs dates as YYYY-MM-DD; convert to YYYYMMDD for correct lexicographic comparison
+# aws s3 ls outputs dates as YYYY-MM-DD; convert to YYYYMMDD for correct lexicographic/numeric comparison
 aws s3 ls "${BACKUP_BUCKET}/indexer/" | \
-  awk -v cutoff="$CUTOFF_DATE" '{ gsub("-", "", $1); if ($1 < cutoff) print $4 }' | \
+  awk -v cutoff="$CUTOFF_DATE" '$1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { d = $1; gsub("-", "", d); if (d + 0 < cutoff + 0) print $4 }' | \
   grep -v '^$' | \
   xargs -I {} aws s3 rm "${BACKUP_BUCKET}/indexer/{}" || true
 

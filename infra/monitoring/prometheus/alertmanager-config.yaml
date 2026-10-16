@@ -35,3 +35,5 @@ data:
             channel: '#ops-warnings'
             title: '{{ .GroupLabels.alertname }}'
             text: '{{ .CommonAnnotations.description }}'
+# SLACK_WEBHOOK_URL is sourced from the environment/secret (see alertmanager-deployment.yaml);
+# do not hardcode webhook URLs in version control.
