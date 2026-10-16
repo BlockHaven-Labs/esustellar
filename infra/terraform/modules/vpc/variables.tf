@@ -44,3 +44,32 @@ variable "enable_flow_logs" {
   type        = bool
   default     = true
 }
+
+# #1112: consumed by the ALB security group below and exported in outputs.tf.
+variable "application_port" {
+  description = "TCP port the application listens on (matches containerPort 3000 in infra/k8s/base/deployment.yaml)"
+  type        = number
+  default     = 3000
+
+  validation {
+    condition     = var.application_port > 0 && var.application_port < 65536
+    error_message = "application_port must be a valid TCP port (1-65535)."
+  }
+}
+
+variable "allowed_ingress_cidrs" {
+  description = "CIDR blocks permitted to reach the ALB on ports 80/443. Widen deliberately — 0.0.0.0/0 is the public default, not an oversight."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+
+  validation {
+    condition     = length(var.allowed_ingress_cidrs) > 0
+    error_message = "allowed_ingress_cidrs must contain at least one CIDR block."
+  }
+}
+
+variable "domain_suffix" {
+  description = "Domain served by the ALB, used in the security group description only"
+  type        = string
+  default     = "esustellar.io"
+}

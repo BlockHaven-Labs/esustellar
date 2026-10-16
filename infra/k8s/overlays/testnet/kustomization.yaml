@@ -56,6 +56,28 @@ patches:
             value: testnet
           - name: STELLAR_NETWORK
             value: testnet
+  # #1111: single-replica testnet needs the opposite probe posture from
+  # mainnet. There is no second replica to absorb an eviction, so a readiness
+  # probe that fails twice would take the whole environment offline for a
+  # transient blip; thresholds are loosened (readiness 15s period / 6 failures,
+  # liveness 6 failures) and the liveness initial delay is raised to 60s to
+  # cover cold starts on a small cluster without restart loops.
+  - target:
+      kind: Deployment
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe/periodSeconds
+        value: 15
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe/failureThreshold
+        value: 6
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/initialDelaySeconds
+        value: 60
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/failureThreshold
+        value: 6
   # #1018: testnet claims testnet.esustellar.io (DNS module creates
   # ${environment}.${domain_name}).
   - target:
