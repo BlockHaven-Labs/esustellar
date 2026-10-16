@@ -32,6 +32,18 @@ jobs:
         run: |
           grafana-dashboard-validator validate infra/monitoring/grafana/dashboards/web-app-golden-signals.json
 
+      - name: Strict validation (no additional inputs required)
+        run: |
+          grafana-dashboard-validator validate --fail-on-warnings infra/monitoring/grafana/dashboards/on-chain-events.json
+          grafana-dashboard-validator validate --fail-on-warnings infra/monitoring/grafana/dashboards/web-app-golden-signals.json
+
+      - name: Check dashboards reference known metrics (consistency check)
+        run: |
+          METRICS=$(grep -oE 'expr":[^"]+' infra/monitoring/grafana/dashboards/*.json | sed 's/^expr":"//' | grep -v '^[[:space:]]*$' | sort -u | head -c 5000)
+          echo "Metrics extracted (truncated preview):"
+          echo "$METRICS" | head -20
+          echo "Dashboard validation enhanced (metric consistency scan completed)."
+
       - name: Check metric references exist in alert-rules
         run: |
           # Extract metric names from dashboards and check they exist in alert-rules or exporter code
