@@ -38,3 +38,12 @@ staging (Deployment, Service, Ingress, HPA) are defined in
 `infra/k8s/overlays/staging` (Kustomize, on top of `infra/k8s/base`) and applied
 with `kubectl apply -k infra/k8s/overlays/staging`. The namespace and config map
 created here must exist before applying that overlay.
+
+## Prerequisites
+
+Mirrors the testnet README so both environments document the same setup:
+
+- Terraform 1.5+
+- kubectl, with a `staging` kubeconfig context
+- Access to the Terraform backend (`backend/staging.hcl`)
+- Secrets supplied via `infra/secrets/` (never committed)

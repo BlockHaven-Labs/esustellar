@@ -10,3 +10,10 @@ config/testnet.env.local
 
 # Docker volumes
 stellar-data/
+
+# Local compose overrides and filled-in secrets (issue #1279)
+docker-compose.override.yml
+docker-compose.override.yaml
+config/secrets
+config/*.env.local
+*.local
