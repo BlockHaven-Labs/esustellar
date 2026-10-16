@@ -2,15 +2,41 @@
 # and application workloads.
 #
 # Creates separate roles for:
-# - ECS task execution (pull ECR images, push logs)
+# - ECS task execution (pull ECR images, push logs, read task-definition secrets)
 # - ECS task role (application permissions: S3, KMS, DynamoDB)
 # - CI/CD pipeline (ECR push, S3 upload, CloudFront invalidation)
 
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
+
+  # #1124: only render the secret-injection policy when the caller actually
+  # declared secrets/parameters to read.
+  ecs_execution_secrets_policy_enabled = length(var.secretsmanager_secret_arns) > 0 || length(var.ssm_parameter_arns) > 0 ? 1 : 0
 }
 
 # --- ECS Execution Role (agent-level permissions) ---
+#
+# #1124 — secret injection on the ECS path.
+#
+# The AWS managed AmazonECSTaskExecutionRolePolicy does already grant
+# secretsmanager:GetSecretValue / GetSecretValueBatch and
+# ssm:GetParameters / GetParametersByPath / GetParameter — but on
+# resources = ["*"], i.e. every secret and every parameter in the account. That
+# satisfies the agent's functionality while violating the least-privilege
+# contract this module's own header comment claims. The statements below grant
+# the same actions explicitly, scoped to the exact secret/parameter ARNs the
+# caller declares.
+#
+# Which mechanism is in use where:
+#   - Kubernetes (the live deployment target, see infra/README.md) injects
+#     secrets via **Sealed Secrets** — the kubelet reads a decrypted Secret from
+#     the API server and no AWS-side role is involved at all.
+#   - ECS injects secrets via the task definition's `secrets:` /
+#     `valueFrom:` blocks, which are resolved by the **execution role** at
+#     container start. That is the only path this module's statements apply to.
+#
+# Both lists default to empty, so an instantiation that needs no ECS secret
+# injection gets no additional permissions. Pass the specific ARNs to grant.
 
 data "aws_iam_policy_document" "ecs_assume" {
   statement {
@@ -30,6 +56,46 @@ resource "aws_iam_role" "ecs_execution" {
 resource "aws_iam_role_policy_attachment" "ecs_execution" {
   role       = aws_iam_role.ecs_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+data "aws_iam_policy_document" "ecs_execution_secrets" {
+  # Only rendered when the caller has actually declared secrets to read, so a
+  # module instantiation without ECS secret injection creates no extra policy.
+  count = length(var.secretsmanager_secret_arns) > 0 || length(var.ssm_parameter_arns) > 0 ? 1 : 0
+
+  dynamic "statement" {
+    for_each = length(var.secretsmanager_secret_arns) > 0 ? [1] : []
+    content {
+      sid    = "SecretsManagerRead"
+      effect = "Allow"
+      actions = [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+      ]
+      resources = var.secretsmanager_secret_arns
+    }
+  }
+
+  dynamic "statement" {
+    for_each = length(var.ssm_parameter_arns) > 0 ? [1] : []
+    content {
+      sid    = "SSMParameterRead"
+      effect = "Allow"
+      actions = [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+      ]
+      resources = var.ssm_parameter_arns
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_execution_secrets" {
+  count  = local.ecs_execution_secrets_policy_enabled
+  name   = "${local.name_prefix}-ecs-execution-secrets"
+  role   = aws_iam_role.ecs_execution.id
+  policy = data.aws_iam_policy_document.ecs_execution_secrets[0].json
 }
 
 # --- ECS Task Role (application-level permissions) ---

@@ -35,6 +35,25 @@ patches:
             value: public
           - name: STELLAR_NETWORK
             value: public
+  # #1111: probe timing is one of the few base values not shared by every
+  # environment. A mainnet pod sits behind real user traffic, so it is removed
+  # from the Service endpoints quickly when it stops being healthy
+  # (readiness failureThreshold 2 vs the base 3, 5s period vs 10s) and is only
+  # restarted when it is genuinely wedged (liveness initialDelay 30s, long enough
+  # to cover the readOnlyRootFilesystem cold start added in #1109).
+  - target:
+      kind: Deployment
+      name: esustellar-web
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe/periodSeconds
+        value: 5
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe/failureThreshold
+        value: 2
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/initialDelaySeconds
+        value: 30
   # #1018: mainnet owns the apex domain.
   - target:
       kind: Ingress

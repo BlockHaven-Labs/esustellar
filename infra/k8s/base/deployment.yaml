@@ -15,6 +15,17 @@ spec:
       labels:
         app: esustellar-web
     spec:
+      # #1109: the Dockerfile creates and switches to a non-root `nextjs` user
+      # (uid/gid 1001) before CMD. This pod spec now enforces the same contract
+      # at the Kubernetes layer instead of trusting the image alone — a
+      # compromised or replaced image cannot silently regain root.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: web
           # #1222: `latest` is only a placeholder; every overlay replaces the tag via
@@ -25,6 +36,23 @@ spec:
           ports:
             - containerPort: 3000
               name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          # #1109: readOnlyRootFilesystem means every writable path has to be
+          # an explicit emptyDir. Next.js standalone writes its incremental
+          # build cache and the Next.js image cache under .next/cache, and
+          # reads/writes /tmp at runtime. Without these mounts the container
+          # fails to start with EROFS rather than silently degrading.
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/apps/web/.next/cache
+            - name: tmp
+              mountPath: /tmp
           envFrom:
             - configMapRef:
                 name: esustellar-web-config
@@ -37,15 +65,30 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          # #1111: base probe values are deliberately conservative and identical
+          # across environments; the overlays tighten or loosen them per
+          # environment. See infra/k8s/overlays/*/kustomization.yaml.
           livenessProbe:
             httpGet:
               path: /api/health
               port: 3000
             initialDelaySeconds: 15
             periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /api/health
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+      volumes:
+        # #1109: emptyDir keeps the root filesystem read-only while still
+        # giving Next.js a writable cache. Use a medium-backed volume if
+        # cache warm-up time becomes a startup-latency problem.
+        - name: next-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

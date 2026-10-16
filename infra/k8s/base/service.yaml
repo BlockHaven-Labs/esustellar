@@ -6,6 +6,20 @@ metadata:
   labels:
     app: esustellar-web
 spec:
+  # #1110: confirmed ClusterIP. External traffic reaches this workload only via
+  # ingress.yaml (ingressClassName: nginx) -> ingress-nginx controller -> this
+  # Service on port 3000, and at the AWS edge via the Terraform ALB/CloudFront
+  # pair in infra/terraform/modules/.
+  #
+  # This must stay ClusterIP. `type: LoadBalancer` would provision an additional
+  # cloud load balancer per environment — three environments means three extra
+  # LBs, plus the ALB and the ingress controller — creating a second, unmanaged
+  # public entry point that bypasses the ingress-nginx TLS termination and the
+  # NetworkPolicy rules in infra/k8s/network-policies.yaml. `type: NodePort`
+  # would expose the container on every node IP.
+  #
+  # The cost blind spot is real: infracost.yml only scans Terraform, so a
+  # LoadBalancer Service in this file would not appear in any cost report.
   type: ClusterIP
   ports:
     - port: 80

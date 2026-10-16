@@ -38,6 +38,94 @@ resource "aws_s3_bucket_public_access_block" "uploads" {
   restrict_public_buckets = true
 }
 
+# #1120: the backup destination referenced by infra/backups/backup-indexer.sh
+# (BACKUP_BUCKET) had no Terraform resource anywhere in this repo — the script
+# defaulted to a bucket name that nothing provisioned, so the first scheduled
+# backup run would have failed with a NoSuchBucket against a bucket an operator
+# was expected to have created by hand, with no versioning, no encryption and no
+# expiry. This provisions it per environment, matching the uploads bucket's
+# configuration.
+resource "aws_s3_bucket" "backups" {
+  bucket = "${local.name_prefix}-backups"
+
+  # #1120: the database itself is snapshotted by the RDS service; this bucket
+  # holds the pg_dump artifacts produced by backup-indexer.sh. Never delete
+  # noncurrent versions — see the lifecycle rule below.
+  force_destroy = false
+}
+
+resource "aws_s3_bucket_versioning" "backups" {
+  bucket = aws_s3_bucket.backups.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "backups" {
+  bucket = aws_s3_bucket.backups.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.storage.arn
+    }
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "backups" {
+  bucket                  = aws_s3_bucket.backups.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# Expire objects to match RETENTION_DAYS=30 in backup-indexer.sh. The script
+# also deletes by cutoff date in a post-upload step; this rule is the
+# authoritative bound, so an aborted script run cannot leave objects forever,
+# and a run that deletes too much cannot leave objects past the intended
+# window.
+resource "aws_s3_bucket_lifecycle_configuration" "backups" {
+  bucket = aws_s3_bucket.backups.id
+
+  # Abort incomplete multipart uploads: a killed pg_dump | gzip | aws s3 cp can
+  # otherwise leave an uncharged-for part bill accruing indefinitely.
+  rule {
+    id     = "abort-incomplete-multipart-uploads"
+    status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  rule {
+    id     = "expire-old-backups"
+    status = "Enabled"
+
+    filter {
+      prefix = "indexer/"
+    }
+
+    expiration {
+      # Keep 30 days of objects to match RETENTION_DAYS=30 in
+      # infra/backups/backup-indexer.sh. The script's own cleanup uses
+      # `date -d "-30 days"`, so this is the same window enforced server-side.
+      days = 30
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.backups]
+}
+
 # KMS key for storage encryption (S3, EBS volumes, etc.)
 resource "aws_kms_key" "storage" {
   description             = "KMS key for ${local.name_prefix} storage encryption"

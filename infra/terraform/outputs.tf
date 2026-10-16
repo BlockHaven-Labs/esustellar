@@ -44,3 +44,16 @@ output "private_subnet_ids" {
   description = "IDs of the shared private subnets (usable by Fargate tasks)"
   value       = aws_subnet.private[*].id
 }
+
+# #1120: export the backup bucket name so backup-indexer.sh and
+# backup-verify.sh can be pointed at it without hardcoding a name that has to
+# match "${project_name}-${environment}-backups" by hand.
+output "backups_bucket" {
+  description = "Name of the S3 bucket holding database backups (pg_dump artifacts from infra/backups/backup-indexer.sh)"
+  value       = aws_s3_bucket.backups.id
+}
+
+output "backups_bucket_uri" {
+  description = "BACKUP_BUCKET value in s3:// form, for direct use as the BACKUP_BUCKET environment variable"
+  value       = "s3://${aws_s3_bucket.backups.id}"
+}

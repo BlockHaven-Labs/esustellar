@@ -121,6 +121,76 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[count.index].id
 }
 
+# --- Security Groups ---
+#
+# #1112: the module previously created no security groups at all, which meant a
+# future database module would have had to reopen this module to add them. The
+# two groups below are the ones the current topology actually needs, and their
+# IDs are exported in outputs.tf so `aws_db_instance` / `aws_rds_cluster` can
+# consume them directly.
+#
+# ALB -> workload is the only inbound path. The workload group egresses to the
+# internet via NAT for outbound Stellar RPC/Horizon calls, so egress stays open;
+# inbound is what a security group meaningfully restricts.
+
+resource "aws_security_group" "alb" {
+  name        = "${local.name_prefix}-alb"
+  description = "Public-facing load balancer; terminates TLS for ${var.domain_suffix}"
+  vpc_id      = aws_vpc.this.id
+
+  ingress {
+    description = "HTTP from the allowed CIDRs (redirects to HTTPS at the listener)"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ingress_cidrs
+  }
+
+  ingress {
+    description = "HTTPS from the allowed CIDRs"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ingress_cidrs
+  }
+
+  egress {
+    description = "Forward to the workload security group only"
+    from_port   = var.application_port
+    to_port     = var.application_port
+    protocol    = "tcp"
+    security_groups = [
+      aws_security_group.workload.id,
+    ]
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-alb"
+  }
+}
+
+resource "aws_security_group" "workload" {
+  name        = "${local.name_prefix}-workload"
+  description = "Application workloads (k8s nodes / ECS Fargate tasks) in the private subnets"
+  vpc_id      = aws_vpc.this.id
+
+  ingress {
+    description     = "Application traffic from the ALB"
+    from_port       = var.application_port
+    to_port         = var.application_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  # Egress left open: workloads call Stellar RPC/Horizon and pull images, and
+  # reach the internet through the NAT gateways above. Restricting egress here
+  # without a full egress allowlist would break outbound contract calls.
+
+  tags = {
+    Name = "${local.name_prefix}-workload"
+  }
+}
+
 # --- VPC Flow Logs ---
 # Confirmed enabled by default (var.enable_flow_logs defaults to true in
 # variables.tf), not merely planned: the resources below are created

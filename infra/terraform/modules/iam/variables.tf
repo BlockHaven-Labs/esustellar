@@ -69,3 +69,34 @@ variable "ecs_service_arns" {
     error_message = "Every entry in ecs_service_arns must be a full ECS service ARN; wildcards are not allowed."
   }
 }
+
+# #1124 — secret injection for the ECS execution role.
+#
+# The managed AmazonECSTaskExecutionRolePolicy already grants these actions on
+# "*", which is functionally sufficient but not least-privilege. Declaring the
+# exact ARNs here adds scoped statements that match this module's header
+# contract. Leave both empty (the default) when the deployment target is
+# Kubernetes, where secrets arrive via Sealed Secrets and no AWS role is
+# involved.
+
+variable "secretsmanager_secret_arns" {
+  description = "ARNs of the Secrets Manager secrets the ECS execution role may read for task-definition `secrets:` injection. Empty by default (Kubernetes/Sealed Secrets path needs no AWS grant); wildcards are rejected."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for arn in var.secretsmanager_secret_arns : can(regex("^arn:aws[a-zA-Z-]*:secretsmanager:", arn))])
+    error_message = "Every entry in secretsmanager_secret_arns must be a full Secrets Manager secret ARN; wildcards are not allowed."
+  }
+}
+
+variable "ssm_parameter_arns" {
+  description = "ARNs of the SSM parameters the ECS execution role may read for task-definition `valueFrom:` injection. Empty by default (Kubernetes/Sealed Secrets path needs no AWS grant); wildcards are rejected."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for arn in var.ssm_parameter_arns : can(regex("^arn:aws[a-zA-Z-]*:ssm:", arn))])
+    error_message = "Every entry in ssm_parameter_arns must be a full SSM parameter ARN; wildcards are not allowed."
+  }
+}
