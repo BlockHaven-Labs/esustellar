@@ -1,0 +1,24 @@
+# Issue #1261: format and validate every Terraform root on PRs.
+name: Terraform CI
+on:
+  pull_request:
+    paths: ["infra/terraform/**", "infra/testnet/**", "environments/**/*.tf"]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: fmt + validate (${{ matrix.root }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [infra/terraform, infra/terraform/state-bootstrap, infra/testnet, environments/staging]
+    defaults:
+      run:
+        working-directory: ${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate

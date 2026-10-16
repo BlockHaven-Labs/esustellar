@@ -58,3 +58,26 @@ updates:
     labels:
       - "dependencies"
       - "mobile"
+
+  # Terraform providers (issue #1260)
+  - package-ecosystem: "terraform"
+    directories:
+      - "/infra/terraform"
+      - "/infra/testnet"
+      - "/environments/staging"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "terraform"
+
+  # Docker base images for the other Dockerfiles
+  - package-ecosystem: "docker"
+    directories:
+      - "/monitoring/balance-exporter"
+      - "/packages/event-indexer"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "docker"
