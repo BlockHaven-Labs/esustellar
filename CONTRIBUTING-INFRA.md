@@ -8,15 +8,15 @@ The infra folder includes:
 - `infra/` — deployment configs, Docker Compose, terraform/pulumi
 - `.github/workflows/` — CI/CD pipelines
 - `docs/` — architecture, deployment, runbooks, standards.
+- `k8s/` — legacy flat manifests (canonical manifests are in `infra/k8s/`)
+- `monitoring/` — legacy balance-exporter (canonical stack is `infra/monitoring/`)
+- `environments/` — per-environment Terraform roots and deploy scripts
 
 ## Branch Protection
 
-The `main` branch is protected with enforced rules:
-- **Required status checks**: Docker CI and E2E Status Gate must pass
-- **PR reviews**: At least 1 approval required
-- **Force pushes**: Disallowed
-
-See `docs/branch-protection.md` for detailed configuration and setup instructions.
+The `main` branch is protected. `docs/branch-protection.md` is the single source
+of truth for the rules (required status checks, review count, force-push policy)
+and their setup; they are not restated here so they cannot drift.
 
 ### Required reviewers by path (CODEOWNERS)
 
