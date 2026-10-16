@@ -84,3 +84,22 @@ data:
             annotations:
               summary: "Deployer account unreachable on {{ $labels.network }}"
               description: "Cannot fetch deployer account balance from Horizon ({{ $labels.network }}). The Horizon endpoint may be down or the account may not exist."
+
+      # Meta-monitoring: alert if the CI cost check fails
+      - alert: InfracostCICheckFailed
+        expr: increase(prometheus_rule_evaluation_failures_total{rule_group="infracost_ci"}[1h]) > 0 or (absent(job:last_run{job="infracost"}[2h]) and on() vector(0))
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Infracost CI check missing or failing"
+          description: "Meta-alert for the Infracost CI check failing to produce a valid report/comment. This watches the monitoring pipeline itself rather than runtime infra; inspect the infracost workflow run for details."
+
+      - alert: InfracostCIFailure
+        expr: (increase(ci_job_failures_total{job="infracost"}[1h]) > 0) or (sum(increase(job_failures_total{workflow="infracost"}[1h])) > 0) or (up{job="infracost-ci"} == 0)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CI Infracost check failing"
+          description: "Infracost cost check in CI is failing or unreachable. Monitor CI (infracost workflow) for cost diff/report issues."

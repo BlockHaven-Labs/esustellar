@@ -6,13 +6,13 @@ This directory contains the shared root Terraform configuration for EsuStellar c
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.6.0
 - AWS account with credentials configured (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` or an assumed role)
-- S3 bucket (`esustellar-terraform-state`) and DynamoDB lock table (`terraform-locks`) created once per AWS account by `state-bootstrap/` — see [state-bootstrap/README.md](state-bootstrap/README.md)
+- S3 bucket (`esustellar-terraform-state`) and DynamoDB lock table (`esustellar-terraform-locks`) created once per AWS account by `state-bootstrap/` — see [state-bootstrap/README.md](state-bootstrap/README.md)
 
 ## Directory Layout
 
 ```
 infra/terraform/
-├── backend.tf                 # Live S3 remote backend + DynamoDB locking (this root)
+├── backend.tf                 # Partial S3 backend; environment key supplied at init
 ├── backend-config.tf.example  # Copy-paste TEMPLATE for NEW environment roots — never a live .tf
 ├── providers.tf               # AWS provider version constraints + default tags
 ├── main.tf                    # Shared storage and VPC module instances
@@ -43,7 +43,7 @@ The remote backend for every root is created by `state-bootstrap/`. The exact
 order is documented in [state-bootstrap/README.md](state-bootstrap/README.md):
 
 1. `terraform init && terraform apply` inside `state-bootstrap/` (uses **local** state, chicken-and-egg — the bucket doesn't exist yet).
-2. `terraform init -reconfigure` in *this* directory → starts using S3 (`infra/terraform.tfstate`).
+2. `terraform init -reconfigure -backend-config=backend/testnet.hcl` in *this* directory → starts using the testnet-specific S3 key.
 3. Each environment root (`infra/testnet/`, …) points at its own S3 key.
 
 > ⚠️ The two-file split (`backend.tf` vs `backend-config.tf`) used to be a
@@ -66,7 +66,7 @@ Then `terraform init -backend=true -reconfigure` from that root.
 ├── backend/        # Per-environment backend configs (distinct state keys)
 ├── backend-config.tf.example  # Copy-paste TEMPLATE for new environment roots — never a live .tf
 ├── providers.tf    # AWS provider version constraints
-├── main.tf         # Resource definitions (uploads bucket, KMS key, VPC + subnets)
+├── main.tf         # Resource definitions (backup bucket, KMS key, VPC + subnets)
 ├── variables.tf    # Input variables
 ├── outputs.tf      # Output values (incl. common_tags / vpc_id / private_subnet_ids)
 ├── modules/        # Reusable modules (storage, vpc, iam, ecr, cdn, dns, ssl)
@@ -101,7 +101,7 @@ This creates:
 | Resource | Default name |
 |---|---|
 | S3 state bucket (versioned, encrypted, public access blocked) | `esustellar-terraform-state` |
-| DynamoDB lock table | `terraform-locks` |
+| DynamoDB lock table | `esustellar-terraform-locks` |
 
 ## Initialise
 
@@ -185,13 +185,6 @@ make apply
 | `enable_logging` | Enable audit logging | `true` |
 | `allowed_ingress_cidrs` | Allowed inbound CIDR blocks | `["0.0.0.0/0"]` |
 
-## Remote Backend
-
-State is stored in S3 with:
-- **Bucket:** `esustellar-terraform-state`
-- **Key:** `infra/terraform.tfstate`
-- **DynamoDB Lock Table:** `esustellar-terraform-locks`
-- **Encryption:** Enabled
 ## Modules
 
 | Module | Purpose |
@@ -217,7 +210,7 @@ reference.
 [modules/iam/variables.tf](modules/iam/variables.tf).
 
 State is stored in S3 (bucket `esustellar-terraform-state`, DynamoDB lock table
-`terraform-locks`, encryption enabled). Because this root is applied **once per
+`esustellar-terraform-locks`, encryption enabled). Because this root is applied **once per
 environment**, the state key comes from the `backend/*.hcl` config you pass at
 `init` time (e.g. `infra/terraform/testnet/terraform.tfstate`); see
 [infra/docs/terraform-state.md](../docs/terraform-state.md) for the full map.

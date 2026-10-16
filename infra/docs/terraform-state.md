@@ -33,7 +33,7 @@ Both are created by `infra/terraform/state-bootstrap`:
 | Resource | Name |
 |---|---|
 | S3 state bucket | `esustellar-terraform-state` |
-| DynamoDB lock table | `terraform-locks` |
+| DynamoDB lock table | `esustellar-terraform-locks` |
 | Region | `us-east-1` |
 
 These values are the defaults in
