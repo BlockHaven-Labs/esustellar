@@ -93,6 +93,12 @@ docker build -t ghcr.io/blockhaven-labs/esustellar-web:latest .
 docker push ghcr.io/blockhaven-labs/esustellar-web:latest
 ```
 
+The Kubernetes manifests pull this web image from GHCR. The Terraform ECR
+module defines separate AWS ECR repositories, but no current Terraform root
+instantiates it, and no workflow builds or publishes images to those
+repositories. The balance-exporter also has no configured image-publishing
+destination.
+
 ## 5. Production Deploy
 
 ```bash
@@ -112,7 +118,6 @@ docker compose up -d
 
 ## CI Pipeline
 
-The `.github/workflows/docker-ci.yml` workflow handles:
-- Multi-arch Docker build (amd64 + arm64)
-- Layer caching for fast rebuilds
-- GHCR push on main branch pushes
+There is currently no committed Docker image publishing workflow. Build and
+push the GHCR image manually as shown above; the `docker-ci.yml` workflow
+referenced in earlier revisions is not present.

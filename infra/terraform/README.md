@@ -184,10 +184,18 @@ State is stored in S3 with:
 |---|---|
 | `modules/vpc` | Network foundation |
 | `modules/iam` | Least-privilege roles for ECS tasks and CI/CD |
-| `modules/ecr` | Container image repositories |
+| `modules/ecr` | ECR repositories named for savings, registry, web, and balance-exporter |
 | `modules/cdn` | CloudFront distribution |
 | `modules/dns` | Route 53 records |
 | `modules/ssl` | ACM certificates |
+
+The ECR module defines repository resources only; no current Terraform root
+instantiates it, and it does not build or publish images. The Kubernetes web
+deployment currently pulls `ghcr.io/blockhaven-labs/esustellar-web`, published
+manually as described in [the deployment guide](../../docs/deployment.md). No
+image-publishing workflow currently targets ECR. The balance-exporter has a
+Dockerfile but no configured image-publishing destination or deployment image
+reference.
 
 `modules/iam` requires the ARNs of the resources each role may touch
 (`kms_key_arn`, `cloudfront_distribution_arn`, `ecs_cluster_arn`,
