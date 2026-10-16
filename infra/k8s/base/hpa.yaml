@@ -1,3 +1,4 @@
+# #1226: scales on CPU (70%) and memory (80%); the memory limit is 512Mi in the base Deployment.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
