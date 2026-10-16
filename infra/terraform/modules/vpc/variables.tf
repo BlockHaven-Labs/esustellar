@@ -39,6 +39,21 @@ variable "enable_nat_gateway" {
   default     = true
 }
 
+variable "nat_gateway_count" {
+  description = "Number of NAT gateways to create. Defaults to one per availability zone when NAT is enabled."
+  type        = number
+  default     = null
+
+  validation {
+    condition = var.nat_gateway_count == null || (
+      var.nat_gateway_count >= 1 &&
+      var.nat_gateway_count == floor(var.nat_gateway_count) &&
+      var.nat_gateway_count <= length(var.availability_zones)
+    )
+    error_message = "nat_gateway_count must be a whole number between 1 and the number of availability zones."
+  }
+}
+
 variable "enable_flow_logs" {
   description = "Enable VPC flow logs to CloudWatch"
   type        = bool

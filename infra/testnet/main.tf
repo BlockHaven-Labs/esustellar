@@ -1,13 +1,28 @@
-# Testnet environment — inherits the shared Terraform module
-# and applies testnet-specific overrides.
+# Testnet environment — composes the shared storage and VPC modules with
+# testnet-specific settings.
 
-module "shared" {
-  source = "../terraform"
+module "storage" {
+  source = "../terraform/modules/storage"
+
+  project_name = var.project_name
+  environment  = "testnet"
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+module "vpc" {
+  source = "../terraform/modules/vpc"
 
   project_name          = var.project_name
   environment           = "testnet"
-  aws_region            = var.aws_region
-  enable_logging        = true
+  vpc_cidr              = "10.0.0.0/16"
+  availability_zones    = slice(data.aws_availability_zones.available.names, 0, 2)
+  public_subnet_cidrs   = [for index in range(2) : cidrsubnet("10.0.0.0/16", 8, index)]
+  private_subnet_cidrs  = [for index in range(2) : cidrsubnet("10.0.0.0/16", 8, index + 2)]
+  nat_gateway_count     = 1
+  enable_flow_logs      = true
   allowed_ingress_cidrs = var.allowed_ingress_cidrs
 }
 
@@ -19,7 +34,7 @@ resource "aws_ssm_parameter" "stellar_rpc_url" {
   type        = "String"
   value       = var.stellar_rpc_url
 
-  tags = module.shared.common_tags
+  tags = module.storage.common_tags
 }
 
 resource "aws_ssm_parameter" "stellar_network_passphrase" {
@@ -28,7 +43,7 @@ resource "aws_ssm_parameter" "stellar_network_passphrase" {
   type        = "String"
   value       = "Test Suggested Ledger ; October 2022"
 
-  tags = module.shared.common_tags
+  tags = module.storage.common_tags
 }
 
 # ── ECS Fargate for web app ────────────────────────────────────────────────
@@ -41,7 +56,7 @@ resource "aws_ecs_cluster" "web" {
     value = "enabled"
   }
 
-  tags = module.shared.common_tags
+  tags = module.storage.common_tags
 }
 
 resource "aws_ecs_task_definition" "web" {
@@ -92,7 +107,7 @@ resource "aws_ecs_task_definition" "web" {
     }
   ])
 
-  tags = module.shared.common_tags
+  tags = module.storage.common_tags
 }
 
 resource "aws_ecs_service" "web" {
@@ -103,16 +118,16 @@ resource "aws_ecs_service" "web" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = module.shared.private_subnet_ids
+    subnets         = module.vpc.private_subnet_ids
     security_groups = [aws_security_group.web.id]
   }
 
-  tags = module.shared.common_tags
+  tags = module.storage.common_tags
 }
 
 resource "aws_security_group" "web" {
   name_prefix = "${var.project_name}-testnet-web-"
-  vpc_id      = module.shared.vpc_id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     from_port   = 3000
@@ -128,7 +143,7 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(module.shared.common_tags, { Name = "${var.project_name}-testnet-web-sg" })
+  tags = merge(module.storage.common_tags, { Name = "${var.project_name}-testnet-web-sg" })
 }
 
 # ── CloudWatch Logs ────────────────────────────────────────────────────────
@@ -137,7 +152,7 @@ resource "aws_cloudwatch_log_group" "web" {
   name              = "/ecs/${var.project_name}-testnet-web"
   retention_in_days = 14
 
-  tags = module.shared.common_tags
+  tags = module.storage.common_tags
 }
 
 # ── Outputs ────────────────────────────────────────────────────────────────
