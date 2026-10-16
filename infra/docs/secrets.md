@@ -10,74 +10,82 @@ never touch GitHub Actions — is
 [`infra/secrets/README.md`](../secrets/README.md). If the two disagree, that
 document wins.
 
-> **Why this file used to look wrong:** it previously listed a Vercel + GHCR
-> secret set while `infra/secrets/README.md` listed a Kubernetes + Sealed
-> Secrets set, with almost no overlap, so the two read like two different
-> products (#987). Neither was wrong — EsuStellar deploys to several targets.
-> The split is now stated explicitly in both files.
+## Deployment decision
 
-## Deployment targets that consume CI secrets
+The production deployment target is Kubernetes, as recorded in
+[`docs/adr/003-kubernetes-deployment-target.md`](../../docs/adr/003-kubernetes-deployment-target.md).
+The canonical workload manifests are in `infra/k8s/`; Kubernetes secrets are
+runtime secrets, not automatically GitHub Actions secrets. There is currently no
+committed workflow that applies those manifests.
 
-| Target | What it deploys | Workflow |
+Vercel is **not** the production source of truth. `scripts/generate-workflows.sh`
+contains an optional Vercel workflow template (which uses `--prod`), but that
+workflow is not committed and conflicts with the accepted deployment decision;
+do not configure its secrets or generate/use it as the production deploy path
+without revisiting the ADR. GHCR is used by the manual image instructions in
+[`docs/deployment.md`](../../docs/deployment.md), but no committed workflow
+publishes images there.
+
+## Deployment targets and their CI workflow status
+
+| Target | Current status | Workflow / operator path |
 |---|---|---|
-| Stellar (Soroban) | `contracts/` via `deploy.sh` | `deploy-testnet.yml` |
-| Vercel | `apps/web` frontend | `deploy-vercel.yml` |
-| GHCR | container images | `docs/deployment.md` (manual today) |
-| AWS | `infra/terraform` (ECS, CloudFront, ECR, KMS) | none yet — applied locally |
-| Kubernetes | `infra/k8s`, `environments/staging` | none yet — applied locally |
+| Kubernetes | Production target; manifests under `infra/k8s/` | Applied manually; no committed apply workflow |
+| Stellar (Soroban) | Contract deployment script exists | `deploy.sh` locally; generated workflow template is not committed |
+| Vercel | Optional, non-canonical generated workflow template | Not committed; not the production path |
+| GHCR | Container registry for manual image operations | `docs/deployment.md`; no committed image-publishing workflow |
+| AWS | Terraform infrastructure | `infra/terraform/`; applied locally, no Terraform apply workflow |
 
-## Required secrets
+## Secrets used by committed workflows
 
-### Committed workflows
-
-These workflows exist in `.github/workflows/` today.
+These are the only secrets read by committed workflows. `KUBE_CONFIG` is
+conditional: the validation workflow needs it only when a YAML manifest exists
+under `infra/secrets/` (excluding `last-rotated.yml`). There are currently no
+SealedSecret manifests there, so the workflow exits before requesting cluster
+credentials.
 
 | Secret | Used by | Description | Where to find it |
 |---|---|---|---|
 | `INFRACOST_API_KEY` | `infracost.yml` | Infracost API key for PR cost estimates | [infracost.io](https://www.infracost.io/) dashboard |
+| `KUBE_CONFIG` | `validate-sealed-secrets.yml` (conditional) | Base64-encoded kubeconfig for `kubeseal --validate` against the cluster controller; not used to apply manifests | Cluster administrator |
 
-### Generated workflows (not yet committed)
+## Optional, not currently active in GitHub Actions
 
-`scripts/generate-workflows.sh` writes these workflow files; they are **not**
-committed yet, so their secrets are only needed once you run that script and
-commit the result.
+The following are referenced by generated workflow templates or manual
+operations, not by the committed workflows. Do not create them just to enable
+the canonical Kubernetes deployment path.
 
 | Secret | Used by | Description | Where to find it |
 |---|---|---|---|
-| `DEPLOYER_SECRET_KEY` | `deploy-testnet.yml` | Stellar deployer account secret key (`S…`) | `stellar keys generate deployer`, or rotate with `infra/scripts/rotate-deployer-keypair.sh` |
-| `VERCEL_TOKEN` | `deploy-vercel.yml` | Vercel access token for frontend deploys | Vercel dashboard → Account Settings → Tokens |
-| `VERCEL_ORG_ID` | `deploy-vercel.yml` | Vercel organisation / team ID | Vercel project settings |
-| `VERCEL_PROJECT_ID` | `deploy-vercel.yml` | Vercel project ID | Vercel project settings |
-| `NEXT_PUBLIC_REGISTRY_CONTRACT_ID` | `deploy-vercel.yml` | Deployed Registry contract ID (public, build-time) | `deployment-info.json` after `deploy.sh` |
-| `NEXT_PUBLIC_SAVINGS_CONTRACT_ID` | `deploy-vercel.yml` | Deployed Savings contract ID (public, build-time) | `deployment-info.json` after `deploy.sh` |
-
-### Not yet wired to any workflow
-
-Documented so the set is complete, but **no workflow reads them today**. Do not
-add them expecting CI to pick them up.
-
-| Secret | Intended use | Blocking work |
-|---|---|---|
-| `GHCR_TOKEN` / `GHCR_USERNAME` | Push/pull images on `ghcr.io` | The `docker-ci.yml` / `ghcr-publish.yml` workflow referenced by `docs/deployment.md` and `infra/secrets/templates/.env.example` does not exist |
-| `CODECOV_TOKEN` | Coverage upload | No workflow uploads coverage |
-| `KUBE_CONFIG` | `kubectl` / `kustomize` apply from CI | Kubernetes manifests are applied manually |
-| AWS credentials (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, or OIDC role) | `terraform apply` from CI | Terraform is applied locally; only Infracost (which needs no AWS access) runs in CI |
+| `DEPLOYER_SECRET_KEY` | Generated `deploy-testnet.yml` template | Stellar deployer account secret key (`S…`) | `stellar keys generate deployer`, or rotate with `infra/scripts/rotate-deployer-keypair.sh` |
+| `VERCEL_TOKEN` | Generated `deploy-vercel.yml` template | Vercel access token; template is non-canonical and not committed | Vercel dashboard → Account Settings → Tokens |
+| `VERCEL_ORG_ID` | Generated `deploy-vercel.yml` template | Vercel organisation / team ID | Vercel project settings |
+| `VERCEL_PROJECT_ID` | Generated `deploy-vercel.yml` template | Vercel project ID | Vercel project settings |
+| `NEXT_PUBLIC_REGISTRY_CONTRACT_ID` | Generated `deploy-vercel.yml` template | Public build-time Registry contract ID | `deployment-info.json` after `deploy.sh` |
+| `NEXT_PUBLIC_SAVINGS_CONTRACT_ID` | Generated `deploy-vercel.yml` template | Public build-time Savings contract ID | `deployment-info.json` after `deploy.sh` |
+| `GHCR_USERNAME` / `GHCR_TOKEN` | Manual GHCR image operations | Registry credentials; no publishing workflow exists | GitHub account / package access settings |
+| AWS credentials or OIDC role | Local `terraform apply` today | Terraform credentials; not read by a committed workflow | AWS account administrator |
+| `CODECOV_TOKEN` | Intended coverage upload | No workflow uploads coverage | Codecov project settings |
+| `SLACK_WEBHOOK_URL` | Kubernetes Alertmanager runtime | Runtime secret, not a GitHub Actions secret | Slack workspace administrator |
 
 ## Setup Instructions
 
 1. Navigate to the repository on GitHub.
 2. Go to **Settings → Secrets and variables → Actions**.
-3. Click **New repository secret** for each entry you need from the tables above.
+3. Click **New repository secret** for each committed-workflow secret that is
+   currently required. Add `KUBE_CONFIG` when sealed-secret manifests are
+   introduced under `infra/secrets/`.
 4. Paste the value and save.
 
-Start with the committed-workflow table. You only need the generated-workflow
-secrets after running `scripts/generate-workflows.sh` and committing its output.
+Only add optional entries if you intentionally enable that separate workflow or
+manual operation; in particular, Vercel secrets do not enable the canonical
+Kubernetes deployment.
 
 ## Rotating Secrets
 
 - **`DEPLOYER_SECRET_KEY`** — rotate with `infra/scripts/rotate-deployer-keypair.sh`, then run `infra/scripts/deploy/validate-env.sh --check-deployer-key` to confirm the new key is picked up and has the expected `S…` Stellar secret-key format.
-- **`VERCEL_TOKEN`** — revoke the old token in the Vercel dashboard before adding the new one.
-- **`GHCR_TOKEN`** — the replacement PAT needs `write:packages` and `read:packages`.
+- **`VERCEL_TOKEN`** — only if intentionally enabling the generated Vercel workflow; revoke the old token in the Vercel dashboard before adding the new one.
+- **`GHCR_TOKEN`** — for manual image operations, the replacement PAT needs `write:packages` and `read:packages`.
 - **`INFRACOST_API_KEY`** — regenerate in the Infracost dashboard; the old key stops working immediately.
 
 Cadences for long-lived secrets are in

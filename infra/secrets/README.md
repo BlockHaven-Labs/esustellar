@@ -1,57 +1,59 @@
 # Secrets Management Strategy
 
-This is the **authoritative inventory** of every secret used by EsuStellar, and
-the single source of truth when documents disagree.
+This is the **authoritative inventory** of secrets used by EsuStellar.
+[`infra/docs/secrets.md`](../docs/secrets.md) is the operator checklist for the
+subset required by committed GitHub Actions workflows, and
+[`infra/secrets/templates/.env.example`](templates/.env.example) is the
+annotated local-development template.
 
-Companion documents:
+## Deployment decision and secret boundaries
 
-- [`infra/docs/secrets.md`](../docs/secrets.md) — operator checklist for the
-  subset of secrets that **GitHub Actions** needs.
-- [`infra/secrets/templates/.env.example`](templates/.env.example) — annotated
-  template for **local development** values.
+ADR 003 selects Kubernetes as the production deployment target. The canonical
+workload manifests are in `infra/k8s/` and the canonical monitoring
+configuration is in `infra/monitoring/`. There is no committed workflow that
+applies Kubernetes manifests.
 
-## EsuStellar deploys to more than one target
-
-This is the point that previously made the docs look contradictory (#987): this
-file described a Kubernetes + Sealed Secrets world while `infra/docs/secrets.md`
-described a Vercel + GHCR world, sharing only two secret names. Both were
-describing real parts of the same system. The full picture:
-
-| Target | What runs there | Defined in |
+| Target | What runs there | Defined in / status |
 |---|---|---|
-| **Stellar / Soroban** | `savings` and `registry` contracts | `contracts/`, `deploy.sh` |
-| **Vercel** | `apps/web` Next.js frontend | `scripts/generate-workflows.sh` → `deploy-vercel.yml` |
-| **GHCR** | container images for the web app | `docs/deployment.md` |
-| **Docker Compose** | self-hosted production host, testnet sandbox | `docs/deployment.md`, `environments/testnet/docker-compose.yml` |
-| **AWS** | ECS Fargate, CloudFront, ECR, S3, KMS | `infra/terraform/`, `infra/testnet/` |
-| **Kubernetes** | staging and mainnet workloads, monitoring stack | `infra/k8s/`, `environments/staging/`, `infra/monitoring/` |
+| **Stellar / Soroban** | `savings` and `registry` contracts | `contracts/`, `deploy.sh`; generated deploy workflow is not committed |
+| **Kubernetes** | Production workloads and monitoring | `infra/k8s/`, `infra/monitoring/`; secrets are runtime values |
+| **GHCR** | Container images used by manual image/rollout instructions | `docs/deployment.md`; no committed publishing workflow |
+| **Vercel** | Optional workflow template for `apps/web`, not production source of truth | `scripts/generate-workflows.sh`; generated workflow is not committed |
+| **AWS** | Terraform-managed infrastructure | `infra/terraform/` and the testnet-specific `infra/testnet/` root |
+| **Docker Compose** | Local development and documented testnet sandbox | `docker-compose.yml`, `environments/testnet/docker-compose.yml` |
 
-So a secret's **target** determines where it is stored — there is no single
-mechanism, and that is intentional.
+The generated Vercel template currently includes `--prod`, which conflicts with
+ADR 003. Do not treat it as an active production path unless the deployment
+decision is explicitly revisited. `KUBE_CONFIG` is read by the committed
+sealed-secret validation workflow only when sealed-secret YAML manifests are
+present under `infra/secrets/`; none are currently committed. Vercel/GHCR
+credentials are not needed to deploy the canonical Kubernetes manifests.
 
 ## Storage mechanism by target
 
 | Target | Mechanism |
 |---|---|
 | Local development | `.env` files (gitignored) |
-| GitHub Actions | GitHub encrypted repository secrets |
-| Vercel | Vercel project environment variables (plus CI secrets to authenticate the deploy) |
+| GitHub Actions | GitHub encrypted repository secrets; see [`infra/docs/secrets.md`](../docs/secrets.md) for current committed-workflow needs |
+| Vercel | Vercel project environment variables only if the optional generated workflow is intentionally enabled |
 | AWS | SSM Parameter Store (see `infra/testnet/main.tf`), KMS-encrypted at rest |
-| Kubernetes | Kubernetes `Secret` objects; **Sealed Secrets planned**, see below |
+| Kubernetes | Kubernetes `Secret` objects; Sealed Secrets have no manifests committed yet |
 | Docker Compose | host `.env` file, not committed |
 
-### Sealed Secrets status: planned, not active
+### Sealed Secrets status
 
-`kubeseal` is the intended mechanism for committing encrypted Kubernetes secrets,
-but **nothing uses it yet** — there are no `SealedSecret` manifests in the repo
-and no workflow runs `kubeseal`. Until that lands, Kubernetes secrets are created
-out-of-band (`kubectl create secret`) and never committed. Treat the `kubeseal`
-recipe below as the target state.
+There are no `SealedSecret` manifests committed under `infra/secrets/` yet.
+The committed `validate-sealed-secrets.yml` workflow runs
+`kubeseal --validate` against the cluster only when such YAML manifests exist.
+Until manifests are added, create Kubernetes secrets out-of-band and never
+commit raw secret values. Treat the recipe below as the intended authoring flow.
 
 ## Secrets Inventory
 
-**Status** is `Active` if committed code reads it, `Planned` if it is documented
-for work that does not exist yet.
+**Status** is `Active` if current code/configuration consumes the value,
+`Conditional` if a committed workflow consumes it only when a stated
+prerequisite exists, `Planned` if it is intended for work that does not exist
+yet, and `Optional` if it belongs only to a non-canonical workflow template.
 
 ### Blockchain / RPC
 
@@ -59,7 +61,7 @@ for work that does not exist yet.
 |---|---|---|---|
 | `STELLAR_RPC_URL` | AWS, k8s, local | Active | Soroban RPC endpoint. Stored in SSM by `infra/testnet/main.tf` |
 | `STELLAR_NETWORK_PASSPHRASE` | AWS, k8s, local | Active | `Test SDF Network ; September 2015` (testnet) or `Public Global Stellar Network ; September 2015` (mainnet) |
-| `DEPLOYER_SECRET_KEY` | GitHub Actions | Active | Stellar account used for contract deployment. Rotate with `infra/scripts/rotate-deployer-keypair.sh` |
+| `DEPLOYER_SECRET_KEY` | Local deployment; optional generated GitHub Actions workflow | Active | Stellar account used for contract deployment. The generated CI workflow is not committed. Rotate with `infra/scripts/rotate-deployer-keypair.sh` |
 
 `STELLAR_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE` are **configuration, not
 credentials** — they are public endpoint values. They are listed here because
@@ -69,11 +71,11 @@ they are delivered through the same secret plumbing.
 
 | Secret | Target | Status | Description |
 |---|---|---|---|
-| `VERCEL_TOKEN` | GitHub Actions | Active | Authenticates the Vercel deploy |
-| `VERCEL_ORG_ID` | GitHub Actions | Active | Vercel organisation / team ID |
-| `VERCEL_PROJECT_ID` | GitHub Actions | Active | Vercel project ID |
-| `NEXT_PUBLIC_REGISTRY_CONTRACT_ID` | GitHub Actions, Vercel | Active | Build-time contract ID (public — `NEXT_PUBLIC_*` is exposed to the browser) |
-| `NEXT_PUBLIC_SAVINGS_CONTRACT_ID` | GitHub Actions, Vercel | Active | Build-time contract ID (public) |
+| `VERCEL_TOKEN` | Optional generated workflow | Optional | Authenticates the Vercel deploy template; not part of the canonical production path |
+| `VERCEL_ORG_ID` | Optional generated workflow | Optional | Vercel organisation / team ID |
+| `VERCEL_PROJECT_ID` | Optional generated workflow | Optional | Vercel project ID |
+| `NEXT_PUBLIC_REGISTRY_CONTRACT_ID` | Optional generated workflow | Optional | Build-time contract ID (public — `NEXT_PUBLIC_*` is exposed to the browser) |
+| `NEXT_PUBLIC_SAVINGS_CONTRACT_ID` | Optional generated workflow | Optional | Build-time contract ID (public) |
 | `NEXTAUTH_SECRET` | k8s | Planned | Session encryption key — no auth implementation reads this yet |
 | `DATABASE_URL` | k8s | Planned | Postgres connection string — no service reads this yet |
 
@@ -90,14 +92,14 @@ they are delivered through the same secret plumbing.
 |---|---|---|---|
 | AWS credentials (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, or an assumed role / OIDC) | AWS | Active | Required by `terraform apply`. Applied locally today — **not** configured in CI |
 | `INFRACOST_API_KEY` | GitHub Actions | Active | Read by `.github/workflows/infracost.yml` |
-| `KUBE_CONFIG` | GitHub Actions | Planned | Base64 kubeconfig for CI-driven `kubectl` — nothing applies manifests from CI yet |
+| `KUBE_CONFIG` | GitHub Actions | Conditional | Base64 kubeconfig used by `validate-sealed-secrets.yml` to query the Sealed Secrets controller; needed only when sealed-secret YAML manifests exist under `infra/secrets/`, not for CI apply |
 
 ### Monitoring
 
 | Secret | Target | Status | Description |
 |---|---|---|---|
 | `GRAFANA_ADMIN_PASSWORD` | k8s | Active | Supplied via the `grafana-admin` Secret (key `password`), read as `GF_SECURITY_ADMIN_PASSWORD` in `infra/monitoring/grafana/grafana-deployment.yaml` |
-| `ALERTMANAGER_SLACK_WEBHOOK_URL` | k8s | Planned | Alert routing webhook. `infra/monitoring/prometheus/alertmanager-config.yaml` currently **hardcodes a placeholder** `api_url` instead of reading a secret |
+| `SLACK_WEBHOOK_URL` | k8s | Active | Alertmanager reads this environment variable from the `alertmanager-secrets` Kubernetes Secret (key `slack-webhook-url`). It is a runtime secret, not a GitHub Actions secret |
 | `CODECOV_TOKEN` | GitHub Actions | Planned | Coverage upload — no workflow uploads coverage yet |
 
 ## Known naming inconsistencies
@@ -110,7 +112,7 @@ migrated.
 |---|---|---|
 | `DEPLOYER_SECRET_KEY` | `STELLAR_DEPLOYER_SECRET_KEY` | `templates/.env.example` |
 | `GHCR_TOKEN` | `GHCR_PAT` | earlier revisions of `infra/docs/secrets.md` |
-| `ALERTMANAGER_SLACK_WEBHOOK_URL` | `SLACK_WEBHOOK_URL` | earlier revisions of both secrets docs |
+| `SLACK_WEBHOOK_URL` | `ALERTMANAGER_SLACK_WEBHOOK_URL` | `templates/.env.example`; Kubernetes Secret key is `slack-webhook-url` |
 
 `infra/testnet/main.tf` also hardcodes the network passphrase as
 `Test Suggested Ledger ; October 2022`, which is not a real Stellar passphrase;
