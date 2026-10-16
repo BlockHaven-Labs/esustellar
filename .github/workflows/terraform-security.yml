@@ -15,7 +15,7 @@ jobs:
         root: [infra/terraform, infra/testnet, environments/staging]
     steps:
       - uses: actions/checkout@v7
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: ${{ matrix.root }}
