@@ -276,7 +276,7 @@
     "type-check": "^0.4.0",
     "typed-array-buffer": "^1.0.3",
     "typed-array-byte-length": "^1.0.3",
-    "typed-array-byte-offset": "^1.0.4",
+    "typed-array-byte-offset": "^1.0.5",
     "typed-array-length": "^1.0.7",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.50.0",
