@@ -15,6 +15,7 @@ recovery paths.
 | Off-chain Indexer | 24 hours | 1 hour | Data is reconstructible from chain |
 | Monitoring | 24 hours | 2 hours | Alerting gap is tolerable briefly |
 | RPC Node | 0 (external) | 30 min | Failover to secondary RPC |
+| **AWS Regional Outage (`us-east-1`)** | **15 min (Indexer) / 0 (Contracts)** | **4 hours** | Multi-region redeploy to `us-west-2` via Terraform; contracts & funds are on Stellar. See [`docs/runbooks/regional-outage-dr.md`](runbooks/regional-outage-dr.md) |
 
 ---
 
