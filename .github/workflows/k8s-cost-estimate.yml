@@ -1,0 +1,154 @@
+# #1284: Kubernetes workload cost estimation on pull requests.
+#
+# Complements the existing infracost.yml (Terraform-only) by estimating the
+# compute cost of the k8s workloads defined in infra/k8s/overlays/. The
+# estimate is advisory only — it is not a required status check — so a missing
+# dependency or rendering error posts a warning comment rather than failing
+# the PR. This matches the infracost.yml posture (#1258).
+
+name: K8s Workload Cost Estimate
+
+on:
+  pull_request:
+    paths:
+      - "infra/k8s/**"
+      - ".github/workflows/k8s-cost-estimate.yml"
+      - "infra/scripts/estimate-k8s-cost.sh"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  estimate:
+    name: K8s Workload Cost Estimate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install kubectl (kustomize)
+        run: |
+          curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          kubectl version --client
+
+      - name: Install PyYAML
+        run: pip3 install pyyaml
+
+      - name: Run cost estimate (JSON)
+        id: estimate
+        run: |
+          bash infra/scripts/estimate-k8s-cost.sh --json 2>/dev/null > k8s-cost.json
+          cat k8s-cost.json
+
+      - name: Build PR comment
+        id: comment
+        run: |
+          python3 - <<'PY'
+          import json, os
+
+          with open("k8s-cost.json") as f:
+              data = json.load(f)
+
+          pricing = data["pricing"]
+          envs = data["environments"]
+          total = data["grand_total_monthly"]
+          max_total = data.get("grand_max_monthly_at_hpa_ceiling")
+
+          lines = []
+          lines.append("## ☁️ K8s Workload Cost Estimate")
+          lines.append("")
+          lines.append(
+              "> Complements the [Infracost Terraform estimate]"
+              "(https://github.com/BlockHaven-Labs/esustellar/blob/main/.github/workflows/infracost.yml) "
+              "by estimating the compute cost of the pods running inside the cluster.")
+          lines.append("")
+          lines.append("**Pricing basis:** " + pricing["basis"])
+          lines.append(
+              f"CPU: ${pricing['cpu_rate_per_vcpu_hour']:.4f}/vCPU-hr · "
+              f"Memory: ${pricing['mem_rate_per_gib_hour']:.4f}/GiB-hr · "
+              f"{pricing['hours_per_month']} hrs/mo")
+          lines.append("")
+          lines.append("| Environment | Replicas | CPU req | Memory req | Cost/pod/mo | Total $/mo |")
+          lines.append("| --- | ---: | ---: | ---: | ---: | ---: |")
+          for e in envs:
+              lines.append(
+                  f"| {e['environment']} | {e['replicas']} | "
+                  f"{e['cpu_request_vcpu']:.3f} vCPU | "
+                  f"{e['memory_request_gib']:.3f} GiB | "
+                  f"${e['cost_per_pod_month']:.2f} | "
+                  f"**${e['total_monthly']:.2f}** |"
+              )
+          lines.append(f"| | | | | **Total** | **${total:.2f}** |")
+          lines.append("")
+
+          # HPA ceiling
+          hpa_envs = [e for e in envs if e.get("max_monthly_at_hpa_ceiling")]
+          if hpa_envs:
+              lines.append("<details><summary>HPA ceiling costs (if all autoscalers hit maxReplicas)</summary>")
+              lines.append("")
+              lines.append("| Environment | Current | Max | Current $/mo | Max $/mo |")
+              lines.append("| --- | ---: | ---: | ---: | ---: |")
+              for e in hpa_envs:
+                  lines.append(
+                      f"| {e['environment']} | {e['replicas']} | "
+                      f"{e['hpa_max_replicas']} | "
+                      f"${e['total_monthly']:.2f} | "
+                      f"${e['max_monthly_at_hpa_ceiling']:.2f} |"
+                  )
+              lines.append(f"| | | | **Total** | **${max_total:.2f}** |")
+              lines.append("")
+              lines.append("</details>")
+              lines.append("")
+
+          lines.append("---")
+          lines.append(
+              "<sub>Estimates are static, based on AWS on-demand pricing and resource "
+              "<strong>requests</strong> (what the scheduler reserves), not limits. "
+              "Update pricing constants in `infra/scripts/estimate-k8s-cost.sh` when AWS rates change.</sub>")
+
+          comment = "\n".join(lines)
+
+          # Write to GITHUB_OUTPUT
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              # Use a delimiter to handle multi-line content
+              f.write("body<<K8S_COST_EOF\n")
+              f.write(comment)
+              f.write("\nK8S_COST_EOF\n")
+          PY
+
+      - name: Post / update PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = process.env.STEPS_COMMENT_OUTPUT_BODY || core.getOutput('body');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = "<!-- k8s-cost-estimate -->";
+            const fullBody = `${marker}\n${body}`;
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: fullBody,
+              });
+            }
+        env:
+          STEPS_COMMENT_OUTPUT_BODY: ${{ steps.comment.outputs.body }}
