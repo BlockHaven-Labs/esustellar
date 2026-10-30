@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **K8s Workload Cost Estimation**: `infra/scripts/estimate-k8s-cost.sh` renders each kustomize overlay (mainnet, staging, testnet), parses replica counts and resource requests, and estimates the monthly compute cost of the pods running inside the cluster — complementing the existing Infracost Terraform cost estimate (`#1284`). A new `k8s-cost-estimate.yml` workflow posts the breakdown as an advisory PR comment when k8s manifests change.
+
 ### Planned
 - Real token escrow / locked custody support in smart contracts.
 - Configurable on-chain dispute resolution and arbitration workflows.
