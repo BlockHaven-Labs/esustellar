@@ -58,3 +58,11 @@ This changelog follows the infra versioning strategy defined in `docs/infra-vers
 ### Security
 - ECS task role no longer holds `kms:Decrypt` / `kms:GenerateDataKey` on `*` (#991)
 - CI/CD role no longer holds `cloudfront:CreateInvalidation` or `ecs:UpdateService` on `*`; the unavoidable account-level `ecs:RegisterTaskDefinition` wildcard is isolated in its own statement (#992)
+
+## [Unreleased]
+
+### Added
+- `k8s-overlay-validation.yml` now asserts each overlay's Ingress host, TLS hosts and secret, Certificate `dnsNames`, the absence of a cert-manager issuer annotation on the Ingress, and that the HPA scales on both CPU and memory (#1470, #1471, #1472, #1473)
+
+### Changed
+- `infra/k8s/README.md` documents per-overlay hostnames, the explicit-Certificate TLS decision, the HPA metrics and why staging targets testnet (#1470, #1471, #1472, #1473)

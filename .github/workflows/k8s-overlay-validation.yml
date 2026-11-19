@@ -38,12 +38,15 @@ jobs:
           - overlay: mainnet
             expected_network: public
             expected_namespace: esustellar
+            expected_host: esustellar.io
           - overlay: staging
             expected_network: testnet
             expected_namespace: esustellar-staging
+            expected_host: staging.esustellar.io
           - overlay: testnet
             expected_network: testnet
             expected_namespace: esustellar-testnet
+            expected_host: testnet.esustellar.io
     steps:
       - uses: actions/checkout@v7
 
@@ -173,6 +176,75 @@ jobs:
               sys.exit(1)
 
           print(f"overlay '{overlay}' OK: patches applied, env and namespace as expected")
+          PY
+
+      # Ingress hosts, TLS ownership and HPA metrics. Each overlay must claim its
+      # own hostname (matching the per-environment record the DNS module
+      # creates), the explicit Certificate must stay the only TLS source, and the
+      # HPA must keep scaling on memory as well as CPU.
+      - name: Assert ingress host, TLS and HPA metrics
+        env:
+          EXPECTED_HOST: ${{ matrix.expected_host }}
+          OVERLAY: ${{ matrix.overlay }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess, sys
+          subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyyaml"], check=True)
+          import yaml
+
+          overlay = os.environ["OVERLAY"]
+          host = os.environ["EXPECTED_HOST"]
+          docs = [d for d in yaml.safe_load_all(open("rendered.yaml")) if d]
+          errors = []
+
+          ingresses = [d for d in docs if d["kind"] == "Ingress"]
+          certs = [d for d in docs if d["kind"] == "Certificate"]
+          hpas = [d for d in docs if d["kind"] == "HorizontalPodAutoscaler"]
+          for kind, found in (("Ingress", ingresses), ("Certificate", certs), ("HorizontalPodAutoscaler", hpas)):
+              if not found:
+                  errors.append(f"rendered overlay contains no {kind}")
+
+          for ing in ingresses:
+              spec = ing["spec"]
+              hosts = [r.get("host") for r in spec.get("rules", [])]
+              if hosts != [host]:
+                  errors.append(f"Ingress rule hosts are {hosts}, expected [{host!r}]")
+              tls = spec.get("tls", [])
+              if [t.get("hosts") for t in tls] != [[host]]:
+                  errors.append(f"Ingress tls hosts are {[t.get('hosts') for t in tls]}, expected [[{host!r}]]")
+              # The explicit Certificate is the authoritative TLS source. An
+              # issuer annotation would make cert-manager create a second
+              # Certificate for the same secret.
+              annotations = ing["metadata"].get("annotations") or {}
+              for key in ("cert-manager.io/cluster-issuer", "cert-manager.io/issuer"):
+                  if key in annotations:
+                      errors.append(f"Ingress has the {key} annotation, which conflicts with the explicit Certificate")
+              for cert in certs:
+                  secret = cert["spec"].get("secretName")
+                  if any(t.get("secretName") != secret for t in tls):
+                      errors.append(
+                          f"Ingress tls secretName does not match Certificate secretName {secret!r}"
+                      )
+
+          for cert in certs:
+              if host not in (cert["spec"].get("dnsNames") or []):
+                  errors.append(f"Certificate dnsNames {cert['spec'].get('dnsNames')} do not include {host!r}")
+
+          for hpa in hpas:
+              resources = {
+                  m["resource"]["name"]
+                  for m in hpa["spec"].get("metrics", [])
+                  if m.get("type") == "Resource"
+              }
+              missing = {"cpu", "memory"} - resources
+              if missing:
+                  errors.append(f"HorizontalPodAutoscaler does not scale on {sorted(missing)}")
+
+          if errors:
+              for err in errors:
+                  print(f"::error file=rendered.yaml,overlay={overlay}::{err}")
+              sys.exit(1)
+          print(f"overlay '{overlay}' OK: ingress host, TLS and HPA metrics as expected")
           PY
 
       - name: Show rendered manifests on failure
