@@ -9,6 +9,7 @@
 #   4. Verify the new key works (dry-run contract call)
 #   5. Rename old key to deployer-old (grace period) instead of deleting
 #   6. Rename deployer-new → deployer
+#   7. Record the date in infra/secrets/last-rotated.yml (commit the change)
 #
 # The caller must update their CI/CD secrets (DEPLOYER_SECRET_KEY) with the
 # new secret key from the credentials file before the next deployment.
@@ -22,6 +23,16 @@ OLD_KEY_BACKUP="deployer-old"
 CREDS_FILE="/tmp/deployer-rotation-creds-$$"
 
 command -v stellar >/dev/null 2>&1 || { echo "❌ stellar CLI not found"; exit 1; }
+
+# Anything that is not testnet takes the mainnet branch below, which moves real
+# funds. Refuse typos such as "testnett" instead of silently treating them as mainnet.
+case "$NETWORK" in
+  testnet|mainnet|public) ;;
+  *)
+    echo "❌ Unknown network '$NETWORK'. Use 'testnet' or 'mainnet'." >&2
+    exit 1
+    ;;
+esac
 
 cleanup() {
   if [ -f "$CREDS_FILE" ]; then
@@ -61,11 +72,29 @@ else
   echo "  🔍 Verifying mainnet account balance..."
   HORIZON_URL="${HORIZON_URL:-https://horizon.stellar.org}"
   MIN_BALANCE_XLM="${MIN_BALANCE_XLM:-10}"
-  BALANCE=$(curl -fsS "$HORIZON_URL/accounts/$NEW_PUBLIC" 2>/dev/null \
-    | python3 -c 'import sys,json; print(next((b["balance"] for b in json.load(sys.stdin)["balances"] if b["asset_type"]=="native"), "0"))' \
-    2>/dev/null || echo "0")
+  BALANCE_CHECK_ATTEMPTS="${BALANCE_CHECK_ATTEMPTS:-6}"
+  BALANCE_CHECK_DELAY_SECONDS="${BALANCE_CHECK_DELAY_SECONDS:-5}"
+
+  # Horizon can take a few seconds to show a freshly funded account (it returns
+  # 404 until the account exists), so retry before treating that as a failure.
+  BALANCE="0"
+  attempt=1
+  while [ "$attempt" -le "$BALANCE_CHECK_ATTEMPTS" ]; do
+    BALANCE=$(curl -fsS "$HORIZON_URL/accounts/$NEW_PUBLIC" 2>/dev/null \
+      | python3 -c 'import sys,json; print(next((b["balance"] for b in json.load(sys.stdin)["balances"] if b["asset_type"]=="native"), "0"))' \
+      2>/dev/null || echo "0")
+    if python3 -c "import sys; sys.exit(0 if float('$BALANCE') >= float('$MIN_BALANCE_XLM') else 1)"; then
+      break
+    fi
+    if [ "$attempt" -lt "$BALANCE_CHECK_ATTEMPTS" ]; then
+      echo "  ⏳ Balance is $BALANCE XLM (need $MIN_BALANCE_XLM); retrying in ${BALANCE_CHECK_DELAY_SECONDS}s ($attempt/$BALANCE_CHECK_ATTEMPTS)..."
+      sleep "$BALANCE_CHECK_DELAY_SECONDS"
+    fi
+    attempt=$((attempt + 1))
+  done
   if ! python3 -c "import sys; sys.exit(0 if float('$BALANCE') >= float('$MIN_BALANCE_XLM') else 1)"; then
-    echo "  ❌ Horizon reports $BALANCE XLM for $NEW_PUBLIC (minimum $MIN_BALANCE_XLM). Fund the account and re-run."
+    echo "  ❌ Horizon reports $BALANCE XLM for $NEW_PUBLIC (minimum $MIN_BALANCE_XLM) after $BALANCE_CHECK_ATTEMPTS attempts. Fund the account and re-run." >&2
+    echo "     Nothing has been changed: the old key '$OLD_KEY' is untouched." >&2
     exit 1
   fi
   echo "  ✅ Mainnet account funded. Current balance: $BALANCE XLM"
@@ -143,6 +172,26 @@ else
   echo "  ⚠️  Could not retrieve secret — please rename manually:"
   echo "       stellar keys add deployer --secret-key <NEW_SECRET>"
   exit 1
+fi
+
+# Record the rotation date so infra/secrets/last-rotated.yml (read daily by
+# .github/workflows/secret-rotation-check.yml) restarts the 90-day clock. This
+# only edits the working tree; commit the change. It is skipped when the script
+# is run outside the repository root.
+TRACKER="infra/secrets/last-rotated.yml"
+if [ -f "$TRACKER" ]; then
+  python3 - "$TRACKER" "$(date -u +%Y-%m-%d)" <<'PY' && echo "  ✅ Updated $TRACKER (commit it)." || echo "  ⚠️  Could not update $TRACKER; set DEPLOYER_SECRET_KEY last_rotated to today by hand."
+import re, sys
+path, today = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8").read()
+pattern = re.compile(r'(^DEPLOYER_SECRET_KEY:\n(?:[ \t]+.*\n)*?[ \t]+last_rotated:\s*)"[^"]*"', re.M)
+new, count = pattern.subn(lambda m: m.group(1) + '"' + today + '"', text, count=1)
+if count != 1:
+    sys.exit(1)
+open(path, "w", encoding="utf-8").write(new)
+PY
+else
+  echo "  ⚠️  $TRACKER not found (run from the repo root); set DEPLOYER_SECRET_KEY last_rotated to today by hand."
 fi
 
 echo ""
