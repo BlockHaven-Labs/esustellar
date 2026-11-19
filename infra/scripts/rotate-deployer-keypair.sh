@@ -15,13 +15,24 @@
 # The caller must update their CI/CD secrets (DEPLOYER_SECRET_KEY) with the
 # new secret key from the credentials file before the next deployment.
 # The old key (deployer-old) is retained for 24h as a rollback safety net.
+#
+# SECURITY: run this only in an interactive terminal that is not logged or
+# recorded (no `script`, no terminal session recording, no CI job log capture).
+# The new secret key is never printed; it is written to a private file. Tracing
+# (`bash -x`, `set -x`) would print it, so tracing is switched off below.
 set -euo pipefail
+
+# Never trace this script: xtrace would write the secret key into the terminal
+# or log. This also overrides `bash -x script` and an inherited SHELLOPTS=xtrace.
+set +x
+# Anything this script creates (the credentials file) is private by default.
+umask 077
 
 NETWORK="${1:-testnet}"
 OLD_KEY="deployer"
 NEW_KEY="deployer-new"
 OLD_KEY_BACKUP="deployer-old"
-CREDS_FILE="/tmp/deployer-rotation-creds-$$"
+CREDS_FILE=""   # created with mktemp in Step 3
 
 command -v stellar >/dev/null 2>&1 || { echo "❌ stellar CLI not found"; exit 1; }
 
@@ -36,7 +47,7 @@ case "$NETWORK" in
 esac
 
 cleanup() {
-  if [ -f "$CREDS_FILE" ]; then
+  if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
     shred -u "$CREDS_FILE" 2>/dev/null || rm -f "$CREDS_FILE"
   fi
 }
@@ -45,6 +56,8 @@ trap cleanup EXIT
 echo "🔑 EsuStellar Deployer Keypair Rotation"
 echo "========================================"
 echo "Network: $NETWORK"
+echo "⚠️  Run this only in an interactive terminal that is not logged or recorded."
+echo "   The new secret key is written to a private file and is never printed."
 echo ""
 
 # Step 0: In-flight operations (see docs/runbooks/deployer-keypair-rotation.md).
@@ -129,6 +142,7 @@ fi
 
 # Step 3: Write credentials to restricted file (not stdout)
 echo ""
+CREDS_FILE="$(mktemp "${TMPDIR:-/tmp}/deployer-rotation-creds.XXXXXX")"
 echo "Step 3: Writing new credentials to restricted file: $CREDS_FILE"
 {
   echo "DEPLOYER_PUBLIC_KEY=${NEW_PUBLIC}"
