@@ -9,8 +9,11 @@ name: Infracost Cost Estimate
 
 on:
   pull_request:
+    # #1504: cover every Terraform root, not just infra/terraform.
     paths:
       - "infra/terraform/**"
+      - "infra/testnet/**"
+      - "environments/**"
 
 permissions:
   contents: read
@@ -39,8 +42,12 @@ jobs:
       - name: Generate Infracost Breakdown
         if: env.INFRACOST_API_KEY != ''
         run: |
-          infracost breakdown --path infra/terraform/ \
-            --format json \
+          for root in infra/terraform infra/testnet environments/staging environments/testnet; do
+            [ -d "$root" ] || continue
+            infracost breakdown --path "$root" --format json \
+              --out-file "infracost-$(echo "$root" | tr '/' '-').json"
+          done
+          infracost output --path "infracost-*.json" --format json \
             --out-file infracost-breakdown.json
 
       - name: Annotate PR with Cost Estimate
