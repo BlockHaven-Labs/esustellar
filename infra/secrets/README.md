@@ -214,6 +214,7 @@ for leaked references.
 
 - never prints the new secret key to stdout; it is written to a mode-600 temp file that is shredded on exit;
 - verifies the new key (address match and an offline signing check, nothing is submitted) before touching the old key;
+- renames keys by copying them through stdin, never as a command-line argument, keeping the seed phrase of a seed-phrase key, and checks each copy (address and phrase or secret) before removing the original; if a copy cannot be verified, or the key lives in the OS secure store, it stops with the original in place;
 - keeps the previous key as `deployer-old` so CI/CD secret updates can be rolled back; it is never deleted automatically (24h is a sensible minimum before you remove it), and the script refuses to start if a `deployer-old` from an earlier rotation still exists;
 - on mainnet, refuses to continue until Horizon reports at least `MIN_BALANCE_XLM` (default 10) on the new account, retrying for a short while because Horizon can lag behind funding (`BALANCE_CHECK_ATTEMPTS`, `BALANCE_CHECK_DELAY_SECONDS`), and leaves the old key untouched if the check fails;
 - rejects any network other than `testnet` or `mainnet`, so a typo cannot silently take the mainnet path.

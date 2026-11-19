@@ -35,7 +35,7 @@ The script will:
 2. Fund the account (Friendbot on testnet; manual on mainnet)
 3. Write the new credentials to a mode-600 temp file (never stdout) — **save the secret key immediately**
 4. Verify the new key can sign for its address (offline check, nothing is submitted), then keep the old identity as `deployer-old` (it is not deleted automatically)
-5. Rename `deployer-new` → `deployer`
+5. Rename `deployer-new` → `deployer` by copying it through stdin (a seed-phrase key keeps its phrase), checking the copy, then removing the old name. If the copy cannot be verified the script stops and leaves both keys in place
 
 Before it touches any key the script asks you to confirm nothing is in flight. For non-interactive use, set `ROTATION_CONFIRM_NO_INFLIGHT=yes` after checking yourself.
 
@@ -91,14 +91,17 @@ stellar keys address deployer-new
 # 3. Note new secret key (update CI/CD secrets immediately)
 stellar keys show deployer-new
 
-# 4. Remove old keypair
+# 4. Keep the old keypair as deployer-old instead of deleting it
+#    (`stellar keys add` reads the secret from stdin; it does not take it as an argument)
+stellar keys show deployer --phrase | stellar keys add deployer-old --seed-phrase
 stellar keys rm deployer
 
-# 5. Rename
-NEW_SECRET=$(stellar keys show deployer-new)
-stellar keys add deployer --secret-key "$NEW_SECRET"
+# 5. Rename deployer-new to deployer
+stellar keys show deployer-new --phrase | stellar keys add deployer --seed-phrase
 stellar keys rm deployer-new
 ```
+
+The commands above copy by seed phrase, which is what `stellar keys generate` stores, so the mnemonic is kept. For a key that has no phrase (`stellar keys show NAME --phrase` fails with "identity is not tied to a seed phrase"), drop `--phrase` from `show` and use `--secret-key` instead of `--seed-phrase` on `add`. A key in the OS secure store cannot be copied this way.
 
 ---
 
@@ -107,7 +110,7 @@ stellar keys rm deployer-new
 If the new key fails:
 
 1. Restore the old secret key from your secrets manager.
-2. Re-add it locally: `stellar keys add deployer --secret-key <OLD_SECRET>`.
+2. Re-add it locally with `stellar keys add deployer --overwrite --secret-key`; the CLI prompts for the secret, so it stays out of your shell history and process list.
 3. Revert the CI/CD secret.
 
 ---

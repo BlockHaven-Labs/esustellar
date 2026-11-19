@@ -57,6 +57,42 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The stellar CLI has no "keys rename". Copy an identity under a new name instead,
+# then remove the old name. The secret goes through stdin, never the command line:
+# `stellar keys add NAME --secret-key VALUE` is rejected by the CLI (the flag takes
+# no value, the secret is read from stdin) and an argument would also be visible in
+# the process list and echoed back in the CLI's error message.
+#
+# An identity created from a seed phrase (what `stellar keys generate` stores) is
+# copied by its phrase, so the copy is still a seed-phrase identity and
+# `stellar keys show NAME --phrase` keeps working. Importing the raw secret key
+# would turn it into a secret_key identity and drop the phrase. Other identities are
+# copied by secret key. The CLI writes both through the same path, so the copy gets
+# the same file permissions as any CLI key. An identity in the OS secure store has no
+# readable secret, so it cannot be copied and this returns non-zero rather than
+# downgrading it to a plaintext key.
+#
+# Returns 0 only when the copy has the same address (and the same phrase or secret)
+# as the source. A copy that fails verification is removed again.
+copy_identity() {
+  local src="$1" dst="$2" src_public dst_public src_phrase="" src_secret="" dst_check=""
+  src_public=$(stellar keys address "$src" 2>/dev/null) || return 1
+  if src_phrase=$(stellar keys show "$src" --phrase 2>/dev/null) && [ -n "$src_phrase" ]; then
+    printf '%s\n' "$src_phrase" | stellar keys add "$dst" --seed-phrase || return 1
+    dst_check=$(stellar keys show "$dst" --phrase 2>/dev/null || true)
+    [ "$dst_check" = "$src_phrase" ] || { stellar keys rm "$dst" || true; return 1; }
+  else
+    src_secret=$(stellar keys show "$src" 2>/dev/null) || return 1
+    [ -n "$src_secret" ] || return 1
+    printf '%s\n' "$src_secret" | stellar keys add "$dst" --secret-key || return 1
+    dst_check=$(stellar keys show "$dst" 2>/dev/null || true)
+    [ "$dst_check" = "$src_secret" ] || { stellar keys rm "$dst" || true; return 1; }
+  fi
+  dst_public=$(stellar keys address "$dst" 2>/dev/null || true)
+  [ "$dst_public" = "$src_public" ] || { stellar keys rm "$dst" || true; return 1; }
+  return 0
+}
+
 echo "🔑 EsuStellar Deployer Keypair Rotation"
 echo "========================================"
 echo "Network: $NETWORK"
@@ -233,19 +269,16 @@ echo ""
 echo "Step 5: Backing up old keypair '$OLD_KEY' to '$OLD_KEY_BACKUP' (rollback copy)..."
 BACKED_UP=0
 if stellar keys ls | awk '{print $1}' | grep -xq "$OLD_KEY"; then
-  OLD_SECRET=$(stellar keys show "$OLD_KEY" 2>/dev/null || true)
-  if [ -n "$OLD_SECRET" ]; then
-    stellar keys add "$OLD_KEY_BACKUP" --secret-key "$OLD_SECRET"
-    stellar keys rm "$OLD_KEY"
-    BACKED_UP=1
-    echo "  ✅ Old keypair backed up as '$OLD_KEY_BACKUP' (retained for rollback)."
-  else
-    # Carrying on would drop the old key without a rollback copy, and Step 6 would
-    # then fail on the name that is still taken. Stop with the old key untouched.
-    echo "  ❌ '$OLD_KEY' exists but its secret could not be read, so no rollback copy can be made." >&2
+  if ! copy_identity "$OLD_KEY" "$OLD_KEY_BACKUP"; then
+    # Dropping the old key without a verified rollback copy is the one thing this
+    # step must never do. Stop with the old key untouched.
+    echo "  ❌ Could not make a verified copy of '$OLD_KEY' as '$OLD_KEY_BACKUP' (its secret may be unreadable, or it may live in the OS secure store)." >&2
     echo "     Stopping with '$OLD_KEY' untouched. '$NEW_KEY' is still in the keystore." >&2
     exit 1
   fi
+  stellar keys rm "$OLD_KEY"
+  BACKED_UP=1
+  echo "  ✅ Old keypair backed up as '$OLD_KEY_BACKUP' (retained for rollback)."
 else
   echo "  ℹ️  '$OLD_KEY' not found locally — skipping backup."
 fi
@@ -253,22 +286,16 @@ fi
 # Step 6: Rename new → deployer
 echo ""
 echo "Step 6: Renaming '$NEW_KEY' to '$OLD_KEY'..."
-# The stellar CLI has no "keys rename" command. `stellar keys add NAME --secret-key SECRET`
-# imports the existing secret under a new name, so the resulting key has the same
-# public address as the original (verified below) and is stored with the same
-# permissions/encryption as any other CLI key. Removing the old name afterwards is
-# therefore equivalent to a rename.
-if [ -n "$NEW_SECRET" ]; then
-  stellar keys add "$OLD_KEY" --secret-key "$NEW_SECRET"
-  if [ "$(stellar keys address "$OLD_KEY")" != "$NEW_PUBLIC" ]; then
-    echo "  ❌ Renamed key address does not match $NEW_PUBLIC; keeping '$NEW_KEY' in place."
-    exit 1
-  fi
+# copy_identity verifies the copy (same address and phrase or secret) before the
+# new name is removed, so a failed rename never leaves the new key unreachable.
+if copy_identity "$NEW_KEY" "$OLD_KEY"; then
   stellar keys rm "$NEW_KEY"
   echo "  ✅ Keypair renamed to '$OLD_KEY'."
 else
-  echo "  ⚠️  Could not retrieve secret — please rename manually:"
-  echo "       stellar keys add deployer --secret-key <NEW_SECRET>"
+  echo "  ❌ Could not rename '$NEW_KEY' to '$OLD_KEY'; keeping '$NEW_KEY' in place." >&2
+  if [ "$BACKED_UP" = "1" ]; then
+    echo "     The previous key is safe as '$OLD_KEY_BACKUP'." >&2
+  fi
   exit 1
 fi
 
