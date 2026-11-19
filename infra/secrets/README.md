@@ -213,7 +213,7 @@ for leaked references.
 `infra/scripts/rotate-deployer-keypair.sh`:
 
 - never prints the new secret key to stdout; it is written to a mode-600 temp file that is shredded on exit;
-- verifies the new key (address match) before touching the old key;
+- verifies the new key (address match and an offline signing check, nothing is submitted) before touching the old key;
 - keeps the previous key as `deployer-old` for a 24h grace period so CI/CD secret updates can be rolled back;
 - on mainnet, refuses to continue until Horizon reports at least `MIN_BALANCE_XLM` (default 10) on the new account, retrying for a short while because Horizon can lag behind funding (`BALANCE_CHECK_ATTEMPTS`, `BALANCE_CHECK_DELAY_SECONDS`), and leaves the old key untouched if the check fails;
 - rejects any network other than `testnet` or `mainnet`, so a typo cannot silently take the mainnet path.

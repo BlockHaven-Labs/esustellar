@@ -7,7 +7,8 @@
 #   1. Generate a new deployer keypair (deployer-new)
 #   2. Fund the new account on testnet, or prompt for mainnet with balance verification
 #   3. Write new credentials to a restricted file (NOT stdout) for CI/CD secret update
-#   4. Verify the new key works (dry-run contract call)
+#   4. Verify the new key can sign a transaction for its address (offline check,
+#      nothing is submitted) before the old key is touched
 #   5. Rename old key to deployer-old (grace period) instead of deleting
 #   6. Rename deployer-new → deployer
 #   7. Record the date in infra/secrets/last-rotated.yml (commit the change)
@@ -162,20 +163,57 @@ if [[ "${confirm,,}" != "y" ]]; then
   exit 1
 fi
 
-# Step 4: Verify new key works (dry-run contract call)
+# Step 4: Verify the new key before the old one is touched.
+# This is an offline check, not a network dry run: it proves the key in the
+# keystore loads, is the secret that was written for CI/CD, and signs a
+# transaction whose signature belongs to NEW_PUBLIC. It does not submit anything
+# and it cannot see whether DEPLOYER_SECRET_KEY was updated in CI/CD. Funding is
+# checked in Step 2 on mainnet only. Any failure aborts before Step 5, so the old
+# key is still in place.
 echo ""
-echo "Step 4: Verifying new key works..."
+echo "Step 4: Verifying new key can sign (offline check, nothing is submitted)..."
 if ! stellar keys ls | awk '{print $1}' | grep -xq "$NEW_KEY"; then
-  echo "  ❌ New key '$NEW_KEY' not found in local keystore."
+  echo "  ❌ New key '$NEW_KEY' not found in local keystore. '$OLD_KEY' is untouched." >&2
   exit 1
 fi
-# Dry-run: attempt to get the public address (validates key is usable)
 VERIFY_PUBLIC=$(stellar keys address "$NEW_KEY" 2>/dev/null || true)
 if [ "$VERIFY_PUBLIC" != "$NEW_PUBLIC" ]; then
-  echo "  ❌ New key verification failed: address mismatch."
+  echo "  ❌ New key verification failed: address mismatch. '$OLD_KEY' is untouched." >&2
   exit 1
 fi
-echo "  ✅ New key verified (address matches)."
+VERIFY_SECRET=$(stellar keys show "$NEW_KEY" 2>/dev/null || true)
+if [ -z "$NEW_SECRET" ] || [ "$VERIFY_SECRET" != "$NEW_SECRET" ]; then
+  echo "  ❌ Could not read back the new secret key, or it differs from the one written to the credentials file. '$OLD_KEY' is untouched." >&2
+  exit 1
+fi
+case "$NETWORK" in
+  testnet) NETWORK_PASSPHRASE="Test SDF Network ; September 2015" ;;
+  *)       NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015" ;;
+esac
+# A bump_sequence transaction from the new account, signed locally and never sent.
+TX_JSON='{"tx":{"tx":{"source_account":"'"$NEW_PUBLIC"'","fee":100,"seq_num":1,"cond":"none","memo":"none","operations":[{"source_account":null,"body":{"bump_sequence":{"bump_to":2}}}],"ext":"v0"},"signatures":[]}}'
+SIGN_CHECK='
+import base64, json, sys
+try:
+    raw = base64.b32decode(sys.argv[1])
+    if len(raw) != 35 or raw[0] != 6 << 3:
+        sys.exit(1)
+    hint = raw[1:33][-4:].hex()
+    sigs = json.load(sys.stdin)["tx"]["signatures"]
+    ok = len(sigs) == 1 and sigs[0]["hint"] == hint and len(sigs[0]["signature"]) == 128
+except Exception:
+    sys.exit(1)
+sys.exit(0 if ok else 1)
+'
+if ! printf '%s' "$TX_JSON" \
+    | stellar xdr encode --type TransactionEnvelope --input json 2>/dev/null \
+    | stellar tx sign --sign-with-key "$NEW_KEY" --network-passphrase "$NETWORK_PASSPHRASE" 2>/dev/null \
+    | stellar xdr decode --type TransactionEnvelope --output json 2>/dev/null \
+    | python3 -c "$SIGN_CHECK" "$NEW_PUBLIC"; then
+  echo "  ❌ New key could not produce a valid signature for $NEW_PUBLIC. Nothing has been changed: '$OLD_KEY' is untouched." >&2
+  exit 1
+fi
+echo "  ✅ New key verified (address matches and it signs for $NEW_PUBLIC)."
 
 # Step 5: Rename old key to deployer-old (grace period) instead of deleting
 echo ""

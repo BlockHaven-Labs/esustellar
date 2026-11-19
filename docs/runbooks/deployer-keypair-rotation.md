@@ -34,7 +34,7 @@ The script will:
 1. Generate a new `deployer-new` keypair
 2. Fund the account (Friendbot on testnet; manual on mainnet)
 3. Write the new credentials to a mode-600 temp file (never stdout) — **save the secret key immediately**
-4. Verify the new key, then keep the old identity as `deployer-old` for a 24h grace period
+4. Verify the new key can sign for its address (offline check, nothing is submitted), then keep the old identity as `deployer-old` for a 24h grace period
 5. Rename `deployer-new` → `deployer`
 
 Before it touches any key the script asks you to confirm nothing is in flight. For non-interactive use, set `ROTATION_CONFIRM_NO_INFLIGHT=yes` after checking yourself.
