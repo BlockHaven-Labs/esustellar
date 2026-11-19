@@ -19,6 +19,50 @@ Promtail. Deployed by Kustomize from this tree; the root `monitoring/` and
 `docker-compose.yml` for local development, so a change here affects both the
 local and the cluster behaviour of the log pipeline.
 
+## Alertmanager high availability (#1296)
+
+Alertmanager runs **3 replicas** with a gossip cluster (`--cluster.peer` via
+the headless `alertmanager-cluster` Service), preferred pod anti-affinity by
+hostname, and a `PodDisruptionBudget` with `minAvailable: 2`. A single replica
+was a single point of failure: an outage at the wrong moment would swallow
+`DeployerBalanceCritical` and delay funding a deployer key.
+
+Verify after a node drain:
+
+```bash
+kubectl -n esustellar-monitoring get pods -l app=alertmanager
+kubectl -n esustellar-monitoring get pdb alertmanager
+kubectl -n esustellar-monitoring logs -l app=alertmanager --tail=50 | grep -i cluster
+```
+
+Prometheus and Grafana remain single-replica by design; losing them costs
+query history/dashboards temporarily, but alert delivery survives. That is the
+accepted tradeoff — do not assume the whole monitoring stack is HA.
+
+## Prometheus storage (#1295)
+
+Prometheus TSDB is mounted from the `prometheus-data` PersistentVolumeClaim
+(50Gi, ReadWriteOnce), **not** `emptyDir`. It is sized for the 30-day retention
+configured with `--storage.tsdb.retention.time=30d`. Historical `rate()` and
+comparison queries therefore survive pod restarts and node drains.
+
+```bash
+kubectl -n esustellar-monitoring get pvc prometheus-data
+kubectl -n esustellar-monitoring exec deploy/prometheus -- df -h /prometheus
+```
+
+If usage approaches the capacity, grow the PVC or lower retention deliberately;
+never switch the volume back to `emptyDir`.
+
+## Grafana datasource provisioning (#1294)
+
+`datasources/datasources.yaml` has exactly one consumer: the
+`configMapGenerator` in `grafana/kustomization.yaml`, mounted by
+`grafana-deployment.yaml` at `/etc/grafana/provisioning/datasources`. It is not
+also listed under `resources`, so kustomize cannot double-apply an unsuffixed
+datasource ConfigMap. Add new datasources to that one file; do not create a
+second provisioning source.
+
 ## Retention policy
 
 Nothing in this stack is left on an "indefinite" default. The authoritative

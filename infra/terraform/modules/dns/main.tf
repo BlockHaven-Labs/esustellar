@@ -29,6 +29,7 @@
 
 locals {
   subdomain = "${var.environment}.${var.domain_name}"
+  apex_name = var.apex_domain_name != "" ? var.apex_domain_name : var.domain_name
 
   primary_set_identifier   = "${var.environment}-primary"
   secondary_set_identifier = "${var.environment}-secondary"
@@ -82,6 +83,40 @@ resource "aws_route53_record" "aaaa" {
 
   zone_id = var.route53_zone_id
   name    = local.subdomain
+  type    = "AAAA"
+
+  alias {
+    name                   = var.alb_dns_name
+    zone_id                = var.alb_zone_id
+    evaluate_target_health = true
+  }
+}
+
+# --- Apex records (#1300) ---
+# The mainnet Ingress host is esustellar.io, not mainnet.esustellar.io, so the
+# environment subdomain alone leaves the served host without a Terraform-managed
+# record. These are plain alias records (no health-checked failover group) and
+# share the subdomain's primary ALB target.
+
+resource "aws_route53_record" "apex_a" {
+  count = var.create_apex_record ? 1 : 0
+
+  zone_id = var.route53_zone_id
+  name    = local.apex_name
+  type    = "A"
+
+  alias {
+    name                   = var.alb_dns_name
+    zone_id                = var.alb_zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "apex_aaaa" {
+  count = var.create_apex_record ? 1 : 0
+
+  zone_id = var.route53_zone_id
+  name    = local.apex_name
   type    = "AAAA"
 
   alias {

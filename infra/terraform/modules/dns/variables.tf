@@ -57,3 +57,20 @@ variable "health_check_path" {
   type        = string
   default     = "/api/health"
 }
+
+# #1300: the mainnet Ingress serves the apex (esustellar.io), while this module
+# previously only ever created "${environment}.${domain_name}". The apex is
+# opt-in so staging/testnet roots keep their existing record set; mainnet must
+# set create_apex_record = true to make the host the Ingress actually serves
+# resolvable through Terraform-managed DNS.
+variable "create_apex_record" {
+  description = "Also create A/AAAA alias records for the apex domain (domain_name). Required for the mainnet overlay, whose Ingress host is the apex rather than an environment subdomain."
+  type        = bool
+  default     = false
+}
+
+variable "apex_domain_name" {
+  description = "Override the apex host when the Ingress host differs from domain_name. Defaults to domain_name when empty."
+  type        = string
+  default     = ""
+}

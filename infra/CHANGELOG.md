@@ -58,3 +58,25 @@ This changelog follows the infra versioning strategy defined in `docs/infra-vers
 ### Security
 - ECS task role no longer holds `kms:Decrypt` / `kms:GenerateDataKey` on `*` (#991)
 - CI/CD role no longer holds `cloudfront:CreateInvalidation` or `ecs:UpdateService` on `*`; the unavoidable account-level `ecs:RegisterTaskDefinition` wildcard is isolated in its own statement (#992)
+
+## [Unreleased]
+
+### Added
+- `infra/scripts/deploy/set-image-tag.sh` pins an overlay's web image to a release version, git SHA or digest and can check that it is pinned (#1469)
+- `infra/scripts/check-raw-secrets.py` fails when a plain Kubernetes `Secret` manifest holds more than the allowed non-sensitive placeholders (#1468)
+- "In-flight transactions during rotation" section in `docs/runbooks/deployer-keypair-rotation.md`; `rotate-deployer-keypair.sh` now asks the operator to confirm nothing is in flight (#1466)
+
+### Fixed
+- `Secret Scanning` ran `gitleaks/gitleaks-action@v2`, which fails for organization repositories without a paid license, so every run failed. It now runs the pinned, checksum-verified gitleaks CLI on every pull request and push to main (#1468)
+
+### Changed
+- `infra/docs/secrets.md` rotation instructions point at the in-flight guidance; `validate-env.sh --check-deployer-key` is the check that covers `DEPLOYER_SECRET_KEY` (#1466, #1467)
+- `infra/scripts/check-env-example-sync.py` and the `Env Example Sync` workflow keep the root `.env.example` and `infra/secrets/templates/.env.example` consistent; the relationship is documented in `infra/secrets/README.md` (#1465)
+
+### Changed
+- `rotate-deployer-keypair.sh` rejects unknown networks, retries the mainnet balance check for Horizon lag, and records the rotation date in `infra/secrets/last-rotated.yml` (#1462, #1463)
+- `infra/secrets/README.md` links the sealed-secrets validation and rotation-check workflows from the verification and rotation sections (#1463, #1464)
+- `k8s-overlay-validation.yml` now asserts each overlay's Ingress host, TLS hosts and secret, Certificate `dnsNames`, the absence of a cert-manager issuer annotation on the Ingress, and that the HPA scales on both CPU and memory (#1470, #1471, #1472, #1473)
+
+### Changed
+- `infra/k8s/README.md` documents per-overlay hostnames, the explicit-Certificate TLS decision, the HPA metrics and why staging targets testnet (#1470, #1471, #1472, #1473)

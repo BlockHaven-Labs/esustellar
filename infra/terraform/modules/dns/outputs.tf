@@ -11,6 +11,11 @@ output "zone_id" {
   value       = var.route53_zone_id
 }
 
+output "apex_fqdn" {
+  description = "Apex host managed when create_apex_record is enabled; empty otherwise. Must match the mainnet Ingress host."
+  value       = var.create_apex_record ? local.apex_name : ""
+}
+
 output "failover_enabled" {
   description = "Whether this environment is serving a Route53 failover group. When false the plain A/AAAA alias records are authoritative."
   value       = local.failover_enabled

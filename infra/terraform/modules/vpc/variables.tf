@@ -40,7 +40,20 @@ variable "enable_nat_gateway" {
 }
 
 variable "nat_gateway_count" {
-  description = "Number of NAT gateways to create. Defaults to one per availability zone when NAT is enabled."
+  description = <<-EOT
+    Number of NAT gateways to create. Defaults to one per availability zone when
+    NAT is enabled (local.nat_gateway_count), so each private subnet has a NAT in
+    its own AZ and no AZ becomes a single point of failure for outbound traffic.
+
+    Cost/availability tradeoff (#1298): one gateway per AZ is the resilient
+    default and costs one EIP + one NAT gateway hour per AZ. Setting this to 1
+    saves those gateway/EIP hours but makes every private subnet depend on a
+    single AZ; an AZ failure (or maintenance) takes all outbound Stellar
+    RPC/Horizon and image-pull traffic down with it. Use 1 only where a short
+    outage is acceptable (testnet/sandbox), and record the decision in the
+    environment's tfvars. infracost.yml will surface the difference on any PR
+    that changes this value.
+  EOT
   type        = number
   default     = null
 
@@ -86,5 +99,5 @@ variable "allowed_ingress_cidrs" {
 variable "domain_suffix" {
   description = "Domain served by the ALB, used in the security group description only"
   type        = string
-  default     = "esustellar.io"
+  default     = "example.invalid"
 }

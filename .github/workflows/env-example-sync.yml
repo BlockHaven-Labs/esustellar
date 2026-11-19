@@ -1,0 +1,27 @@
+# #1465: fail a PR that adds a variable to the top-level .env.example without
+# either adding it to infra/secrets/templates/.env.example or listing it as
+# app-only in infra/secrets/README.md.
+name: Env Example Sync
+
+on:
+  pull_request:
+    paths:
+      - ".env.example"
+      - "infra/secrets/templates/.env.example"
+      - "infra/secrets/README.md"
+      - "infra/scripts/check-env-example-sync.py"
+      - ".github/workflows/env-example-sync.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  env-example-sync:
+    name: .env.example files stay consistent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check
+        run: python3 infra/scripts/check-env-example-sync.py

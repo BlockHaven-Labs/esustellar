@@ -79,3 +79,17 @@ spec:
       targetPort: am-cluster
   selector:
     app: alertmanager
+---
+# #1296: 3 replicas form a gossip quorum, but a node drain could still evict
+# two of them at once and take alerting down with it. Keep at least 2 available
+# during voluntary disruptions; podAntiAffinity above spreads the remaining pods.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alertmanager
+  namespace: esustellar-monitoring
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: alertmanager

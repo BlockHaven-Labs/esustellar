@@ -19,6 +19,14 @@ if [ "${1:-}" = "--check-deployer-key" ]; then
   shift
 fi
 
+# #1497: --deploy (or CHECK_DEPLOY_VARS=1) also validates deployment-level secrets
+# documented in infra/docs/secrets.md and infra/secrets/README.md.
+CHECK_DEPLOY_VARS="${CHECK_DEPLOY_VARS:-0}"
+if [ "${1:-}" = "--deploy" ]; then
+  CHECK_DEPLOY_VARS=1
+  shift
+fi
+
 ENV_FILE="${1:-apps/web/.env.local}"
 
 # Load env file if it exists
@@ -35,8 +43,12 @@ REQUIRED_VARS=(
   "NEXT_PUBLIC_CONTRACT_ID"
 )
 
-if [ "$CHECK_DEPLOYER_KEY" = "1" ]; then
+if [ "$CHECK_DEPLOYER_KEY" = "1" ] || [ "$CHECK_DEPLOY_VARS" = "1" ]; then
   REQUIRED_VARS+=("DEPLOYER_SECRET_KEY")
+fi
+
+if [ "$CHECK_DEPLOY_VARS" = "1" ]; then
+  REQUIRED_VARS+=("STELLAR_RPC_URL" "STELLAR_NETWORK_PASSPHRASE" "NEXTAUTH_SECRET")
 fi
 
 errors=0

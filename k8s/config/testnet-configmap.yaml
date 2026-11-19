@@ -1,3 +1,7 @@
+# #1289: this is the only ConfigMap in this directory populated with live
+# values. The IDs match deployment-info.json (network: testnet, deployed
+# 2026-05-05). Re-check that file after any contract redeploy before treating
+# these as current.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,6 +10,8 @@ metadata:
   labels:
     app: esustellar-web
     environment: testnet
+  annotations:
+    esustellar.io/config-source: deployment-info.json
 data:
   NEXT_PUBLIC_SAVINGS_CONTRACT_ID: "CAGYPHW5QDEKCDKJXI5EQENRRBQSZDGDYPMQUF4MOGHCA63YWSMLPFUN"
   NEXT_PUBLIC_REGISTRY_CONTRACT_ID: "CDFH5MTVBX4NLCTL53N5XD5A3TIZ2O3KX65ZV7QG52TPP5X5KQLTFUC2"

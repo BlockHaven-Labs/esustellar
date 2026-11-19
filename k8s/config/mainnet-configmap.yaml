@@ -1,3 +1,7 @@
+# #1290: TEMPLATE ONLY — no mainnet contract IDs are committed here.
+# Apply only the output of infra/scripts/render-configmap.sh with real IDs
+# injected from the deploy job's secrets; validate-configmaps.* rejects the
+# ${...} placeholders below.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,9 +10,9 @@ metadata:
   labels:
     app: esustellar-web
     environment: mainnet
+  annotations:
+    esustellar.io/config-template: "true"
 data:
-  # MAINNET VALUES MUST BE POPULATED BEFORE DEPLOYMENT
-  # DO NOT COMMIT REAL CONTRACT IDs - use CI/CD secrets injection
-  NEXT_PUBLIC_SAVINGS_CONTRACT_ID: ""
-  NEXT_PUBLIC_REGISTRY_CONTRACT_ID: ""
-  NEXT_PUBLIC_CONTRACT_ID: ""
+  NEXT_PUBLIC_SAVINGS_CONTRACT_ID: "${NEXT_PUBLIC_SAVINGS_CONTRACT_ID}"
+  NEXT_PUBLIC_REGISTRY_CONTRACT_ID: "${NEXT_PUBLIC_REGISTRY_CONTRACT_ID}"
+  NEXT_PUBLIC_CONTRACT_ID: "${NEXT_PUBLIC_CONTRACT_ID}"

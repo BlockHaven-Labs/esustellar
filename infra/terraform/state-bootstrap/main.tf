@@ -8,6 +8,12 @@
 # locking are orphaned. `terraform destroy` on this root therefore fails
 # loudly instead of silently wiping shared state.
 
+# #1308: this is also a Terraform root, so it must pin the same CLI line as
+# the downstream roots; the alignment check scans every *.tf directory.
+terraform {
+  required_version = "~> 1.6.0"
+}
+
 provider "aws" {
   region = var.aws_region
 }

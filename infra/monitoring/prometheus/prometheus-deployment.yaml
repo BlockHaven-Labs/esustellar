@@ -102,6 +102,10 @@ spec:
   selector:
     app: prometheus
 ---
+# #1295: TSDB storage is PVC-backed, not emptyDir. 50Gi is sized for the
+# 30d retention above with headroom for series growth; shrinking it risks
+# Prometheus failing writes (and losing the window alerts rely on) after a
+# reschedule. Do not switch this volume to emptyDir.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

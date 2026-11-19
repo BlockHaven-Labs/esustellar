@@ -1,0 +1,23 @@
+# #1308: one check for every Terraform root instead of relying on four
+# independently maintained providers.tf files.
+name: Terraform Version Alignment
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**/*.tf"
+      - "infra/testnet/**/*.tf"
+      - "environments/**/*.tf"
+      - "infra/scripts/check-terraform-versions.py"
+      - ".github/workflows/terraform-version-alignment.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  aligned:
+    name: CLI and shared provider pins match
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 infra/scripts/check-terraform-versions.py

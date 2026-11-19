@@ -3,6 +3,11 @@ kind: Kustomization
 namespace: esustellar-monitoring
 resources:
   - grafana-deployment.yaml
+# #1294: datasources/datasources.yaml is deliberately NOT listed under
+# `resources`. It is loaded once through this configMapGenerator and mounted at
+# /etc/grafana/provisioning/datasources by grafana-deployment.yaml. Adding it to
+# resources as well would apply a second, unsuffixed ConfigMap and leave two
+# provisioning sources fighting over the same datasource names.
 configMapGenerator:
   - name: grafana-datasources
     files:

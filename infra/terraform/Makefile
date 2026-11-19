@@ -11,40 +11,40 @@ validate:
 	terraform validate
 
 plan:
-	@echo "Planning Terraform changes..."
-	terraform init -backend=false -input=false
-	terraform plan -out=tfplan
+	$(MAKE) plan-$(ENV)
 
 plan-testnet:
 	@echo "Planning Terraform changes for testnet..."
-	terraform init -backend=false -input=false
-	terraform plan -var-file=../../environments/testnet.tfvars -out=tfplan-testnet
+	terraform init -input=false -reconfigure -backend-config=backend/testnet.hcl
+	terraform plan -input=false -var-file=../../environments/testnet.tfvars -out=tfplan-testnet
 
 plan-staging:
 	@echo "Planning Terraform changes for staging..."
-	terraform init -backend=false -input=false
-	terraform plan -var-file=../../environments/staging.tfvars -out=tfplan-staging
+	terraform init -input=false -reconfigure -backend-config=backend/staging.hcl
+	terraform plan -input=false -var-file=../../environments/staging.tfvars -out=tfplan-staging
 
 plan-mainnet:
 	@echo "Planning Terraform changes for mainnet..."
-	terraform init -backend=false -input=false
-	terraform plan -var-file=../../environments/mainnet.tfvars -out=tfplan-mainnet
+	terraform init -input=false -reconfigure -backend-config=backend/mainnet.hcl
+	terraform plan -input=false -var-file=../../environments/mainnet.tfvars -out=tfplan-mainnet
 
 apply:
-	@echo "Applying Terraform changes..."
-	terraform apply -auto-approve tfplan
+	$(MAKE) apply-$(ENV)
 
-apply-testnet: plan-testnet
+apply-testnet:
+	@test -f tfplan-testnet || { echo "No testnet plan found; run 'make plan-testnet' and review it first."; exit 1; }
 	@echo "Applying Terraform changes for testnet..."
-	terraform apply -auto-approve tfplan-testnet
+	terraform apply -input=false -auto-approve tfplan-testnet
 
-apply-staging: plan-staging
+apply-staging:
+	@test -f tfplan-staging || { echo "No staging plan found; run 'make plan-staging' and review it first."; exit 1; }
 	@echo "Applying Terraform changes for staging..."
-	terraform apply -auto-approve tfplan-staging
+	terraform apply -input=false -auto-approve tfplan-staging
 
-apply-mainnet: plan-mainnet
+apply-mainnet:
+	@test -f tfplan-mainnet || { echo "No mainnet plan found; run 'make plan-mainnet' and review it first."; exit 1; }
 	@echo "Applying Terraform changes for mainnet..."
-	terraform apply -auto-approve tfplan-mainnet
+	terraform apply -input=false -auto-approve tfplan-mainnet
 
 fmt:
 	terraform fmt -recursive

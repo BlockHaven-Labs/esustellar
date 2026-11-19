@@ -55,6 +55,9 @@ spec:
       ports:
         - port: 3000
 ---
+# #1297: Prometheus lives in esustellar-monitoring (a different namespace from
+# this deny-all policy) and scrapes port 9464; the selector and port below must
+# stay in sync with the relabel rule in monitoring/prometheus/prometheus-deployment.yaml.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
