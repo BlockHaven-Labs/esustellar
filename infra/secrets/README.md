@@ -6,6 +6,28 @@ subset required by committed GitHub Actions workflows, and
 [`infra/secrets/templates/.env.example`](templates/.env.example) is the
 annotated local-development template.
 
+## The two `.env.example` files
+
+There are two example environment files, for different purposes. They are not meant to be identical.
+
+| File | Purpose | Contains |
+|---|---|---|
+| [`.env.example`](../../.env.example) (repo root) | Running the web app and contracts locally | Application settings |
+| [`infra/secrets/templates/.env.example`](templates/.env.example) | Infra and deployment: Stellar deployer keys, monitoring, image registry, contract IDs | Everything the infra tooling needs, annotated |
+
+The infra template is the superset: every root variable must also appear in it, except the
+variables below that only the application reads. The
+[Env Example Sync](../../.github/workflows/env-example-sync.yml) workflow
+(`infra/scripts/check-env-example-sync.py`) fails a PR that adds a root variable without
+either adding it to the template or listing it here.
+
+<!-- app-only-env:start -->
+Application-only variables (in the root file, intentionally not in the infra template):
+
+- `NEXT_PUBLIC_CONTRACT_ID`: read by the browser bundle; infra supplies the same value as `SAVINGS_CONTRACT_ID` and `REGISTRY_CONTRACT_ID`.
+- `NODE_ENV`: set by the runtime image, not by operators.
+<!-- app-only-env:end -->
+
 ## Deployment decision and secret boundaries
 
 ADR 003 selects Kubernetes as the production deployment target. The canonical
@@ -161,6 +183,9 @@ Rotation deadlines for the date-based secrets above are tracked in
 the [Secret Rotation Check](../../.github/workflows/secret-rotation-check.yml)
 workflow, which opens a tracking issue once a secret is within its warning
 window. Update `last-rotated.yml` immediately after rotating a secret.
+`infra/scripts/rotate-deployer-keypair.sh` does this for `DEPLOYER_SECRET_KEY`
+when it finishes: it sets `last_rotated` to today in the working tree, so commit
+that change. Rotate the other secrets by hand and update their dates yourself.
 
 ## What Must NEVER Be Committed
 
@@ -178,7 +203,10 @@ for leaked references.
 1. `git status` shows no `.env` files tracked
 2. `.gitignore` includes `.env*`
 3. Workflows reference GitHub Secrets, not hardcoded values
-4. Once Sealed Secrets is live: `kubeseal --validate -f infra/secrets/`
+4. Once Sealed Secrets is live: `kubeseal --validate -f infra/secrets/`. CI runs this on every
+   PR that touches `infra/secrets/` ([Validate Sealed Secrets](../../.github/workflows/validate-sealed-secrets.yml));
+   it needs the `KUBE_CONFIG` repository secret and is skipped while no SealedSecret manifests exist.
+5. The root and infra `.env.example` files are consistent: `python3 infra/scripts/check-env-example-sync.py`
 
 ## Deployer key rotation safeguards
 
@@ -186,7 +214,9 @@ for leaked references.
 
 - never prints the new secret key to stdout; it is written to a mode-600 temp file that is shredded on exit;
 - verifies the new key (address match) before touching the old key;
-- keeps the previous key as `deployer-old` for a 24h grace period so CI/CD secret updates can be rolled back.
+- keeps the previous key as `deployer-old` for a 24h grace period so CI/CD secret updates can be rolled back;
+- on mainnet, refuses to continue until Horizon reports at least `MIN_BALANCE_XLM` (default 10) on the new account, retrying for a short while because Horizon can lag behind funding (`BALANCE_CHECK_ATTEMPTS`, `BALANCE_CHECK_DELAY_SECONDS`), and leaves the old key untouched if the check fails;
+- rejects any network other than `testnet` or `mainnet`, so a typo cannot silently take the mainnet path.
 
 If updating `DEPLOYER_SECRET_KEY` in CI/CD fails, restore with
 `stellar keys add deployer --secret-key <old secret>` from `deployer-old`.

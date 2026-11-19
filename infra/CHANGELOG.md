@@ -58,3 +58,12 @@ This changelog follows the infra versioning strategy defined in `docs/infra-vers
 ### Security
 - ECS task role no longer holds `kms:Decrypt` / `kms:GenerateDataKey` on `*` (#991)
 - CI/CD role no longer holds `cloudfront:CreateInvalidation` or `ecs:UpdateService` on `*`; the unavoidable account-level `ecs:RegisterTaskDefinition` wildcard is isolated in its own statement (#992)
+
+## [Unreleased]
+
+### Added
+- `infra/scripts/check-env-example-sync.py` and the `Env Example Sync` workflow keep the root `.env.example` and `infra/secrets/templates/.env.example` consistent; the relationship is documented in `infra/secrets/README.md` (#1465)
+
+### Changed
+- `rotate-deployer-keypair.sh` rejects unknown networks, retries the mainnet balance check for Horizon lag, and records the rotation date in `infra/secrets/last-rotated.yml` (#1462, #1463)
+- `infra/secrets/README.md` links the sealed-secrets validation and rotation-check workflows from the verification and rotation sections (#1463, #1464)
