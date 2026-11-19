@@ -71,3 +71,21 @@ kubectl -n esustellar-monitoring port-forward svc/prometheus 9090:9090
 If the probe times out, check the namespace label
 `kubernetes.io/metadata.name=esustellar-monitoring` and the pod label
 `app=esustellar-web` before changing the policy.
+
+## Image tags (#1469)
+
+`infra/k8s/base/deployment.yaml` uses `:latest` only as a placeholder, and the overlays
+default to the moving `mainnet-latest`, `staging-latest` and `testnet-latest` tags. A
+moving tag means a deploy runs whatever was pushed last, so a rollback or an audit cannot
+say which build was live. For a reproducible rollout, pin the image at deploy time to a
+release version, a git commit SHA or a digest:
+
+```bash
+infra/scripts/deploy/set-image-tag.sh mainnet 1.4.2          # or a git SHA, or sha256:<digest>
+infra/scripts/deploy/set-image-tag.sh --check mainnet        # exits 1 unless the rendered image is pinned
+```
+
+The script rejects `latest` and `*-latest`, edits the overlay only in the working tree
+(do not commit the result), and `--check` renders the overlay so it can gate a deploy.
+Record the tag or digest you deployed; `infra/scripts/rollback/rollback.sh` and the rollout
+history are only as precise as that value.
