@@ -214,9 +214,17 @@ for leaked references.
 
 - never prints the new secret key to stdout; it is written to a mode-600 temp file that is shredded on exit;
 - verifies the new key (address match and an offline signing check, nothing is submitted) before touching the old key;
-- keeps the previous key as `deployer-old` for a 24h grace period so CI/CD secret updates can be rolled back;
+- keeps the previous key as `deployer-old` so CI/CD secret updates can be rolled back; it is never deleted automatically (24h is a sensible minimum before you remove it), and the script refuses to start if a `deployer-old` from an earlier rotation still exists;
 - on mainnet, refuses to continue until Horizon reports at least `MIN_BALANCE_XLM` (default 10) on the new account, retrying for a short while because Horizon can lag behind funding (`BALANCE_CHECK_ATTEMPTS`, `BALANCE_CHECK_DELAY_SECONDS`), and leaves the old key untouched if the check fails;
 - rejects any network other than `testnet` or `mainnet`, so a typo cannot silently take the mainnet path.
 
-If updating `DEPLOYER_SECRET_KEY` in CI/CD fails, restore with
-`stellar keys add deployer --secret-key <old secret>` from `deployer-old`.
+If updating `DEPLOYER_SECRET_KEY` in CI/CD fails, restore the old key from `deployer-old`
+(`stellar keys add` reads the secret from stdin; it does not take it as an argument):
+
+```bash
+stellar keys show deployer-old | stellar keys add deployer --overwrite
+# if deployer-old was created from a seed phrase, keep the phrase instead:
+# stellar keys show deployer-old --phrase | stellar keys add deployer --overwrite
+```
+
+Then put the old secret back in `DEPLOYER_SECRET_KEY`. This replaces the local `deployer` (the new key).

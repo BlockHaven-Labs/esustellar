@@ -9,13 +9,16 @@
 #   3. Write new credentials to a restricted file (NOT stdout) for CI/CD secret update
 #   4. Verify the new key can sign a transaction for its address (offline check,
 #      nothing is submitted) before the old key is touched
-#   5. Rename old key to deployer-old (grace period) instead of deleting
+#   5. Keep the old key as deployer-old (rollback copy) instead of deleting it
 #   6. Rename deployer-new → deployer
 #   7. Record the date in infra/secrets/last-rotated.yml (commit the change)
 #
 # The caller must update their CI/CD secrets (DEPLOYER_SECRET_KEY) with the
 # new secret key from the credentials file before the next deployment.
-# The old key (deployer-old) is retained for 24h as a rollback safety net.
+# The old key (deployer-old) is kept as a rollback safety net. It is NOT deleted
+# automatically: remove it with `stellar keys rm deployer-old` once the new key
+# works in CI/CD (24h is a sensible minimum) and no deployed contract still names
+# the old address as its admin.
 #
 # SECURITY: run this only in an interactive terminal that is not logged or
 # recorded (no `script`, no terminal session recording, no CI job log capture).
@@ -86,6 +89,16 @@ else
   fi
 fi
 echo ""
+
+# A deployer-old left over from an earlier rotation may be the only local copy of
+# an older key (for example one that is still a contract admin). Never replace it
+# silently: stop before anything has been changed.
+if stellar keys ls | awk '{print $1}' | grep -xq "$OLD_KEY_BACKUP"; then
+  echo "❌ '$OLD_KEY_BACKUP' already exists from an earlier rotation. Nothing has been changed." >&2
+  echo "   Once you no longer need it, remove it with: stellar keys rm $OLD_KEY_BACKUP" >&2
+  echo "   Then re-run this script." >&2
+  exit 1
+fi
 
 # Step 1: Generate new keypair
 echo "Step 1: Generating new keypair '$NEW_KEY'..."
@@ -217,15 +230,21 @@ echo "  ✅ New key verified (address matches and it signs for $NEW_PUBLIC)."
 
 # Step 5: Rename old key to deployer-old (grace period) instead of deleting
 echo ""
-echo "Step 5: Backing up old keypair '$OLD_KEY' to '$OLD_KEY_BACKUP' (grace period)..."
+echo "Step 5: Backing up old keypair '$OLD_KEY' to '$OLD_KEY_BACKUP' (rollback copy)..."
+BACKED_UP=0
 if stellar keys ls | awk '{print $1}' | grep -xq "$OLD_KEY"; then
   OLD_SECRET=$(stellar keys show "$OLD_KEY" 2>/dev/null || true)
   if [ -n "$OLD_SECRET" ]; then
     stellar keys add "$OLD_KEY_BACKUP" --secret-key "$OLD_SECRET"
     stellar keys rm "$OLD_KEY"
+    BACKED_UP=1
     echo "  ✅ Old keypair backed up as '$OLD_KEY_BACKUP' (retained for rollback)."
   else
-    echo "  ⚠️  Could not retrieve old secret — skipping backup."
+    # Carrying on would drop the old key without a rollback copy, and Step 6 would
+    # then fail on the name that is still taken. Stop with the old key untouched.
+    echo "  ❌ '$OLD_KEY' exists but its secret could not be read, so no rollback copy can be made." >&2
+    echo "     Stopping with '$OLD_KEY' untouched. '$NEW_KEY' is still in the keystore." >&2
+    exit 1
   fi
 else
   echo "  ℹ️  '$OLD_KEY' not found locally — skipping backup."
@@ -275,6 +294,20 @@ fi
 
 echo ""
 echo "🎉 Keypair rotation complete."
-echo "   Old key retained as '$OLD_KEY_BACKUP' for 24h grace period."
 echo "   Remember to update DEPLOYER_SECRET_KEY in your CI/CD environment."
+if [ "$BACKED_UP" = "1" ]; then
+  if stellar keys show "$OLD_KEY_BACKUP" --phrase >/dev/null 2>&1; then
+    ROLLBACK_SHOW="stellar keys show $OLD_KEY_BACKUP --phrase"
+  else
+    ROLLBACK_SHOW="stellar keys show $OLD_KEY_BACKUP"
+  fi
+  echo ""
+  echo "   The old key is kept as '$OLD_KEY_BACKUP'. It is NOT deleted automatically."
+  echo "   If the CI/CD secret update fails or the new key misbehaves, roll back:"
+  echo "       $ROLLBACK_SHOW | stellar keys add $OLD_KEY --overwrite"
+  echo "   and put the old secret back in DEPLOYER_SECRET_KEY."
+  echo "   Once the new key works in CI/CD (24h is a sensible minimum) and no deployed"
+  echo "   contract names the old address as admin, remove the old key with:"
+  echo "       stellar keys rm $OLD_KEY_BACKUP"
+fi
 echo "   Credentials file: $CREDS_FILE (will be auto-shredded on exit)"

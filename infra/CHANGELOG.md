@@ -70,6 +70,7 @@ This changelog follows the infra versioning strategy defined in `docs/infra-vers
 - `Secret Scanning` ran `gitleaks/gitleaks-action@v2`, which fails for organization repositories without a paid license, so every run failed. It now runs the pinned, checksum-verified gitleaks CLI on every pull request and push to main (#1468)
 - `rotate-deployer-keypair.sh` can no longer leak the new secret through shell tracing (`bash -x` printed it), creates its credentials file with `mktemp` under `umask 077` instead of a predictable name, and warns that it must run in an interactive, unlogged terminal (#1458)
 - `rotate-deployer-keypair.sh` Step 4 now runs an offline signing check (the new key must sign a throwaway transaction whose signature matches the new address, and its secret must read back unchanged) and aborts with the old key untouched if it fails; the previous step only compared an address with itself (#1459)
+- `rotate-deployer-keypair.sh` refuses to start when a `deployer-old` from an earlier rotation exists, stops (instead of skipping the backup) when the old secret cannot be read, and prints the rollback and cleanup commands; the "24h grace period" is documented as a suggested minimum that is not enforced, and the invalid `stellar keys add --secret-key <secret>` rollback command in the docs is replaced (#1460)
 
 ### Changed
 - `infra/docs/secrets.md` rotation instructions point at the in-flight guidance; `validate-env.sh --check-deployer-key` is the check that covers `DEPLOYER_SECRET_KEY` (#1466, #1467)
