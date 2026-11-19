@@ -83,7 +83,7 @@ Kubernetes deployment.
 
 ## Rotating Secrets
 
-- **`DEPLOYER_SECRET_KEY`** — rotate with `infra/scripts/rotate-deployer-keypair.sh`, then run `infra/scripts/deploy/validate-env.sh --check-deployer-key` to confirm the new key is picked up and has the expected `S…` Stellar secret-key format.
+- **`DEPLOYER_SECRET_KEY`** — rotate with `infra/scripts/rotate-deployer-keypair.sh`, then run `infra/scripts/deploy/validate-env.sh --check-deployer-key` to confirm the new key is picked up and has the expected `S…` Stellar secret-key format. Before rotating, confirm nothing is in flight: signed-but-unsubmitted transactions stay valid after rotation, and contracts that named the old address as admin still require it. See [In-flight transactions during rotation](../../docs/runbooks/deployer-keypair-rotation.md#in-flight-transactions-during-rotation).
 - **`VERCEL_TOKEN`** — only if intentionally enabling the generated Vercel workflow; revoke the old token in the Vercel dashboard before adding the new one.
 - **`GHCR_TOKEN`** — for manual image operations, the replacement PAT needs `write:packages` and `read:packages`.
 - **`INFRACOST_API_KEY`** — regenerate in the Infracost dashboard; the old key stops working immediately.

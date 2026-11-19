@@ -62,6 +62,15 @@ This changelog follows the infra versioning strategy defined in `docs/infra-vers
 ## [Unreleased]
 
 ### Added
+- `infra/scripts/deploy/set-image-tag.sh` pins an overlay's web image to a release version, git SHA or digest and can check that it is pinned (#1469)
+- `infra/scripts/check-raw-secrets.py` fails when a plain Kubernetes `Secret` manifest holds more than the allowed non-sensitive placeholders (#1468)
+- "In-flight transactions during rotation" section in `docs/runbooks/deployer-keypair-rotation.md`; `rotate-deployer-keypair.sh` now asks the operator to confirm nothing is in flight (#1466)
+
+### Fixed
+- `Secret Scanning` ran `gitleaks/gitleaks-action@v2`, which fails for organization repositories without a paid license, so every run failed. It now runs the pinned, checksum-verified gitleaks CLI on every pull request and push to main (#1468)
+
+### Changed
+- `infra/docs/secrets.md` rotation instructions point at the in-flight guidance; `validate-env.sh --check-deployer-key` is the check that covers `DEPLOYER_SECRET_KEY` (#1466, #1467)
 - `infra/scripts/check-env-example-sync.py` and the `Env Example Sync` workflow keep the root `.env.example` and `infra/secrets/templates/.env.example` consistent; the relationship is documented in `infra/secrets/README.md` (#1465)
 
 ### Changed

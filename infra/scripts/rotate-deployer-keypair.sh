@@ -3,6 +3,7 @@
 # Usage: ./infra/scripts/rotate-deployer-keypair.sh [network]
 #
 # Steps:
+#   0. Confirm no deployment, migration or signed-but-unsubmitted transaction is in flight
 #   1. Generate a new deployer keypair (deployer-new)
 #   2. Fund the new account on testnet, or prompt for mainnet with balance verification
 #   3. Write new credentials to a restricted file (NOT stdout) for CI/CD secret update
@@ -44,6 +45,32 @@ trap cleanup EXIT
 echo "🔑 EsuStellar Deployer Keypair Rotation"
 echo "========================================"
 echo "Network: $NETWORK"
+echo ""
+
+# Step 0: In-flight operations (see docs/runbooks/deployer-keypair-rotation.md).
+# Transactions already signed with the old key are not cancelled by rotating:
+# this script only changes which key this machine and CI use, not the old
+# account on the network. And a contract that stored the old address as its
+# admin keeps requiring that address after rotation. Make the operator confirm
+# that nothing is mid-flight before any key is touched.
+echo "Step 0: Checking for in-flight operations..."
+OLD_PUBLIC=$(stellar keys address "$OLD_KEY" 2>/dev/null || true)
+if [ -n "$OLD_PUBLIC" ]; then
+  echo "  Current deployer account: $OLD_PUBLIC"
+  echo "  If this address is the admin of any deployed contract, keep '$OLD_KEY_BACKUP' until that admin is no longer needed."
+fi
+if [ "${ROTATION_CONFIRM_NO_INFLIGHT:-}" = "yes" ]; then
+  echo "  ✅ ROTATION_CONFIRM_NO_INFLIGHT=yes: operator has confirmed nothing is in flight."
+else
+  echo "  Confirm ALL of the following before continuing:"
+  echo "    - no deployment or migration (e.g. contracts/migration_coordinator) is running or about to run"
+  echo "    - no transaction signed with the old key is waiting to be submitted"
+  read -rp "  Is nothing in flight? [y/N] " inflight
+  if [[ "${inflight,,}" != "y" ]]; then
+    echo "❌ Rotation aborted. Finish or cancel the in-flight work, then re-run."
+    exit 1
+  fi
+fi
 echo ""
 
 # Step 1: Generate new keypair
