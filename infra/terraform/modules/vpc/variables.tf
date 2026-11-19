@@ -99,5 +99,5 @@ variable "allowed_ingress_cidrs" {
 variable "domain_suffix" {
   description = "Domain served by the ALB, used in the security group description only"
   type        = string
-  default     = "esustellar.io"
+  default     = "example.invalid"
 }

@@ -34,6 +34,8 @@ resource "aws_cloudfront_distribution" "this" {
   # reachable at the edge until the TTL expires — up to 24h for a path someone
   # links to directly. The deploy runbook therefore invalidates the cache after
   # each rollout; see infra/scripts/invalidate-cdn-cache.sh and docs/deployment.md.
+  # This is a read-only Next.js frontend; mutating chain transactions go to
+  # Stellar RPC, not through the CloudFront/ALB origin.
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]

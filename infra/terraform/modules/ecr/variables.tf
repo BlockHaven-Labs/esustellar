@@ -28,6 +28,17 @@ variable "image_tag_mutability" {
     condition     = contains(["MUTABLE", "IMMUTABLE"], var.image_tag_mutability)
     error_message = "image_tag_mutability must be either \"MUTABLE\" or \"IMMUTABLE\"."
   }
+
+  # #1301: MUTABLE would allow a tag already referenced by a k8s manifest to be
+  # overwritten, defeating the point of pinning tags. Non-production may opt in
+  # explicitly; production-facing environments may not.
+  validation {
+    condition = (
+      var.image_tag_mutability == "IMMUTABLE" ||
+      !contains(["mainnet", "production", "prod", "staging"], lower(var.environment))
+    )
+    error_message = "image_tag_mutability must be IMMUTABLE in mainnet/production/staging environments."
+  }
 }
 
 variable "max_image_count" {
@@ -49,4 +60,11 @@ variable "scan_on_push" {
   EOT
   type        = bool
   default     = true
+
+  # #1301: enforced in every environment, not just the default. Scanning has no
+  # deploy-time cost and disabling it would hide findings until promotion.
+  validation {
+    condition     = var.scan_on_push
+    error_message = "scan_on_push must be true in every environment."
+  }
 }

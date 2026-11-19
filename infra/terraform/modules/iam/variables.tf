@@ -99,3 +99,17 @@ variable "ssm_parameter_arns" {
     error_message = "Every entry in ssm_parameter_arns must be a full SSM parameter ARN; wildcards are not allowed."
   }
 }
+
+# #1304: optional guardrail for the CI/CD role. The inline deny of iam:PassRole
+# is always present; the boundary additionally limits what any future policy
+# attached to the role could ever grant. Empty means no boundary is attached.
+variable "cicd_permissions_boundary_arn" {
+  description = "ARN of a permissions boundary to attach to the CI/CD role. Strongly recommended in production; empty by default for backwards compatibility."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.cicd_permissions_boundary_arn == "" || can(regex("^arn:aws[a-zA-Z-]*:iam::[0-9]+:policy/", var.cicd_permissions_boundary_arn))
+    error_message = "cicd_permissions_boundary_arn must be empty or a full IAM managed policy ARN."
+  }
+}

@@ -5,6 +5,12 @@
 # - ECS task execution (pull ECR images, push logs, read task-definition secrets)
 # - ECS task role (application permissions: S3, KMS, DynamoDB)
 # - CI/CD pipeline (ECR push, S3 upload, CloudFront invalidation)
+# - event-indexer workload (S3 + KMS only, never shared with other workloads)
+# - balance-exporter workload (no AWS permissions at all; it reads public Horizon)
+#
+# #1304: the CI/CD role can register task definitions but is explicitly denied
+# iam:PassRole, so it cannot hand a task a more privileged role. #1302: the two
+# auxiliary workloads no longer have to borrow the broad ecs_task role.
 
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
@@ -155,6 +161,10 @@ data "aws_iam_policy_document" "cicd_assume" {
 resource "aws_iam_role" "cicd" {
   name               = "${local.name_prefix}-cicd"
   assume_role_policy = data.aws_iam_policy_document.cicd_assume.json
+
+  # #1304: optional defence in depth. Even if a future policy attaches broader
+  # actions to this role, the boundary caps the maximum grant.
+  permissions_boundary = var.cicd_permissions_boundary_arn != "" ? var.cicd_permissions_boundary_arn : null
 }
 
 data "aws_iam_policy_document" "cicd_permissions" {
@@ -234,10 +244,50 @@ data "aws_iam_policy_document" "cicd_permissions" {
     ]
     resources = ["*"]
   }
+
+  # #1304: ecs:RegisterTaskDefinition alone is not a privilege escalation —
+  # passing a privileged role to it is. No iam:PassRole is granted anywhere in
+  # this module, and this explicit Deny makes sure a future broad attachment
+  # cannot silently add it. The wildcard resource is required by IAM for
+  # PassRole and is harmless under an explicit Deny.
+  statement {
+    sid       = "DenyPassRole"
+    effect    = "Deny"
+    actions   = ["iam:PassRole"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "cicd_permissions" {
   name   = "${local.name_prefix}-cicd-permissions"
   role   = aws_iam_role.cicd.id
   policy = data.aws_iam_policy_document.cicd_permissions.json
+}
+
+# --- Workload-specific roles (#1302) ---
+#
+# The shared ecs_task role remains for the legacy ECS path only. New workloads
+# get their own role so a compromise cannot reuse another workload's grants.
+# On the Kubernetes deployment target these roles are unused unless a workload
+# explicitly opts into IRSA; keeping them defined does not grant access by
+# itself.
+
+resource "aws_iam_role" "event_indexer" {
+  name               = "${local.name_prefix}-event-indexer"
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
+}
+
+resource "aws_iam_role_policy" "event_indexer_permissions" {
+  name   = "${local.name_prefix}-event-indexer-permissions"
+  role   = aws_iam_role.event_indexer.id
+  policy = data.aws_iam_policy_document.task_permissions.json
+}
+
+resource "aws_iam_role" "balance_exporter" {
+  name               = "${local.name_prefix}-balance-exporter"
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
+
+  # Intentionally no inline policy: the exporter reads a public Stellar Horizon
+  # endpoint over HTTPS and needs no AWS API access. Add permissions here only
+  # with a concrete, reviewed reason.
 }

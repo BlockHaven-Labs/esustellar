@@ -99,7 +99,7 @@ they are delivered through the same secret plumbing.
 | `NEXT_PUBLIC_REGISTRY_CONTRACT_ID` | Optional generated workflow | Optional | Build-time contract ID (public — `NEXT_PUBLIC_*` is exposed to the browser) |
 | `NEXT_PUBLIC_SAVINGS_CONTRACT_ID` | Optional generated workflow | Optional | Build-time contract ID (public) |
 | `NEXTAUTH_SECRET` | k8s | Planned | Session encryption key — no auth implementation reads this yet |
-| `DATABASE_URL` | k8s | Planned | Postgres connection string — no service reads this yet |
+| `DATABASE_URL` | k8s | Planned | Postgres connection string — no service reads this yet; provisioning is an intentional external exception, see [database provisioning](../docs/database-provisioning.md) (#1303) |
 
 ### Containers
 

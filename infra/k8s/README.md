@@ -7,6 +7,19 @@ Two manifest trees exist:
 | `infra/k8s/base` + `infra/k8s/overlays/{mainnet,staging,testnet}` | Kustomize-based, authoritative for the web app. CI renders each overlay and checks Service selectors against Deployment labels (`k8s-overlay-validation.yml`). |
 | `k8s/{namespaces,deployments,config,web,monitoring}` | Flat per-environment manifests (namespaces, config maps, placeholder secrets, monitoring). |
 
+## Web image repository (#1288)
+
+Both trees must pull the web app from
+`ghcr.io/blockhaven-labs/esustellar-web`. Tags are environment-specific
+(`latest` in the base/flat manifests, `<env>-latest` in the overlays), but the
+repository is not: ECR is declared in Terraform and not published to by any
+workflow (see `infra/terraform/README.md`). `web-ci.yml` has no image-build or
+push step, so GHCR is the only registry with a documented publication path.
+
+`infra/scripts/validate-image-references.sh` enforces this across both trees
+and is run by `.github/workflows/k8s-overlay-validation.yml`. See
+`docs/runbooks/dual-manifest-tree-incident.md` if drift was already applied.
+
 ## Namespaces (#1232)
 
 | Environment | `k8s/namespaces/*.yaml` | Kustomize overlay |
@@ -58,3 +71,41 @@ kubectl -n esustellar-monitoring port-forward svc/prometheus 9090:9090
 If the probe times out, check the namespace label
 `kubernetes.io/metadata.name=esustellar-monitoring` and the pod label
 `app=esustellar-web` before changing the policy.
+
+## Ingress hosts and TLS (#1471, #1472)
+
+The base Ingress and Certificate use the mainnet apex domain. Every overlay patches
+them so each environment claims only its own hostname, matching the per-environment
+record created by `infra/terraform/modules/dns` (`${environment}.${domain_name}`):
+
+| Overlay | Ingress host and TLS host | TLS secret |
+| ------- | ------------------------- | ---------- |
+| mainnet | `esustellar.io` | `esustellar-web-tls` |
+| staging | `staging.esustellar.io` | `esustellar-web-tls-staging` |
+| testnet | `testnet.esustellar.io` | `esustellar-web-tls-testnet` |
+
+TLS is **explicit-Certificate driven**: `infra/k8s/base/certificate.yaml` is the only
+source of the TLS secret. The Ingress deliberately has no `cert-manager.io/cluster-issuer`
+annotation, because with one cert-manager would also create its own Certificate for the
+same secret and the two would fight over it. The Ingress `tls.secretName` must equal the
+Certificate's `secretName` in every overlay.
+
+`k8s-overlay-validation.yml` renders each overlay and fails if the Ingress host, the
+TLS hosts or secret, or the Certificate `dnsNames` drift from the table above, or if an
+issuer annotation appears on the Ingress.
+
+## Autoscaling (#1473)
+
+`infra/k8s/base/hpa.yaml` scales on CPU (70%) and memory (80%). The memory target is
+measured against the 512Mi limit in the base Deployment, which is the likely constraint
+for the Next.js server before CPU is. Request-rate or latency scaling needs a custom or
+external metrics adapter, which this cluster does not provide, so it is not configured.
+The overlay validation fails if the rendered HPA stops scaling on either `cpu` or `memory`.
+
+## Staging network (#1470)
+
+Staging targets the Stellar **testnet** on purpose: there is no separate staging network.
+It differs from the testnet overlay by namespace, replica count, probe timing, hostname and
+TLS secret, not by `NEXT_PUBLIC_NETWORK` / `STELLAR_NETWORK`. The overlay validation pins
+the expected network for each overlay, so changing it is a deliberate edit to the workflow
+matrix as well as the overlay.

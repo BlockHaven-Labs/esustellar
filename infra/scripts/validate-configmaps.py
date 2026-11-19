@@ -46,8 +46,12 @@ def validate_configmaps(config_dir: Path) -> int:
             if not value:
                 print(f"  [FAIL] {key} is empty in {config_file} (namespace: {namespace})")
                 failed = 1
-            elif "MUST BE POPULATED" in value or "DO NOT COMMIT" in value:
-                print(f"  [FAIL] {key} contains template placeholder in {config_file} (namespace: {namespace})")
+            elif (
+                "MUST BE POPULATED" in value
+                or "DO NOT COMMIT" in value
+                or "${" in value
+            ):
+                print(f"  [FAIL] {key} contains unrendered template placeholder in {config_file} (namespace: {namespace})")
                 failed = 1
             else:
                 print(f"  [OK] {key} = {value[:20]}...")

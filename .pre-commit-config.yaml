@@ -22,6 +22,19 @@ repos:
         args: ['--baseline', '.secrets.baseline']
         exclude: '(^Cargo\.lock$|^package-lock\.json$|^apps/docs-site/)'
 
+  # #1285: the majority of infra changes are YAML (k8s overlays, monitoring
+  # config, workflows) or Terraform. The generic check-yaml hook above only
+  # catches syntax errors; yamllint catches indentation/duplicate-key drift
+  # that silently changes what kustomize renders. Long lines, missing `---`
+  # and unquoted booleans are disabled to match the existing tree.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        name: yamllint (infra, k8s, monitoring, workflows)
+        args: ['-d', '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable}}']
+        files: \.(yaml|yml)$
+
   # #1126: every Terraform variable must have a top-level `description`. All 58
   # variables currently do, so this hook exists to keep it that way rather than
   # to fix a present failure — a new module is exactly where the description gets
@@ -35,3 +48,12 @@ repos:
         entry: python3 infra/scripts/check-terraform-variable-docs.py
         language: system
         files: \.tf$
+      # #1285: same formatting check the Terraform CI job runs, moved left so
+      # a malformed .tf file never reaches a PR. Requires terraform on PATH.
+      - id: terraform-fmt
+        name: terraform fmt (check, all roots)
+        description: "Fail if any Terraform file is not canonically formatted"
+        entry: terraform fmt -check -recursive
+        language: system
+        files: \.tf$
+        pass_filenames: false
