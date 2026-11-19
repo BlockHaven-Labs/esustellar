@@ -1,0 +1,38 @@
+# #1502: post-deploy gate. Runs infra/scripts/smoke-test.sh after a successful
+# deployment (or on demand) and rolls the app layer back if the smoke test fails.
+name: Post-deploy Smoke Test
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "Network to smoke-test"
+        required: true
+        default: testnet
+        type: choice
+        options: [testnet, staging, mainnet]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    env:
+      NETWORK: ${{ inputs.network || github.event.deployment.environment || 'testnet' }}
+      NEXT_PUBLIC_REGISTRY_CONTRACT_ID: ${{ vars.NEXT_PUBLIC_REGISTRY_CONTRACT_ID }}
+      NEXT_PUBLIC_SAVINGS_CONTRACT_ID: ${{ vars.NEXT_PUBLIC_SAVINGS_CONTRACT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli
+
+      - name: Smoke test
+        run: bash infra/scripts/smoke-test.sh "$NETWORK"
+
+      - name: Roll back app layer on failure
+        if: failure()
+        run: bash infra/scripts/rollback/rollback.sh --network "$NETWORK" --target app --yes
