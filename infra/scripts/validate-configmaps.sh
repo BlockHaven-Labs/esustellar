@@ -38,8 +38,8 @@ for config_file in "${CONFIG_DIR}"/*.yaml; do
     if [[ -z "${value}" || "${value}" == "null" ]]; then
       echo "  ✗ FAIL: ${key} is empty in ${config_file} (namespace: ${namespace})"
       failed=1
-    elif [[ "${value}" == *"MUST BE POPULATED"* ]]; then
-      echo "  ✗ FAIL: ${key} contains template placeholder in ${config_file} (namespace: ${namespace})"
+    elif [[ "${value}" == *"MUST BE POPULATED"* || "${value}" == *'${'* ]]; then
+      echo "  ✗ FAIL: ${key} contains unrendered template placeholder in ${config_file} (namespace: ${namespace})"
       failed=1
     else
       echo "  ✓ OK: ${key} = ${value}"

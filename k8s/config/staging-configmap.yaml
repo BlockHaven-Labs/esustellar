@@ -1,3 +1,9 @@
+# #1290: TEMPLATE ONLY — no staging contract IDs are committed here. Staging
+# targets the Stellar testnet, so use the IDs from the staging deploy secrets,
+# not the mainnet ones.
+# Apply only the output of infra/scripts/render-configmap.sh with real IDs
+# injected from the deploy job's secrets; validate-configmaps.* rejects the
+# ${...} placeholders below.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,9 +12,9 @@ metadata:
   labels:
     app: esustellar-web
     environment: staging
+  annotations:
+    esustellar.io/config-template: "true"
 data:
-  # STAGING VALUES MUST BE POPULATED BEFORE DEPLOYMENT
-  # DO NOT COMMIT REAL CONTRACT IDs - use CI/CD secrets injection
-  NEXT_PUBLIC_SAVINGS_CONTRACT_ID: ""
-  NEXT_PUBLIC_REGISTRY_CONTRACT_ID: ""
-  NEXT_PUBLIC_CONTRACT_ID: ""
+  NEXT_PUBLIC_SAVINGS_CONTRACT_ID: "${NEXT_PUBLIC_SAVINGS_CONTRACT_ID}"
+  NEXT_PUBLIC_REGISTRY_CONTRACT_ID: "${NEXT_PUBLIC_REGISTRY_CONTRACT_ID}"
+  NEXT_PUBLIC_CONTRACT_ID: "${NEXT_PUBLIC_CONTRACT_ID}"

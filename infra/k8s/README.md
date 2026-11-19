@@ -89,3 +89,40 @@ The script rejects `latest` and `*-latest`, edits the overlay only in the workin
 (do not commit the result), and `--check` renders the overlay so it can gate a deploy.
 Record the tag or digest you deployed; `infra/scripts/rollback/rollback.sh` and the rollout
 history are only as precise as that value.
+## Ingress hosts and TLS (#1471, #1472)
+
+The base Ingress and Certificate use the mainnet apex domain. Every overlay patches
+them so each environment claims only its own hostname, matching the per-environment
+record created by `infra/terraform/modules/dns` (`${environment}.${domain_name}`):
+
+| Overlay | Ingress host and TLS host | TLS secret |
+| ------- | ------------------------- | ---------- |
+| mainnet | `esustellar.io` | `esustellar-web-tls` |
+| staging | `staging.esustellar.io` | `esustellar-web-tls-staging` |
+| testnet | `testnet.esustellar.io` | `esustellar-web-tls-testnet` |
+
+TLS is **explicit-Certificate driven**: `infra/k8s/base/certificate.yaml` is the only
+source of the TLS secret. The Ingress deliberately has no `cert-manager.io/cluster-issuer`
+annotation, because with one cert-manager would also create its own Certificate for the
+same secret and the two would fight over it. The Ingress `tls.secretName` must equal the
+Certificate's `secretName` in every overlay.
+
+`k8s-overlay-validation.yml` renders each overlay and fails if the Ingress host, the
+TLS hosts or secret, or the Certificate `dnsNames` drift from the table above, or if an
+issuer annotation appears on the Ingress.
+
+## Autoscaling (#1473)
+
+`infra/k8s/base/hpa.yaml` scales on CPU (70%) and memory (80%). The memory target is
+measured against the 512Mi limit in the base Deployment, which is the likely constraint
+for the Next.js server before CPU is. Request-rate or latency scaling needs a custom or
+external metrics adapter, which this cluster does not provide, so it is not configured.
+The overlay validation fails if the rendered HPA stops scaling on either `cpu` or `memory`.
+
+## Staging network (#1470)
+
+Staging targets the Stellar **testnet** on purpose: there is no separate staging network.
+It differs from the testnet overlay by namespace, replica count, probe timing, hostname and
+TLS secret, not by `NEXT_PUBLIC_NETWORK` / `STELLAR_NETWORK`. The overlay validation pins
+the expected network for each overlay, so changing it is a deliberate edit to the workflow
+matrix as well as the overlay.

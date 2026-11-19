@@ -1,5 +1,6 @@
 terraform {
-  required_version = ">= 1.5.0"
+  # #1308: pinned to the same CLI line as infra/terraform and infra/testnet.
+  required_version = "~> 1.6.0"
 
   required_providers {
     kubernetes = {

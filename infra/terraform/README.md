@@ -168,12 +168,21 @@ access to the state bucket. The same checks are wired into
 ```bash
 cd infra/terraform
 
-# Review changes
-make plan
+# Plan and review changes for the selected environment (testnet by default)
+make plan-testnet
 
-# Apply changes
-make apply
+# Apply exactly the saved plan you reviewed
+make apply-testnet
 ```
+
+Use `plan-staging`/`apply-staging` or `plan-mainnet`/`apply-mainnet` for those
+environments. Each plan target initializes the matching S3 backend and passes
+its explicit `../../environments/<env>.tfvars` file. The apply target applies
+that environment's saved plan and fails if it is missing; it cannot silently
+pick up a different variable file or generate a new, unreviewed plan. Generic
+`make plan` and `make apply` select the environment from `ENV` (default
+`testnet`), for example `make plan ENV=staging` followed by
+`make apply ENV=staging`.
 
 ## Variables
 
@@ -198,11 +207,12 @@ make apply
 
 The ECR module defines repository resources only; no current Terraform root
 instantiates it, and it does not build or publish images. The Kubernetes web
-deployment currently pulls `ghcr.io/blockhaven-labs/esustellar-web`, published
-manually as described in [the deployment guide](../../docs/deployment.md). No
+deployment pulls `ghcr.io/blockhaven-labs/esustellar-web` from GHCR, published
+manually as described in [the deployment guide](../../docs/deployment.md);
+these Terraform ECR repositories are not its image destination. No
 image-publishing workflow currently targets ECR. The balance-exporter has a
 Dockerfile but no configured image-publishing destination or deployment image
-reference.
+reference, so its ECR repository is not currently used by a workload.
 
 `modules/iam` requires the ARNs of the resources each role may touch
 (`kms_key_arn`, `cloudfront_distribution_arn`, `ecs_cluster_arn`,
