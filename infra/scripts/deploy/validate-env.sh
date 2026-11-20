@@ -2,6 +2,11 @@
 # validate-env.sh — Check required environment variables before deployment.
 # Usage: ./infra/scripts/deploy/validate-env.sh [env-file]
 #        ./infra/scripts/deploy/validate-env.sh --check-deployer-key [env-file]
+#        ./infra/scripts/deploy/validate-env.sh --infra-env PATH/TO/.env
+#
+# --infra-env delegates to infra/scripts/validate-infra-env.sh, which checks an
+# infra-level .env against infra/secrets/templates/.env.example with the same
+# rigor this script applies to the app-level env file.
 #
 # By default validates the frontend contract IDs. Pass --check-deployer-key
 # (or set CHECK_DEPLOYER_KEY=1) to additionally require the Stellar deployer
@@ -11,6 +16,15 @@
 set -euo pipefail
 
 CHECK_DEPLOYER_KEY=0
+
+if [ "${1:-}" = "--infra-env" ]; then
+  shift
+  if [ $# -lt 1 ]; then
+    echo "--infra-env requires an env file path" >&2
+    exit 2
+  fi
+  exec bash "$(dirname "$0")/../validate-infra-env.sh" "$1"
+fi
 
 if [ "${1:-}" = "--check-deployer-key" ] || [ "${CHECK_DEPLOYER_KEY:-0}" = "1" ]; then
   CHECK_DEPLOYER_KEY=1
