@@ -15,13 +15,31 @@
 #   --require NAME   fail with exit 2 unless check NAME ran (use to make sure a
 #                    check was actually exercised rather than skipped)
 #   --timeout SECS   per-request curl timeout (default 10)
+#   --all-environments
+#                    check mainnet, staging and testnet in a single pass using
+#                    the per-environment variables documented below. Unset
+#                    URLs are reported as SKIP; they are never defaulted to
+#                    localhost.
 #   -h, --help       show this help
+#
+# Single-target by default:
+#   Without --all-environments this script is STRICTLY SINGLE-TARGET. It checks
+#   exactly one set of URLs taken from APP_URL, HORIZON_URL and MONITORING_URL.
+#   It has no concept of "environment" and does not infer one from a URL, so a
+#   coordinated mainnet/staging/testnet release must pass --all-environments or
+#   invoke the script three times with explicit URLs.
 #
 # Environment:
 #   APP_URL        web app base URL          (default http://localhost:3000)
 #   HORIZON_URL    Stellar Horizon URL        (default https://horizon-testnet.stellar.org)
 #   MONITORING_URL monitoring endpoint        (default empty -> skipped)
 #   EXPECTED_STATUS expected HTTP status      (default 200)
+#
+# With --all-environments, repeat the three URL variables with an uppercase
+# environment prefix; the unprefixed variables above are ignored:
+#   MAINNET_APP_URL / MAINNET_HORIZON_URL / MAINNET_MONITORING_URL
+#   STAGING_APP_URL / STAGING_HORIZON_URL / STAGING_MONITORING_URL
+#   TESTNET_APP_URL / TESTNET_HORIZON_URL / TESTNET_MONITORING_URL
 #
 # Kubernetes readiness probe example:
 #   readinessProbe:
@@ -40,6 +58,7 @@ set -euo pipefail
 EMIT_JSON=0
 QUIET=0
 TIMEOUT_SECS=10
+ALL_ENVIRONMENTS=0
 REQUIRED_CHECKS=()
 
 WEB_URL="${APP_URL:-http://localhost:3000}"
@@ -53,6 +72,7 @@ while [ $# -gt 0 ]; do
     --quiet) QUIET=1; shift ;;
     --timeout) TIMEOUT_SECS="${2:?--timeout requires a value}"; shift 2 ;;
     --require) REQUIRED_CHECKS+=("${2:?--require requires a value}"); shift 2 ;;
+    --all-environments) ALL_ENVIRONMENTS=1; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//;$d'; exit 0 ;;
     *) echo "healthcheck.sh: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -110,12 +130,36 @@ check_http() {
   fi
 }
 
+run_single_target() {
+  local prefix="$1"
+  check_http "${prefix}Web app" "$2"
+  check_http "${prefix}Horizon RPC" "$3"
+  check_http "${prefix}Monitoring" "$4"
+}
+
+run_all_environments() {
+  local environment env_upper app_var horizon_var monitoring_var
+  for environment in mainnet staging testnet; do
+    env_upper=$(printf '%s' "$environment" | tr '[:lower:]' '[:upper:]')
+    app_var="${env_upper}_APP_URL"
+    horizon_var="${env_upper}_HORIZON_URL"
+    monitoring_var="${env_upper}_MONITORING_URL"
+
+    # Indirect expansion: an unconfigured environment is reported as SKIP
+    # rather than silently falling back to the localhost defaults.
+    run_single_target "$environment/" \
+      "${!app_var:-}" "${!horizon_var:-}" "${!monitoring_var:-}"
+  done
+}
+
 [ "$EMIT_JSON" -eq 1 ] || echo "Running infrastructure health checks..."
 [ "$EMIT_JSON" -eq 1 ] || echo ""
 
-check_http "Web app" "$WEB_URL"
-check_http "Horizon RPC" "$HORIZON_URL"
-check_http "Monitoring" "$MONITORING_URL"
+if [ "$ALL_ENVIRONMENTS" -eq 1 ]; then
+  run_all_environments
+else
+  run_single_target "" "$WEB_URL" "$HORIZON_URL" "$MONITORING_URL"
+fi
 
 # A --require for a check that never ran is a configuration error, not a health
 # failure: exit 2 keeps it distinguishable from "the deployment is down".

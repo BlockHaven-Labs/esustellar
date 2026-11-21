@@ -56,9 +56,21 @@
 #   --target     app       restore frontend contract IDs (default)
 #                terraform apply a saved plan from the plan backup directory
 #                all       app, then terraform
-#   --dry-run    print what would happen and exit 0 without changing anything
+#   --dry-run    print what would happen (target revision, affected resources)
+#                and exit 0 without changing anything
 #   --plan FILE  use this specific saved plan instead of the newest backup
 #   --yes        skip the interactive confirmation prompt
+#   --skip-context-check
+#                bypass the kubectl context guard (use only when your context
+#                naming does not match the network name)
+#
+# Environment safety:
+#   --network is mandatory and validated. Before doing anything, the active
+#   kubectl context is compared with EXPECTED_KUBE_CONTEXT (default: the value
+#   of --network). A mismatch aborts with exit 2 so a testnet rollback cannot
+#   be applied to a mainnet cluster by accident. The check is skipped when
+#   kubectl is unavailable (a warning is printed) or --skip-context-check is
+#   passed.
 #
 # Exit codes: 0 ok, 1 rollback failed, 2 usage/configuration error.
 set -euo pipefail
@@ -71,6 +83,7 @@ NETWORK=""
 TARGET="app"
 DRY_RUN=0
 ASSUME_YES=0
+SKIP_CONTEXT_CHECK=0
 PLAN_FILE=""
 PLAN_BACKUP_DIR="${PLAN_BACKUP_DIR:-$ROOT_DIR/.terraform-backups/plans}"
 
@@ -85,6 +98,7 @@ while [ $# -gt 0 ]; do
     --target) TARGET="${2:?--target requires a value}"; shift 2 ;;
     --plan) PLAN_FILE="${2:?--plan requires a value}"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --skip-context-check) SKIP_CONTEXT_CHECK=1; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     -h|--help) usage ;;
     *) echo "rollback.sh: unknown argument '$1'" >&2; usage ;;
@@ -107,6 +121,34 @@ case "$TARGET" in
 esac
 
 log() { echo "[rollback] $*"; }
+
+# ── Environment / context guard ──────────────────────────────────────────────
+# The script never infers an environment from the active context. It checks the
+# context against the explicitly requested --network and refuses to proceed on
+# a mismatch.
+EXPECTED_KUBE_CONTEXT="${EXPECTED_KUBE_CONTEXT:-$NETWORK}"
+if [ "$SKIP_CONTEXT_CHECK" -eq 0 ]; then
+  if command -v kubectl >/dev/null 2>&1; then
+    current_context=$(kubectl config current-context 2>/dev/null || true)
+    if [ -z "$current_context" ]; then
+      echo "ERROR: could not determine the current kubectl context." >&2
+      echo "       Set EXPECTED_KUBE_CONTEXT or pass --skip-context-check." >&2
+      exit 2
+    fi
+    if [ "$current_context" != "$EXPECTED_KUBE_CONTEXT" ]; then
+      echo "ERROR: kubectl context '$current_context' does not match '$EXPECTED_KUBE_CONTEXT' for --network $NETWORK." >&2
+      echo "       Switch with: kubectl config use-context $EXPECTED_KUBE_CONTEXT" >&2
+      echo "       If your context names differ, set EXPECTED_KUBE_CONTEXT or pass --skip-context-check." >&2
+      exit 2
+    fi
+    log "kubectl context verified: $current_context"
+  else
+    log "WARNING: kubectl not installed; cannot verify the active context matches $NETWORK."
+  fi
+else
+  log "WARNING: kubectl context check skipped; verify the cluster manually."
+fi
+
 run() {
   if [ "$DRY_RUN" -eq 1 ]; then
     log "DRY-RUN: would run: $*"
@@ -121,6 +163,15 @@ run() {
 rollback_app() {
   if [ ! -f "$SNAPSHOT_FILE" ]; then
     echo "ERROR: deployment-info.json not found. Cannot determine previous state." >&2
+    return 1
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+      log "DRY-RUN: jq not installed; would read contract IDs from $SNAPSHOT_FILE"
+      return 0
+    fi
+    echo "ERROR: jq is required to read $SNAPSHOT_FILE." >&2
     return 1
   fi
 
@@ -188,6 +239,26 @@ resolve_plan_file() {
   printf '%s\n' "$newest"
 }
 
+describe_plan() {
+  local plan="$1" rendered
+  [ "$DRY_RUN" -eq 1 ] || return 0
+
+  log "DRY-RUN: target revision (saved plan): $plan"
+  if ! command -v terraform >/dev/null 2>&1; then
+    log "DRY-RUN: terraform is not installed; cannot render affected resources."
+    return 0
+  fi
+
+  if rendered=$(terraform show -no-color "$plan" 2>/dev/null); then
+    log "DRY-RUN: resources affected by this plan:"
+    printf '%s\n' "$rendered" |
+      sed -n '/Terraform will perform the following actions/,/Plan:/p' |
+      sed 's/^/  /'
+  else
+    log "DRY-RUN: could not render the saved plan; apply would use $plan"
+  fi
+}
+
 rollback_terraform() {
   local tf_dir="$ROOT_DIR/infra/terraform"
   if [ ! -d "$tf_dir" ]; then
@@ -202,6 +273,7 @@ rollback_terraform() {
   log "Saved plan: $plan"
 
   if [ "$DRY_RUN" -eq 1 ]; then
+    describe_plan "$plan"
     log "DRY-RUN: would run: terraform -chdir=$tf_dir init -reconfigure && terraform -chdir=$tf_dir apply -lock-timeout=10m $plan"
     return 0
   fi
