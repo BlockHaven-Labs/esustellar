@@ -1,23 +1,166 @@
-# Issue #1259: validate Kubernetes manifests on every PR that touches them.
-name: Infra K8s Manifest Validation
+# Issue #1506: one catch-all validation entry point for infra manifests.
+# The narrower workflows each cover a fixed slice (#1259 covered only
+# infra/k8s + k8s, #1261 only four hardcoded Terraform roots), so a new manifest
+# tree or a new Terraform root could land with no syntax/schema check at all.
+# Discover them at runtime instead of maintaining another list by hand.
+name: Infra CI
+
 on:
   pull_request:
-    paths: ["infra/k8s/**", "k8s/**"]
+    paths:
+      - "infra/k8s/**"
+      - "k8s/**"
+      - "infra/monitoring/**"
+      - "environments/**/k8s/**"
+      - "infra/terraform/**"
+      - "infra/testnet/**"
+      - "environments/**/*.tf"
+      - ".github/workflows/infra-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/k8s/**"
+      - "k8s/**"
+      - "infra/monitoring/**"
+      - "environments/**/k8s/**"
+      - "infra/terraform/**"
+      - "infra/testnet/**"
+      - "environments/**/*.tf"
+      - ".github/workflows/infra-ci.yml"
+
 permissions:
   contents: read
+
 jobs:
-  kubeconform:
-    name: kustomize build + kubeconform
+  discover:
+    name: Discover manifest trees and Terraform roots
+    runs-on: ubuntu-latest
+    outputs:
+      kustomizations: ${{ steps.scan.outputs.kustomizations }}
+      manifests: ${{ steps.scan.outputs.manifests }}
+      terraform_roots: ${{ steps.scan.outputs.terraform_roots }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: scan
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          from pathlib import Path
+
+          # All four k8s trees named in #1506. A tree that does not exist in a
+          # given ref (e.g. environments/testnet/k8s) is skipped, not an error.
+          trees = [
+              Path("infra/k8s"),
+              Path("k8s"),
+              Path("environments/testnet/k8s"),
+              Path("infra/monitoring"),
+          ]
+
+          yaml_files = sorted(
+              {p for tree in trees if tree.is_dir() for p in tree.rglob("*.yaml") if p.is_file()}
+          )
+
+          kustomizations = sorted(
+              {
+                  str(p.parent)
+                  for p in yaml_files
+                  if p.name.lower() in {"kustomization.yaml", "kustomization.yml"}
+              }
+          )
+
+          # Every standalone manifest, including trees with no kustomization.yaml.
+          # Kustomization documents are handled by the kustomize job instead.
+          kind_re = re.compile(r"^kind:\s*(\S+)", re.MULTILINE)
+          manifests = sorted(
+              {
+                  str(p)
+                  for p in yaml_files
+                  if any(k != "Kustomization" for k in kind_re.findall(p.read_text(encoding="utf-8")))
+              }
+          )
+
+          # Modules are reused by roots, not independent roots: validating them
+          # through their parent root already covers their syntax.
+          excluded = {".git", "node_modules", "modules"}
+          terraform_roots = sorted(
+              {
+                  str(p.parent)
+                  for p in Path(".").rglob("*.tf")
+                  if not excluded.intersection(p.parts)
+              }
+          )
+
+          print(f"kustomizations={json.dumps(kustomizations)}")
+          print(f"manifests={json.dumps(manifests)}")
+          print(f"terraform_roots={json.dumps(terraform_roots)}")
+          PY
+
+  kustomize:
+    name: kustomize build (${{ matrix.tree }})
+    needs: discover
+    if: needs.discover.outputs.kustomizations != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tree: ${{ fromJSON(needs.discover.outputs.kustomizations) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install kubeconform
+        run: |
+          set -o pipefail
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
+      - name: Build and schema-check ${{ matrix.tree }}
+        run: |
+          set -o pipefail
+          # kubectl kustomize is the embedded `kustomize build`, already used by
+          # k8s-overlay-validation.yml, so no extra tool install is needed.
+          # -ignore-missing-schemas only relaxes CRDs such as cert-manager's
+          # Certificate; built-in kinds are still checked against schemas.
+          kubectl kustomize "${{ matrix.tree }}" | kubeconform -ignore-missing-schemas -summary
+
+  manifests:
+    name: kubeconform (flat manifests)
+    needs: discover
+    if: needs.discover.outputs.manifests != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Install kubeconform
         run: |
-          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
-          sudo mv kubeconform /usr/local/bin/
-      - name: Validate Kustomize overlays and flat manifests
+          set -o pipefail
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
+      - name: Schema-check manifests outside Kustomize roots
+        env:
+          MANIFESTS: ${{ needs.discover.outputs.manifests }}
         run: |
-          for d in infra/k8s/overlays/*/; do
-            kubectl kustomize "$d" | kubeconform -ignore-missing-schemas -summary
-          done
-          kubeconform -ignore-missing-schemas -summary k8s/namespaces k8s/deployments k8s/web
+          python3 -c 'import json, os; print("\n".join(json.loads(os.environ["MANIFESTS"])))' > manifests.txt
+          mapfile -t files < manifests.txt
+          kubeconform -ignore-missing-schemas -summary "${files[@]}"
+
+  terraform:
+    name: fmt + validate (${{ matrix.root }})
+    needs: discover
+    if: needs.discover.outputs.terraform_roots != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: ${{ fromJSON(needs.discover.outputs.terraform_roots) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive
+      - name: terraform validate
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
