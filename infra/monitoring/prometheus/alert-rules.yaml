@@ -6,7 +6,7 @@ metadata:
 data:
   alert-rules.yml: |
     groups:
-- name: esustellar-meta-monitoring
+      - name: esustellar-meta-monitoring
         rules:
           - alert: PrometheusConfigReloadFailed
             expr: prometheus_config_last_reload_successful == 0
@@ -56,8 +56,8 @@ data:
               summary: "High error rate on web app"
               description: "Error rate is above 5% for the last 5 minutes."
       # The metrics `deployer_account_balance_threshold_warning`, `deployer_account_balance_threshold_critical`,
-# and `deployer_account_up` are computed by the balance-exporter (monitoring/balance-exporter/index.mjs).
-# See also the esustellar-balance-exporter group for BalanceExporterDown alert (exporter process health).
+      # and `deployer_account_up` are computed by the balance-exporter (monitoring/balance-exporter/index.mjs).
+      # See also the esustellar-balance-exporter group for BalanceExporterDown alert (exporter process health).
       - name: esustellar-deployer-balance
         rules:
           - alert: DeployerBalanceWarning
