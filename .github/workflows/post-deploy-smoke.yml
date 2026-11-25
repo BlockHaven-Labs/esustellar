@@ -25,7 +25,7 @@ jobs:
       NEXT_PUBLIC_REGISTRY_CONTRACT_ID: ${{ vars.NEXT_PUBLIC_REGISTRY_CONTRACT_ID }}
       NEXT_PUBLIC_SAVINGS_CONTRACT_ID: ${{ vars.NEXT_PUBLIC_SAVINGS_CONTRACT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Stellar CLI
         run: cargo install --locked stellar-cli
